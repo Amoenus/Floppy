@@ -85,6 +85,8 @@ def check_complete_media_structure(test_case, item):
     test_case.assertIn("genres", item)
     test_case.assertIn("score", item)
     test_case.assertIn("score_count", item)
+    test_case.assertIn("imdb_rating", item)
+    test_case.assertIn("imdb_rating_count", item)
     test_case.assertIn("cast", item)
     test_case.assertIsInstance(item["cast"], list)
     test_case.assertIn("crew", item)

@@ -540,6 +540,102 @@ class MediaSeasonTests(FloppyApiTestCase):
         self.assertIsNone(response.data["parent_id"])
 
     @patch("api.views.services.get_media_metadata")
+    def test_season_detail_get_exposes_imdb_rating(self, mock_metadata):
+        """Season detail GET should expose the season Item's IMDb rating."""
+        tv_item = self.items_by_type[MediaTypes.TV.value][0]
+        season_item = self.items_by_type[MediaTypes.SEASON.value][0]
+        season_item.imdb_rating = 7.3
+        season_item.imdb_rating_count = 890
+        season_item.save()
+
+        mock_metadata.return_value = {
+            "media_id": tv_item.media_id,
+            "source": tv_item.source,
+            "media_type": "season",
+            "season_number": season_item.season_number,
+            "related": {"episodes": []},
+        }
+
+        response = self.call_api(
+            "get",
+            "api_media_season_detail",
+            args=(
+                MediaTypes.TV.value,
+                tv_item.source,
+                tv_item.media_id,
+                season_item.season_number,
+            ),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["imdb_rating"], 7.3)
+        self.assertEqual(payload["imdb_rating_count"], 890)
+
+    @patch("api.views.services.get_media_metadata")
+    def test_season_detail_untracked_episode_reports_synced_imdb_rating(
+        self,
+        mock_metadata,
+    ):
+        """An untracked episode with a previously-synced Item still shows its rating."""
+        tv_item = self.items_by_type[MediaTypes.TV.value][0]
+        season_item = self.items_by_type[MediaTypes.SEASON.value][0]
+        Item.objects.create(
+            media_id=tv_item.media_id,
+            source=tv_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            title="Untracked Episode 99",
+            season_number=season_item.season_number,
+            episode_number=99,
+            imdb_rating=5.4,
+            imdb_rating_count=17,
+        )
+
+        mock_metadata.return_value = {
+            "source": tv_item.source,
+            "media_id": tv_item.media_id,
+            "media_type": "season",
+            "season_number": season_item.season_number,
+            "episodes": [
+                {
+                    "episode_number": 99,
+                    "season_number": season_item.season_number,
+                    "show_id": tv_item.media_id,
+                    "name": "Untracked Episode 99",
+                    "overview": "",
+                    "vote_average": 0.0,
+                    "vote_count": 0,
+                    "air_date": None,
+                    "runtime": None,
+                    "episode_type": None,
+                    "crew": [],
+                    "guest_stars": [],
+                    "still_path": None,
+                },
+            ],
+            "related": {"episodes": []},
+        }
+
+        response = self.call_api(
+            "get",
+            "api_media_season_detail",
+            args=(
+                MediaTypes.TV.value,
+                tv_item.source,
+                tv_item.media_id,
+                season_item.season_number,
+            ),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        episode = response.json()["related"]["episodes"][0]
+        self.assertFalse(episode["tracked"])
+        self.assertEqual(episode["item"]["imdb_rating"], 5.4)
+        self.assertEqual(episode["item"]["imdb_rating_count"], 17)
+
+    @patch("api.views.services.get_media_metadata")
     def test_season_detail_patch_updates_season_fields(self, mock_metadata):
         """Season detail PATCH should update season fields."""
         status = 2

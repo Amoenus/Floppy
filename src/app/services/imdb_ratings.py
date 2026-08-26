@@ -159,3 +159,78 @@ def sync_episode_ratings() -> int:
         logger.info("imdb_ratings: updated %d episode ratings", len(updated))
 
     return len(updated)
+
+
+def sync_season_ratings() -> int:
+    """Derive season imdb_rating/imdb_rating_count from their episodes' ratings.
+
+    IMDB's public dataset has no season-granular title id, so a season's rating
+    is instead computed locally as a vote-weighted average of its episode
+    Items' ratings (synced separately by sync_episode_ratings) and written
+    back onto the season's Item row.
+
+    Returns the number of Items updated.
+    """
+    show_keys = set(
+        Item.objects.filter(
+            media_type=MediaTypes.EPISODE.value,
+            imdb_rating_count__isnull=False,
+        ).values_list("media_id", "source"),
+    )
+    if not show_keys:
+        return 0
+
+    updated = []
+    for media_id, source in show_keys:
+        episode_ratings = Item.objects.filter(
+            media_id=media_id,
+            source=source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number__isnull=False,
+            imdb_rating__isnull=False,
+            imdb_rating_count__isnull=False,
+        ).values_list("season_number", "imdb_rating", "imdb_rating_count")
+
+        totals_by_season = {}
+        for season_number, rating, rating_count in episode_ratings:
+            weighted_sum, vote_count = totals_by_season.setdefault(
+                season_number, [0.0, 0],
+            )
+            totals_by_season[season_number] = [
+                weighted_sum + rating * rating_count,
+                vote_count + rating_count,
+            ]
+
+        if not totals_by_season:
+            continue
+
+        season_items = {
+            item.season_number: item
+            for item in Item.objects.filter(
+                media_id=media_id,
+                source=source,
+                media_type=MediaTypes.SEASON.value,
+                season_number__in=totals_by_season.keys(),
+            )
+        }
+        for season_number, (weighted_sum, vote_count) in totals_by_season.items():
+            season_item = season_items.get(season_number)
+            if season_item is None or vote_count == 0:
+                continue
+            average_rating = round(weighted_sum / vote_count, 1)
+            if (
+                season_item.imdb_rating == average_rating
+                and season_item.imdb_rating_count == vote_count
+            ):
+                continue
+            season_item.imdb_rating = average_rating
+            season_item.imdb_rating_count = vote_count
+            updated.append(season_item)
+
+    if updated:
+        Item.objects.bulk_update(
+            updated, ["imdb_rating", "imdb_rating_count"], batch_size=500
+        )
+        logger.info("imdb_ratings: updated %d season ratings", len(updated))
+
+    return len(updated)

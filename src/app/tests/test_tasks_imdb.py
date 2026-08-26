@@ -139,6 +139,13 @@ class SyncImdbRatingsTaskTests(TestCase):
             season_number=1,
             episode_number=1,
         )
+        season = Item.objects.create(
+            media_id="tmdb-2",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Season 1",
+            season_number=1,
+        )
 
         with (
             patch(
@@ -158,10 +165,20 @@ class SyncImdbRatingsTaskTests(TestCase):
         movie.refresh_from_db()
         show.refresh_from_db()
         episode.refresh_from_db()
+        season.refresh_from_db()
         self.assertEqual(movie.imdb_rating, 8.1)
         self.assertEqual(movie.imdb_rating_count, 1000)
         self.assertEqual(show.imdb_rating, 7.5)
         self.assertEqual(show.imdb_rating_count, 2000)
         self.assertEqual(episode.imdb_rating, 9.0)
         self.assertEqual(episode.imdb_rating_count, 500)
-        self.assertEqual(result, {"movies_and_shows_updated": 2, "episodes_updated": 1})
+        self.assertEqual(season.imdb_rating, 9.0)
+        self.assertEqual(season.imdb_rating_count, 500)
+        self.assertEqual(
+            result,
+            {
+                "movies_and_shows_updated": 2,
+                "episodes_updated": 1,
+                "seasons_updated": 1,
+            },
+        )

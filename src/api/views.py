@@ -1307,11 +1307,23 @@ class MediaDetailView(drf_views.APIView):
                 payload["state"] = state
                 media_metadata["provider_game_lengths"] = payload
 
+        # FORK: resolve the top-level Item so CompleteMediaSerializer can
+        # expose imdb_rating/imdb_rating_count alongside the TMDB-based score.
+        if media_type == MediaTypes.GAME.value:
+            top_level_item = game_length_item
+        else:
+            top_level_item = (
+                user_medias[0].item
+                if user_medias
+                else resolve_item_queryset(media_id, source, media_type).first()
+            )
+
         data = {
             "media_metadata": media_metadata,
             "user_medias": user_medias,
             "seasons": seasons_by_number,
             "lists": lists,
+            "item": top_level_item,
         }
 
         serialized = serialize_data(
@@ -1434,6 +1446,7 @@ class MediaDetailView(drf_views.APIView):
             "media_metadata": media_metadata,
             "user_medias": user_medias,
             "lists": lists,
+            "item": media.item,
         }
 
         serialized = serialize_data(
@@ -2462,11 +2475,25 @@ class MediaSeasonDetailView(drf_views.APIView):
             season_number=season_number,
         )
 
+        # FORK: resolve the season's own Item so CompleteMediaSerializer can
+        # expose imdb_rating/imdb_rating_count alongside the TMDB-based score.
+        season_item = (
+            user_medias[0].item
+            if user_medias
+            else resolve_item_queryset(
+                media_id,
+                source,
+                MediaTypes.SEASON.value,
+                season_number=season_number,
+            ).first()
+        )
+
         data = {
             "media_metadata": media_metadata,
             "user_medias": user_medias,
             "episodes": episodes_by_number,
             "lists": lists,
+            "item": season_item,
         }
 
         serialized = serialize_data(
@@ -2580,6 +2607,7 @@ class MediaSeasonDetailView(drf_views.APIView):
             "media_metadata": media_metadata,
             "user_medias": user_medias,
             "lists": lists,
+            "item": media.item,
         }
 
         serialized = serialize_data(
@@ -3603,11 +3631,26 @@ class MediaEpisodeDetailView(drf_views.APIView):
             episode_number=episode_number,
         )
 
+        # FORK: resolve the episode's own Item so CompleteEpisodeSerializer
+        # can expose imdb_rating/imdb_rating_count alongside the TMDB score.
+        episode_item = (
+            user_medias[0].item
+            if user_medias
+            else resolve_item_queryset(
+                media_id,
+                source,
+                MediaTypes.EPISODE.value,
+                season_number=season_number,
+                episode_number=episode_number,
+            ).first()
+        )
+
         data = {
             "media_metadata": media_metadata,
             "episode": episode,
             "user_medias": user_medias,
             "lists": lists,
+            "item": episode_item,
         }
 
         serialized = serialize_data(
@@ -3772,6 +3815,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
             "episode": episode,
             "user_medias": user_medias,
             "lists": lists,
+            "item": media.item,
         }
 
         serialized = serialize_data(

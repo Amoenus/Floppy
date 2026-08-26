@@ -449,6 +449,8 @@ class OpenAPIArtifactTests(SimpleTestCase):
             "genres",
             "score",
             "score_count",
+            "imdb_rating",
+            "imdb_rating_count",
             "cast",
             "crew",
             "details",
