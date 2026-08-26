@@ -10,6 +10,7 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
+from app import carousel as carousel_media
 from app import config, helpers
 from app.activity_builders import (
     _normalize_detail_episode_actions,
@@ -48,6 +49,7 @@ from app.tag_views import (
     _resolve_detail_tag_genres,
 )
 from app.view_constants import (
+    DETAIL_CAROUSEL_FRAGMENT,
     DETAIL_SECONDARY_FRAGMENT,
     LOCAL_ONLY_MISSING_SEASON_BANNER,
 )
@@ -70,10 +72,32 @@ def season_details(
     parent_media_type=None,
 ):
     """Return the details page for a season."""
+    if request.GET.get("fragment") == DETAIL_CAROUSEL_FRAGMENT:
+        return render(
+            request,
+            "app/components/detail_carousel_fragment.html",
+            {
+                "carousel": carousel_media.resolve_carousel_media(
+                    MediaTypes.SEASON.value,
+                    source,
+                    media_id,
+                    season_number=season_number,
+                ),
+            },
+        )
+
     detail_view_started_at = time.perf_counter()
+    carousel_supported = carousel_media.carousel_supported(
+        MediaTypes.SEASON.value, source
+    )
     render_secondary_only = request.GET.get("fragment") == DETAIL_SECONDARY_FRAGMENT
     defer_detail_secondary = not render_secondary_only
     detail_return_url = _detail_request_url(request)
+    detail_carousel_fragment_url = (
+        _detail_request_url(request, fragment=DETAIL_CAROUSEL_FRAGMENT)
+        if carousel_supported
+        else None
+    )
     detail_secondary_fragment_url = _detail_request_url(
         request,
         fragment=DETAIL_SECONDARY_FRAGMENT,
@@ -1017,6 +1041,8 @@ def season_details(
         "detail_secondary_fragment_url": detail_secondary_fragment_url,
         "defer_detail_secondary": defer_detail_secondary,
         "render_secondary_only": render_secondary_only,
+        "carousel_supported": carousel_supported,
+        "detail_carousel_fragment_url": detail_carousel_fragment_url,
         **_build_detail_person_rows(season_metadata),
     }
     logger.info(

@@ -585,6 +585,84 @@ html.light .theme-toggle-icon-moon {
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
 }
 
+/* Media-details top section, carousel-supported types only (see
+   media_details.html). Mobile keeps today's original stacked order
+   (poster, title, chips, actions, synopsis) while the carousel is
+   temporarily disabled below md; md+ switches to the two-row layout with
+   the carousel next to the poster and actions beside the title. Grid
+   areas reposition one shared set of includes instead of rendering the
+   page twice, so ids and htmx/Alpine bindings stay unique. */
+.detail-carousel-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "poster" "header" "chips" "synopsis";
+}
+
+.detail-carousel-grid__poster {
+  grid-area: poster;
+}
+
+.detail-carousel-grid__carousel {
+  display: none;
+  grid-area: carousel;
+}
+
+/* title + actions share one grid area at every width (see media_details.html)
+   so the title keeps the same wide flex-1 row it always had, instead of
+   being boxed into the poster column's narrow track. */
+.detail-carousel-grid__header {
+  grid-area: header;
+  margin-top: 1rem;
+}
+
+/* detail_action_buttons.html's own wrapper still carries the mt-5/mb-6
+   classes it needs for the non-carousel branch's sm:contents mobile
+   reordering (see detail_score_and_actions.html); neutralize them here so
+   they don't inflate this header row's height. */
+.detail-carousel-grid__header .shrink-0 > div {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.detail-carousel-grid__chips {
+  grid-area: chips;
+  margin-top: 1rem;
+}
+
+/* detail_score_chips.html's own wrapper still carries the mt-0/sm:mt-4/mb-5
+   classes it needs for the non-carousel branch's sm:contents mobile
+   reordering (see detail_score_and_actions.html); neutralize them here so
+   they don't stack with this grid item's own margin-top. */
+.detail-carousel-grid__chips > div {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.detail-carousel-grid__synopsis {
+  grid-area: synopsis;
+  margin-top: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .detail-carousel-grid {
+    column-gap: 2.5rem;
+    grid-template-columns: 250px minmax(0, 1fr);
+    grid-template-areas:
+      "poster carousel"
+      "header header"
+      "chips chips"
+      "synopsis synopsis";
+  }
+
+  .detail-carousel-grid__carousel {
+    display: block;
+  }
+
+  .detail-carousel-grid__header {
+    margin-top: 1.5rem;
+  }
+}
+
 /* Mobile default: active playback card spans all columns on very small screens */
 [data-active-playback-card] {
   grid-column: span 3 !important;

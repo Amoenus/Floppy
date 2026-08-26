@@ -1,0 +1,160 @@
+{% if carousel %}
+  <div class="w-full h-full flex flex-col gap-2" x-data="{ selected: 0, mode: 'image', videoPlaying: false, items: [], lightboxOpen: false, select(i) { this.selected = i; this.mode = this.items[i].kind; this.videoPlaying = false }, next() { this.select((this.selected + 1) % this.items.length) }, prev() { this.select((this.selected - 1 + this.items.length) % this.items.length) }, }" x-init="items = [ {% if carousel.video %}{ kind: 'video', key: '{{ carousel.video.key|escapejs }}' },{% endif %}
+
+  {% for photo in carousel.photos %}{ kind: 'image', url: '{{ photo.url|escapejs }}' },{% endfor %}
+  ]; mode = items[0].kind" @keydown.escape.window="lightboxOpen = false" @keydown.arrow-left.window="if (lightboxOpen) prev()" @keydown.arrow-right.window="if (lightboxOpen) next()">
+  <div class="relative flex-1 min-h-[12rem] rounded-lg overflow-hidden bg-[var(--color-surface)]">
+    <template x-if="mode === 'video' && !videoPlaying">
+      <button type="button"
+              class="relative block h-full w-full cursor-pointer"
+              @click="videoPlaying = true"
+              aria-label="Play trailer">
+        <img class="w-full h-full object-cover"
+             :src="'https://img.youtube.com/vi/' + items[selected].key + '/maxresdefault.jpg'"
+             onload="if (this.naturalWidth === 120) { this.src = this.src.replace('maxresdefault', 'hqdefault') }"
+             alt="">
+        <span class="absolute inset-0 flex items-center justify-center bg-black/30">
+          <span class="flex h-14 w-14 items-center justify-center rounded-full bg-black/60 text-white">
+            {% include "app/icons/play.svg" with classes="w-6 h-6" %}
+          </span>
+        </span>
+      </button>
+    </template>
+    <template x-if="mode === 'video' && videoPlaying">
+      <iframe class="w-full h-full"
+              :src="'https://www.youtube.com/embed/' + items[selected].key + '?autoplay=1'"
+              title="Trailer"
+              frameborder="0"
+              referrerpolicy="strict-origin-when-cross-origin"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowfullscreen></iframe>
+    </template>
+    <template x-if="mode !== 'video'">
+      <img class="w-full h-full object-cover cursor-pointer"
+           :src="items[selected].url"
+           alt=""
+           @click="lightboxOpen = true">
+    </template>
+
+    <div class="absolute top-2 left-2 rounded-md bg-black/60 px-2 py-1 text-xs font-medium text-white"
+         x-text="(selected + 1) + ' / ' + items.length"></div>
+
+    <button type="button"
+            class="absolute top-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
+            @click="lightboxOpen = true"
+            aria-label="View full size">{% include "app/icons/expand.svg" with classes="w-4 h-4" %}</button>
+
+    <button type="button"
+            class="absolute left-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
+            @click="prev()"
+            aria-label="Previous">{% include "app/icons/chevron-left.svg" with classes="w-5 h-5" %}</button>
+    <button type="button"
+            class="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
+            @click="next()"
+            aria-label="Next">{% include "app/icons/chevron-right.svg" with classes="w-5 h-5" %}</button>
+  </div>
+
+  <div class="flex shrink-0 gap-2 overflow-x-auto py-1 home-row-scrollbar-hidden">
+    {% if carousel.video %}
+      <button type="button"
+              class="relative shrink-0 w-20 h-14 rounded-md overflow-hidden border-2 cursor-pointer"
+              :class="selected === 0 ? 'border-indigo-500' : 'border-transparent'"
+              @click="select(0)">
+        <img class="w-full h-full object-cover"
+             src="https://img.youtube.com/vi/{{ carousel.video.key }}/mqdefault.jpg"
+             alt="">
+        <span class="absolute inset-0 flex items-center justify-center bg-black/30">
+          {% include "app/icons/play.svg" with classes="w-5 h-5 text-white" %}
+        </span>
+      </button>
+    {% endif %}
+    {% for photo in carousel.photos %}
+      {% if carousel.video %}
+        {% with index=forloop.counter %}
+          <button type="button"
+                  class="shrink-0 w-20 h-14 rounded-md overflow-hidden border-2 cursor-pointer"
+                  :class="selected === {{ index }} ? 'border-indigo-500' : 'border-transparent'"
+                  @click="select({{ index }})">
+            <img class="w-full h-full object-cover" src="{{ photo.thumb_url }}" alt="">
+          </button>
+        {% endwith %}
+      {% else %}
+        {% with index=forloop.counter0 %}
+          <button type="button"
+                  class="shrink-0 w-20 h-14 rounded-md overflow-hidden border-2 cursor-pointer"
+                  :class="selected === {{ index }} ? 'border-indigo-500' : 'border-transparent'"
+                  @click="select({{ index }})">
+            <img class="w-full h-full object-cover" src="{{ photo.thumb_url }}" alt="">
+          </button>
+        {% endwith %}
+      {% endif %}
+    {% endfor %}
+    {% if carousel.photos %}
+      <button type="button"
+              class="shrink-0 w-20 h-14 rounded-md flex items-center justify-center bg-[var(--color-surface)] px-1 text-center text-[10px] leading-tight text-[var(--color-text-muted)] cursor-pointer hover:bg-[var(--color-surface-muted)] transition-colors"
+              @click="lightboxOpen = true">
+        View all {{ carousel.photos|length }} photo{{ carousel.photos|length|pluralize }}
+      </button>
+    {% endif %}
+  </div>
+
+  <div x-show="lightboxOpen"
+       x-cloak
+       x-transition:enter="transition ease-out duration-150"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-100"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0"
+       class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 sm:p-8"
+       @click.self="lightboxOpen = false">
+    <div class="absolute top-4 left-4 rounded-md bg-black/60 px-3 py-1.5 text-sm font-medium text-white"
+         x-text="(selected + 1) + ' / ' + items.length"></div>
+
+    <button type="button"
+            class="absolute top-4 right-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
+            @click="lightboxOpen = false"
+            aria-label="Close">{% include "app/icons/x.svg" with classes="w-5 h-5" %}</button>
+
+    <button type="button"
+            class="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
+            @click="prev()"
+            aria-label="Previous">{% include "app/icons/chevron-left.svg" with classes="w-6 h-6" %}</button>
+    <button type="button"
+            class="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
+            @click="next()"
+            aria-label="Next">{% include "app/icons/chevron-right.svg" with classes="w-6 h-6" %}</button>
+
+    <template x-if="lightboxOpen && mode === 'video' && !videoPlaying">
+      <button type="button"
+              class="relative block max-h-full max-w-5xl w-full aspect-video cursor-pointer"
+              @click="videoPlaying = true"
+              aria-label="Play trailer">
+        <img class="w-full h-full object-cover"
+             :src="'https://img.youtube.com/vi/' + items[selected].key + '/maxresdefault.jpg'"
+             onload="if (this.naturalWidth === 120) { this.src = this.src.replace('maxresdefault', 'hqdefault') }"
+             alt="">
+        <span class="absolute inset-0 flex items-center justify-center bg-black/30">
+          <span class="flex h-16 w-16 items-center justify-center rounded-full bg-black/60 text-white">
+            {% include "app/icons/play.svg" with classes="w-7 h-7" %}
+          </span>
+        </span>
+      </button>
+    </template>
+    <template x-if="lightboxOpen && mode === 'video' && videoPlaying">
+      <iframe class="w-full h-full max-w-5xl max-h-[80vh]"
+              :src="'https://www.youtube.com/embed/' + items[selected].key + '?autoplay=1'"
+              title="Trailer"
+              frameborder="0"
+              referrerpolicy="strict-origin-when-cross-origin"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowfullscreen></iframe>
+    </template>
+    <template x-if="lightboxOpen && mode !== 'video'">
+      <img class="max-w-full max-h-full object-contain"
+           :src="items[selected].url"
+           alt="">
+    </template>
+  </div>
+</div>
+{% endif %}

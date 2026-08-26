@@ -47,6 +47,10 @@ TV_DETAIL_SEASON_APPEND_RESPONSES = (
     "season/{season}/watch/providers",
 )
 TMDB_SEASON_CACHE_VERSION = 4
+# Media-details carousel (trailer + photos): fetched lazily, its own cache
+# entry, independent of the movie/tv/season append_to_response payloads above.
+CAROUSEL_CACHE_TTL_SUCCESS = 60 * 60 * 24 * 7
+CAROUSEL_CACHE_TTL_ABSENT = 60 * 60 * 24
 
 
 def base_params(language=None):
@@ -1092,6 +1096,90 @@ def tv(media_id, language=None):
     return data
 
 
+def _carousel_cache_key(media_type, media_id, season_number=None):
+    """Return the cache key for a media-details carousel payload."""
+    key = f"tmdb_carousel_{media_type}_{media_id}"
+    if season_number is not None:
+        key += f"_s{season_number}"
+    return key
+
+
+def _parse_carousel_video(response):
+    """Return the single best YouTube trailer from a TMDB videos append, if any."""
+    videos = response.get("videos", {}).get("results", []) or []
+    youtube_videos = [v for v in videos if v.get("site") == "YouTube" and v.get("key")]
+    trailers = [v for v in youtube_videos if v.get("type") == "Trailer"]
+    video = next(iter(trailers), None) or next(iter(youtube_videos), None)
+    if not video:
+        return None
+    return {
+        "key": video["key"],
+        "name": video.get("name", ""),
+        "type": video.get("type", ""),
+    }
+
+
+def _parse_carousel_photos(response):
+    """Return normalized backdrop photos from a TMDB images append."""
+    backdrops = response.get("images", {}).get("backdrops", []) or []
+    return [
+        {
+            "file_path": photo["file_path"],
+            "width": photo.get("width"),
+            "height": photo.get("height"),
+        }
+        for photo in backdrops
+        if photo.get("file_path")
+    ]
+
+
+def carousel_media(media_type, media_id, season_number=None, language=None):
+    """Return {"video": {...}|None, "photos": [...]} for the details carousel.
+
+    Fetched lazily via its own request/cache entry, never folded into the
+    movie/tv/season append_to_response calls (those are already close to
+    TMDB_APPEND_TO_RESPONSE_MAX_REMOTE_CALLS).
+    """
+    cache_key = _carousel_cache_key(media_type, media_id, season_number)
+    data = cache.get(cache_key)
+    if data is not None:
+        return data
+
+    if media_type == MediaTypes.MOVIE.value:
+        url = f"{base_url}/movie/{media_id}"
+    elif media_type == MediaTypes.SEASON.value:
+        url = f"{base_url}/tv/{media_id}/season/{season_number}"
+    else:
+        url = f"{base_url}/tv/{media_id}"
+
+    params = {
+        **base_params(language),
+        "append_to_response": "videos,images",
+    }
+
+    try:
+        response = services.api_request(
+            Sources.TMDB.value,
+            "GET",
+            url,
+            params=params,
+        )
+    except requests.exceptions.HTTPError as error:
+        handle_error(error)
+
+    data = {
+        "video": _parse_carousel_video(response),
+        "photos": _parse_carousel_photos(response),
+    }
+    ttl = (
+        CAROUSEL_CACHE_TTL_SUCCESS
+        if data["video"] or data["photos"]
+        else CAROUSEL_CACHE_TTL_ABSENT
+    )
+    cache.set(cache_key, data, ttl)
+    return data
+
+
 def _build_tv_crew(response):
     """Build sorted crew list for a TV show, prepending created_by as Creators."""
     crew = get_crew_credits(response.get("aggregate_credits", {}), is_aggregate=True)
@@ -1561,6 +1649,13 @@ def get_movie_certification(release_dates_payload):
 
 def get_profile_image_url(path, size="w185"):
     """Return a profile image URL for cast/crew members."""
+    if path:
+        return f"https://image.tmdb.org/t/p/{size}{path}"
+    return settings.IMG_NONE
+
+
+def get_carousel_image_url(path, size="w1280"):
+    """Return a media-details carousel image URL (backdrops/photos)."""
     if path:
         return f"https://image.tmdb.org/t/p/{size}{path}"
     return settings.IMG_NONE
