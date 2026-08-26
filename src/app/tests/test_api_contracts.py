@@ -562,7 +562,7 @@ class OpenAPIArtifactTests(SimpleTestCase):
             ),
             ("/api/v1/media/{media_type}/{source}/{media_id}/", "get"): (
                 "retrieveMediaItem",
-                "CompleteMediaResponse",
+                "CompleteMediaItemResponse",
                 {"200", "400", "403", "404", "500"},
                 None,
             ),

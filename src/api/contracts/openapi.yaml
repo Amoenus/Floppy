@@ -1130,7 +1130,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CompleteMediaResponse'
+                $ref: '#/components/schemas/CompleteMediaItemResponse'
           description: ''
         '400':
           content:
@@ -2601,6 +2601,13 @@ components:
         score_count:
           type: integer
           nullable: true
+        imdb_rating:
+          type: number
+          format: double
+          nullable: true
+        imdb_rating_count:
+          type: integer
+          nullable: true
         cast:
           type: array
           items:
@@ -2645,6 +2652,8 @@ components:
       - genres
       - id
       - image
+      - imdb_rating
+      - imdb_rating_count
       - item_id
       - lists
       - max_progress
@@ -2659,6 +2668,121 @@ components:
       - synopsis
       - title
       - tracked
+    CompleteGameResponse:
+      type: object
+      description: Game detail uses the same envelope with lengths data inside details.
+      properties:
+        id:
+          type: integer
+          nullable: true
+        media_id:
+          type: string
+          nullable: true
+        source:
+          type: string
+          nullable: true
+        source_url:
+          type: string
+          nullable: true
+        media_type:
+          type: string
+        title:
+          type: string
+          nullable: true
+        max_progress:
+          type: integer
+        image:
+          type: string
+          nullable: true
+        backdrop:
+          type: string
+          nullable: true
+        synopsis:
+          type: string
+          nullable: true
+        genres:
+          type: array
+          items:
+            type: string
+          nullable: true
+        score:
+          type: number
+          format: double
+          nullable: true
+        score_count:
+          type: integer
+          nullable: true
+        imdb_rating:
+          type: number
+          format: double
+          nullable: true
+        imdb_rating_count:
+          type: integer
+          nullable: true
+        cast:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        crew:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        details:
+          $ref: '#/components/schemas/GameDetails'
+        related:
+          type: object
+          additionalProperties: {}
+        item_id:
+          type: string
+          nullable: true
+        parent_id:
+          type: string
+          nullable: true
+        tracked:
+          type: boolean
+        consumptions_number:
+          type: integer
+        consumptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConsumptionResponse'
+        lists:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - backdrop
+      - cast
+      - consumptions
+      - consumptions_number
+      - crew
+      - details
+      - genres
+      - id
+      - image
+      - imdb_rating
+      - imdb_rating_count
+      - item_id
+      - lists
+      - max_progress
+      - media_id
+      - media_type
+      - parent_id
+      - related
+      - score
+      - score_count
+      - source
+      - source_url
+      - synopsis
+      - title
+      - tracked
+    CompleteMediaItemResponse:
+      oneOf:
+      - $ref: '#/components/schemas/CompleteMediaResponse'
+      - $ref: '#/components/schemas/CompleteGameResponse'
     CompleteMediaResponse:
       type: object
       description: Exact top-level CompleteMediaSerializer envelope.
@@ -2701,6 +2825,13 @@ components:
           format: double
           nullable: true
         score_count:
+          type: integer
+          nullable: true
+        imdb_rating:
+          type: number
+          format: double
+          nullable: true
+        imdb_rating_count:
           type: integer
           nullable: true
         cast:
@@ -2748,6 +2879,8 @@ components:
       - genres
       - id
       - image
+      - imdb_rating
+      - imdb_rating_count
       - item_id
       - lists
       - max_progress
@@ -2852,6 +2985,101 @@ components:
       - guest_stars
       - runtime
       - season_number
+    GameDetails:
+      type: object
+      description: Game detail fields plus the provider-owned game-lengths record.
+      properties:
+        provider_game_lengths:
+          allOf:
+          - $ref: '#/components/schemas/ProviderGameLengths'
+          nullable: true
+    HltbGameLength:
+      type: object
+      description: Full persisted HLTB game-length detail.
+      properties:
+        game_id:
+          type: integer
+        url:
+          type: string
+        title:
+          type: string
+        release_year:
+          type: integer
+          nullable: true
+        summary:
+          $ref: '#/components/schemas/HltbGameLengthSummary'
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+        single_player_table:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        platform_table:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - counts
+      - game_id
+      - platform_table
+      - release_year
+      - single_player_table
+      - summary
+      - title
+      - url
+    HltbGameLengthSummary:
+      type: object
+      description: HLTB main/main+extras/completionist/all-styles minute estimates.
+      properties:
+        main_minutes:
+          type: integer
+          nullable: true
+        main_plus_minutes:
+          type: integer
+          nullable: true
+        completionist_minutes:
+          type: integer
+          nullable: true
+        all_styles_minutes:
+          type: integer
+          nullable: true
+      required:
+      - all_styles_minutes
+      - completionist_minutes
+      - main_minutes
+      - main_plus_minutes
+    IgdbGameLength:
+      type: object
+      description: Full persisted IGDB game-length detail.
+      properties:
+        game_id:
+          type: integer
+        summary:
+          $ref: '#/components/schemas/IgdbGameLengthSummary'
+      required:
+      - game_id
+      - summary
+    IgdbGameLengthSummary:
+      type: object
+      description: IGDB hastily/normally/completely second estimates.
+      properties:
+        hastily_seconds:
+          type: integer
+        normally_seconds:
+          type: integer
+        completely_seconds:
+          type: integer
+        count:
+          type: integer
+      required:
+      - completely_seconds
+      - count
+      - hastily_seconds
+      - normally_seconds
     InfoResponse:
       type: object
       description: Exact public info response.
@@ -2983,6 +3211,33 @@ components:
       - offset
       - previous
       - total
+    ProviderGameLengths:
+      type: object
+      description: Full persisted game-length payload, as returned on the detail endpoint.
+      properties:
+        active_source:
+          type: string
+        state:
+          $ref: '#/components/schemas/StateEnum'
+        hltb:
+          $ref: '#/components/schemas/HltbGameLength'
+        igdb:
+          $ref: '#/components/schemas/IgdbGameLength'
+      required:
+      - active_source
+      - state
+    ProviderGameLengthsSummary:
+      type: object
+      description: 'Search-result length summary: totals only, no per-platform tables.'
+      properties:
+        active_source:
+          type: string
+        hltb_summary:
+          $ref: '#/components/schemas/HltbGameLengthSummary'
+        igdb_summary:
+          $ref: '#/components/schemas/IgdbGameLengthSummary'
+      required:
+      - active_source
     SearchEnvelope:
       type: object
       description: Search response envelope.
@@ -3014,12 +3269,24 @@ components:
         image:
           type: string
           nullable: true
+        provider_game_lengths_summary:
+          $ref: '#/components/schemas/ProviderGameLengthsSummary'
       required:
       - image
       - media_id
       - media_type
       - source
       - title
+    StateEnum:
+      enum:
+      - ready
+      - pending
+      - unavailable
+      type: string
+      description: |-
+        * `ready` - ready
+        * `pending` - pending
+        * `unavailable` - unavailable
     TrackMediaRequest:
       type: object
       description: Accepted provider, manual-item, and tracking fields.
