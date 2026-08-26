@@ -12,8 +12,13 @@ from app.providers import services
 from lists import smart_rules
 
 # IGDB artwork_type values used to classify fetched artwork images.
-IGDB_ARTWORK_TYPE_HERO = 7
-IGDB_ARTWORK_TYPE_TOP_BANNER = 4
+# Verified by sampling artwork_type + image dimensions across titles already
+# tracked on this instance (Hades, Big Walk, 007 First Light, and others):
+# type=2 is the one that is consistently a clean widescreen promotional image.
+# type=7 was tried previously on a guess, but its shape is inconsistent across
+# titles (a wide banner for some, a square for others), so it does not hold up
+# as Key Art.
+IGDB_ARTWORK_TYPE_KEY_ART = 2
 
 # Acceptable image aspect ratio range for list artwork: from 3:2 (1.5) up to
 # 16:9 (1.777..., allowing a small rounding margin up to 1.778).
@@ -476,7 +481,7 @@ class CustomList(models.Model):
             # We request both artworks.image_id (to get image_ids) and artworks (to get artwork IDs for fetching image_type)
             # Note: IGDB API doesn't support artworks.image_type as nested field,
             # so we'll fetch artworks separately to get image_type
-            # Key Art is identified by image_type=4 in the artworks endpoint, not a separate field
+            # Key Art is identified by artwork_type=2 in the artworks endpoint, not a separate field
             access_token = igdb.get_access_token()
             url = "https://api.igdb.com/v4/games"
             data = (
@@ -592,7 +597,7 @@ class CustomList(models.Model):
                 )
 
                 # Fetch artwork details to get image_type (to identify Key Art)
-                # Key Art is identified by image_type=4 in the artworks endpoint
+                # Key Art is identified by artwork_type=2 in the artworks endpoint
                 key_arts = []
                 other_artworks = []
 
@@ -617,8 +622,7 @@ class CustomList(models.Model):
                         for i in range(0, len(artwork_ids), batch_size):
                             batch_ids = artwork_ids[i : i + batch_size]
                             artwork_id_list = ",".join(str(aid) for aid in batch_ids)
-                            # IGDB artwork types: 0=Other, 1=Box Art, 2=Screenshot, 3=Clear Logo, 4=Top Banner, 5=Marquee, 6=Steam Grid, 7=Hero, 8=Logo, 9=Icon
-                            # Key Art is typically artwork_type=4 (Top Banner) or artwork_type=7 (Hero)
+                            # Key Art is artwork_type=2, verified against sampled images
                             artworks_data = (
                                 f"fields image_id,artwork_type;"
                                 f"where id = ({artwork_id_list});"
@@ -678,27 +682,10 @@ class CustomList(models.Model):
                                 image_id = artwork.get("image_id")
                                 artwork_type = artwork.get("artwork_type")
                                 if image_id:
-                                    # IGDB artwork types: 0=Other, 1=Box Art, 2=Screenshot, 3=Clear Logo, 4=Top Banner, 5=Marquee, 6=Steam Grid, 7=Hero, 8=Logo, 9=Icon
-                                    # Based on user feedback, artwork_type=4 might be Concept Art, not Key Art
-                                    # Need to identify the correct type for Key Art - possibly type 7 (Hero) or a different value
-                                    # For now, let's try type 7 (Hero) as Key Art, and if that doesn't work, we'll need to check the actual values
-                                    if (
-                                        artwork_type == IGDB_ARTWORK_TYPE_HERO
-                                    ):  # Hero - trying this as Key Art
+                                    if artwork_type == IGDB_ARTWORK_TYPE_KEY_ART:
                                         key_arts.append(image_id)
                                         logger.debug(
-                                            "Identified Key Art (Hero) for game %s: image_id=%s, artwork_type=%s",
-                                            media_id,
-                                            image_id,
-                                            artwork_type,
-                                        )
-                                    elif (
-                                        artwork_type == IGDB_ARTWORK_TYPE_TOP_BANNER
-                                    ):  # Top Banner - might be Concept Art based on user feedback
-                                        # Skip type 4 for now since user says it's showing Concept Art
-                                        other_artworks.append(image_id)
-                                        logger.debug(
-                                            "Skipping Top Banner (might be Concept Art) for game %s: image_id=%s, artwork_type=%s",
+                                            "Identified Key Art for game %s: image_id=%s, artwork_type=%s",
                                             media_id,
                                             image_id,
                                             artwork_type,
