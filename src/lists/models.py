@@ -973,7 +973,7 @@ class CustomList(models.Model):
                             artwork_types[artwork["id"]] = artwork["artwork_type"]
 
                 for artwork_id, image_id in artwork_image_ids.items():
-                    if artwork_types.get(artwork_id) == IGDB_ARTWORK_TYPE_HERO:
+                    if artwork_types.get(artwork_id) == IGDB_ARTWORK_TYPE_KEY_ART:
                         key_art_image_ids.append(image_id)
                     else:
                         other_artwork_image_ids.append(image_id)
