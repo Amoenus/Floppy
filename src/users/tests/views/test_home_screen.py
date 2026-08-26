@@ -1936,6 +1936,50 @@ class HomeScreenUpcomingSortTests(SimpleTestCase):
         )
 
 
+class HomeScreenRecentSortTests(SimpleTestCase):
+    """Regression for #995: Recent sort must gate created_at on progress."""
+
+    def _entry(self, title, *, progress, last_played_at, progressed_at, created_at):
+        item = SimpleNamespace(title=title)
+        media = SimpleNamespace(
+            progress=progress,
+            last_played_at=last_played_at,
+            progressed_at=progressed_at,
+            created_at=created_at,
+        )
+        return home_screen.HomeRowEntry(item=item, media=media)
+
+    def test_unstarted_created_at_does_not_outrank_actively_watched_show(self):
+        now = timezone.now()
+        entries = [
+            self._entry(
+                "Unstarted Auto-Created Season",
+                progress=0,
+                last_played_at=None,
+                progressed_at=None,
+                created_at=now - timedelta(days=1),
+            ),
+            self._entry(
+                "Actively Watched Show",
+                progress=5,
+                last_played_at=None,
+                progressed_at=now - timedelta(days=5),
+                created_at=now - timedelta(days=10),
+            ),
+        ]
+
+        result = home_screen.sort_home_entries(
+            entries,
+            HomeSortChoices.RECENT,
+            DirectionChoices.DESC,
+        )
+
+        self.assertEqual(
+            [entry.item.title for entry in result],
+            ["Actively Watched Show", "Unstarted Auto-Created Season"],
+        )
+
+
 class CrossProviderDedupTests(TestCase):
     """Home rows must not show duplicate tiles for a verified TMDB/TVDB pair (#620)."""
 

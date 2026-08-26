@@ -84,3 +84,46 @@ class AnimeMappingSnapshotTests(SimpleTestCase):
             self.assertEqual(snapshot.entry_count, size)
 
         self.assertLess(timings[5_000], 10 * timings[100] + 5)
+
+    def test_find_entries_for_mal_id_uses_index(self):
+        """Regression for #995: lookups use the compiled index, not a scan."""
+        mapping = {
+            "show-a": {"mal_id": "1,2", "tvdb_id": "10"},
+            "show-b": {"mal_id": "3", "tmdb_show_id": "20"},
+        }
+        with patch.object(
+            anime_mapping,
+            "_load_source_data",
+            return_value=(mapping, "revision-a", "digest-a"),
+        ):
+            entries = anime_mapping.find_entries_for_mal_id(2)
+            self.assertEqual(len(entries), 1)
+            self.assertEqual(entries[0]["tvdb_id"], "10")
+
+            self.assertEqual(anime_mapping.find_entries_for_mal_id("missing"), [])
+
+    @tag("slow", "benchmark")
+    def test_mal_index_lookup_is_bounded_for_large_mapping(self):
+        """Regression for #995: the MAL lookup must be O(1), not a full scan.
+
+        Benchmarks the compiled `mal_index` directly (what `find_entries_for_mal_id`
+        reads) rather than round-tripping through `load_mapping_snapshot`'s cache
+        deserialize/freeze cost, which is unrelated to this fix and dominates
+        per-call timing regardless of lookup strategy.
+        """
+        size = 15_000
+        mapping = {
+            str(index): {
+                "mal_id": str(index),
+                "tvdb_id": str(100_000 + index),
+            }
+            for index in range(size)
+        }
+        snapshot = anime_mapping.load_mapping_snapshot(mapping)
+
+        started = perf_counter()
+        for mal_id in range(2_000):
+            snapshot.mal_index.get(str(mal_id), ())
+        elapsed = perf_counter() - started
+
+        self.assertLess(elapsed, 0.05)

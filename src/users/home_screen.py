@@ -1902,10 +1902,11 @@ def _entry_recent_timestamp(entry: HomeRowEntry):
     media = _entry_media(entry)
     if not media:
         return None
+    progress = getattr(media, "progress", 0) or 0
     candidate = (
         getattr(media, "last_played_at", None)
         or getattr(media, "progressed_at", None)
-        or getattr(media, "created_at", None)
+        or (getattr(media, "created_at", None) if progress > 0 else None)
     )
     dt_value = _coerce_datetime(candidate)
     return dt_value.timestamp() if dt_value else None
