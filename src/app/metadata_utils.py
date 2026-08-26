@@ -10,6 +10,7 @@ ANIME_SUPPLEMENT_GENRE = "Anime"
 
 CORE_METADATA_FIELDS = [
     "synopsis",
+    "source_url",
     "country",
     "languages",
     "platforms",
@@ -147,6 +148,7 @@ def extract_item_metadata_values(metadata: dict | None) -> dict[str, object]:
 
     return {
         "synopsis": payload.get("synopsis") or "",
+        "source_url": payload.get("source_url") or "",
         "country": details.get("country") or "",
         "languages": _coerce_list(details.get("languages")),
         "platforms": _coerce_list(details.get("platforms"), allow_scalar=False),

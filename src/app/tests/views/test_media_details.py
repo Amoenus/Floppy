@@ -493,7 +493,60 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(response.context["current_instance"], tv)
 
     @patch("app.providers.services.get_media_metadata")
-    def test_media_details_renders_top_action_row_between_chips_and_description(
+    def test_media_details_keeps_source_link_when_provider_is_unreachable(
+        self,
+        mock_get_metadata,
+    ):
+        """The "Source" chip survives falling back to stored Item metadata (#931-style)."""
+        service_unavailable_response = requests.Response()
+        service_unavailable_response.status_code = requests.codes.service_unavailable
+        mock_get_metadata.side_effect = services.ProviderAPIError(
+            Sources.IGDB.value,
+            requests.exceptions.HTTPError(response=service_unavailable_response),
+        )
+
+        item = Item.objects.create(
+            media_id="1473",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="Zone of the Enders: The 2nd Runner",
+            image="https://example.com/zoe.jpg",
+            synopsis="Stored synopsis",
+            source_url="https://www.igdb.com/games/zone-of-the-enders-the-2nd-runner",
+        )
+        Game.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.IGDB.value,
+                    "media_type": MediaTypes.GAME.value,
+                    "media_id": item.media_id,
+                    "title": "zone-of-the-enders-the-2nd-runner",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        source_sections = [
+            section
+            for section in response.context["detail_link_sections"]
+            if section["title"] in ("Source", "Tracking Source")
+        ]
+        self.assertTrue(source_sections, "Expected a Source link section in the fallback")
+        self.assertEqual(
+            source_sections[0]["entries"][0]["url"],
+            "https://www.igdb.com/games/zone-of-the-enders-the-2nd-runner",
+        )
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_media_details_renders_action_row_before_chips_and_description(
         self, mock_get_metadata
     ):
         mock_get_metadata.return_value = {
@@ -567,8 +620,10 @@ class MediaDetailsViewTests(TestCase):
             'class="hidden text-[var(--color-link)] hover:text-[var(--color-link-hover)] text-sm mt-2 focus:outline-none transition-colors cursor-pointer sm:inline-flex"',
             content,
         )
-        self.assertLess(content.index("tmdb-logo.png"), content.index("Add to tracker"))
-        self.assertLess(content.index("Add to tracker"), content.index("Test overview"))
+        # Movies/TV/seasons render the carousel-column layout: title + action row
+        # come first, score chips move below them, then the synopsis.
+        self.assertLess(content.index("Add to tracker"), content.index("tmdb-logo.png"))
+        self.assertLess(content.index("tmdb-logo.png"), content.index("Test overview"))
 
     @patch("app.providers.services.get_media_metadata")
     def test_comic_volume_issue_rows_render_shared_action_buttons(

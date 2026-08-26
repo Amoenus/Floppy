@@ -12,6 +12,7 @@ def stored_metadata_fallback(item):
         "localized_title": item.localized_title,
         "image": item.image,
         "synopsis": item.synopsis,
+        "source_url": item.source_url,
         "genres": item.genres,
         "cast": [],
         "crew": [],

@@ -47,6 +47,11 @@ class Item(CalendarTriggerMixin, models.Model):
         default="",
         help_text="Cached provider synopsis, used as a fallback when live metadata is unavailable",
     )
+    source_url = models.TextField(
+        blank=True,
+        default="",
+        help_text="Cached provider detail page URL, used as a fallback when live metadata is unavailable",
+    )
     image = models.TextField(
         blank=True, default=""
     )  # if add default, custom media entry will show the value
