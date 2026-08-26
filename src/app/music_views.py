@@ -1094,13 +1094,13 @@ def create_album_from_search(request, musicbrainz_release_id):
     album = Album.objects.filter(
         musicbrainz_release_id=musicbrainz_release_id,
     ).first()
+    artist_credits = release_data.get("artist_credits", [])
 
     if not album:
         artist = None
         created_artists = []
         artist_id = release_data.get("artist_id")
         artist_name = release_data.get("artist_name")
-        artist_credits = release_data.get("artist_credits", [])
 
         if artist_credits:
             for position, credit in enumerate(artist_credits):
