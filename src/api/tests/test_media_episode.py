@@ -164,6 +164,42 @@ class MediaEpisodeTests(FloppyApiTestCase):
         self.assertNotIn("episode_number", payload)
 
     @patch("api.views.services.get_media_metadata")
+    def test_episode_detail_get_exposes_imdb_rating(self, mock_metadata):
+        """Episode detail GET should expose the episode Item's IMDb rating."""
+        tv_item = self.items_by_type[MediaTypes.TV.value][0]
+        season_item = self.items_by_type[MediaTypes.SEASON.value][0]
+        episode_item = self.items_by_type[MediaTypes.EPISODE.value][0]
+        episode_item.imdb_rating = 9.2
+        episode_item.imdb_rating_count = 4321
+        episode_item.save()
+
+        mock_metadata.return_value = self.build_episode_metadata(
+            tv_item=tv_item,
+            season_number=season_item.season_number,
+            episode_number=episode_item.episode_number,
+            title=episode_item.title,
+            image=episode_item.image,
+        )
+
+        response = self.call_api(
+            "get",
+            "api_media_episode_detail",
+            args=(
+                MediaTypes.TV.value,
+                tv_item.source,
+                tv_item.media_id,
+                season_item.season_number,
+                episode_item.episode_number,
+            ),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["imdb_rating"], 9.2)
+        self.assertEqual(payload["imdb_rating_count"], 4321)
+
+    @patch("api.views.services.get_media_metadata")
     def test_episode_detail_patch_with_invalid_field_returns_400(self, mock_metadata):
         """Episode PATCH with unknown field should return 400."""
         tv_item = self.items_by_type[MediaTypes.TV.value][0]

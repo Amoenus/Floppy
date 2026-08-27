@@ -106,7 +106,7 @@ class ImdbRatingContextTests(TestCase):
 
         self.assertEqual(context, {"rating": 7.8, "rating_count": 54321})
 
-    def test_returns_none_for_unsupported_media_type(self):
+    def test_returns_rounded_rating_and_count_for_season(self):
         item = Item.objects.create(
             media_id="season-1",
             source=Sources.TMDB.value,
@@ -117,7 +117,21 @@ class ImdbRatingContextTests(TestCase):
             imdb_rating_count=100,
         )
 
-        self.assertIsNone(_build_imdb_rating_context(item, MediaTypes.SEASON.value))
+        context = _build_imdb_rating_context(item, MediaTypes.SEASON.value)
+
+        self.assertEqual(context, {"rating": 8.0, "rating_count": 100})
+
+    def test_returns_none_for_unsupported_media_type(self):
+        item = Item.objects.create(
+            media_id="game-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="A Game",
+            imdb_rating=8.0,
+            imdb_rating_count=100,
+        )
+
+        self.assertIsNone(_build_imdb_rating_context(item, MediaTypes.GAME.value))
 
 
 class MalRatingContextTests(TestCase):

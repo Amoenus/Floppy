@@ -1422,12 +1422,12 @@ class Season(Media):
                 media_id=self.item.media_id,
                 source=self.item.source,
                 media_type=MediaTypes.TV.value,
+                library_media_type=self.item.library_media_type,
                 defaults={
                     **Item.title_fields_from_metadata(
                         tv_metadata,
                         fallback_title=fallback_title,
                     ),
-                    "library_media_type": self.item.library_media_type,
                     "image": tv_metadata.get("image") or self.item.image,
                 },
             )

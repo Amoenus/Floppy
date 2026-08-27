@@ -13,6 +13,11 @@ from integrations.tasks._import_helpers import (
     format_media_type_display,
     format_watchlist_sync_message,
 )
+from integrations.tasks._jellyfin_pull import (
+    JELLYFIN_PULL_INTERVAL_MINUTES,
+    JELLYFIN_PULL_TASK_NAME,
+    pull_jellyfin_history,
+)
 from integrations.tasks._koito import (
     KOITO_PARTIAL_SYNC_ERROR,
     KOITO_POLL_TASK_NAME,
@@ -118,6 +123,8 @@ def scheduled_backup_export(
 __all__ = [
     "ERROR_TITLE",
     "GOODREADS_IMPORT_TASK_NAME",
+    "JELLYFIN_PULL_INTERVAL_MINUTES",
+    "JELLYFIN_PULL_TASK_NAME",
     "KOITO_PARTIAL_SYNC_ERROR",
     "KOITO_POLL_TASK_NAME",
     "LASTFM_PARTIAL_SYNC_ERROR",
@@ -184,6 +191,7 @@ __all__ = [
     "poll_lastfm_for_user",
     "process_stremio_webhook",
     "process_webhook",
+    "pull_jellyfin_history",
     "push_jellyfin_watched",
     "refresh_plex_sections",
     "sync_plex_watchlist",

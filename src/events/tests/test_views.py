@@ -468,10 +468,16 @@ class DownloadCalendarViewTests(TestCase):
 
     def test_download_calendar_uses_all_day_event_for_sentinel_time(self):
         """Events with an unknown release time should export as all-day."""
+        # download_calendar only returns events within a rolling
+        # [now-30d, now+90d] window, so the target date must be relative to
+        # "now" rather than a hardcoded date -- a fixed date eventually
+        # drifts outside that window and the event silently disappears from
+        # the query instead of failing the assertion it was meant to check.
+        target_date = (timezone.now() + timedelta(days=1)).date()
         sentinel_dt = timezone.datetime(
-            2026,
-            7,
-            24,
+            target_date.year,
+            target_date.month,
+            target_date.day,
             SentinelDatetime.HOUR,
             SentinelDatetime.MINUTE,
             SentinelDatetime.SECOND,
@@ -487,13 +493,24 @@ class DownloadCalendarViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
-        self.assertIn("DTSTART;VALUE=DATE:20260724", body)
-        self.assertIn("DTEND;VALUE=DATE:20260725", body)
-        self.assertNotIn("DTSTART:20260724T115959Z", body)
+        start_str = target_date.strftime("%Y%m%d")
+        end_str = (target_date + timedelta(days=1)).strftime("%Y%m%d")
+        self.assertIn(f"DTSTART;VALUE=DATE:{start_str}", body)
+        self.assertIn(f"DTEND;VALUE=DATE:{end_str}", body)
+        self.assertNotIn(f"DTSTART:{start_str}T115959Z", body)
 
     def test_download_calendar_keeps_timed_event_for_known_time(self):
         """Events with a known release time should keep a timed DTSTART/DTEND."""
-        known_dt = timezone.datetime(2026, 7, 24, 7, 0, 0, tzinfo=UTC)
+        target_date = (timezone.now() + timedelta(days=1)).date()
+        known_dt = timezone.datetime(
+            target_date.year,
+            target_date.month,
+            target_date.day,
+            7,
+            0,
+            0,
+            tzinfo=UTC,
+        )
         self.movie_event.datetime = known_dt
         self.movie_event.save()
 
@@ -503,8 +520,9 @@ class DownloadCalendarViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
-        self.assertIn("DTSTART:20260724T070000Z", body)
-        self.assertIn("DTEND:20260724T070000Z", body)
+        expected = known_dt.strftime("%Y%m%dT%H%M%SZ")
+        self.assertIn(f"DTSTART:{expected}", body)
+        self.assertIn(f"DTEND:{expected}", body)
 
     def test_download_calendar_allows_head_requests(self):
         """HEAD requests should be accepted for calendar clients."""

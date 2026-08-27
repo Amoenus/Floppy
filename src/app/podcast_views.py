@@ -174,11 +174,7 @@ def podcast_episodes_api(request, show_id):
                     enriched = e
                     break
 
-            duration_str = ""
-            if episode_obj.duration:
-                hours = episode_obj.duration // 3600
-                minutes = (episode_obj.duration % 3600) // 60
-                duration_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
+            duration_str = helpers.seconds_to_hm(episode_obj.duration)
 
             user_podcast = episode_podcast_map.get(episode_obj.id)
 
@@ -308,11 +304,7 @@ def podcast_episodes_api(request, show_id):
                 enriched = e
                 break
 
-        duration_str = ""
-        if episode_obj.duration:
-            hours = episode_obj.duration // 3600
-            minutes = (episode_obj.duration % 3600) // 60
-            duration_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
+        duration_str = helpers.seconds_to_hm(episode_obj.duration)
 
         user_podcast = episode_podcast_map.get(episode_obj.id)
         status = user_podcast.status if user_podcast else None
@@ -585,11 +577,7 @@ def podcast_save(request):
             else {"item": {"media_id": episode_obj.episode_uuid}, "media": None}
         )
 
-        duration_str = ""
-        if episode_obj.duration:
-            hours = episode_obj.duration // 3600
-            minutes = (episode_obj.duration % 3600) // 60
-            duration_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
+        duration_str = helpers.seconds_to_hm(episode_obj.duration)
 
         all_history = []
         if user_podcast:

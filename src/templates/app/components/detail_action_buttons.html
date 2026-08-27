@@ -1,0 +1,266 @@
+{% load app_tags %}
+{% load user_tags %}
+{% load humanize %}
+{% load static %}
+{% if not public_view|default:False %}
+  {% if not activity_subtitle and media.score_count is None and not trakt_score and not imdb_score and not mal_score and not user_medias %}
+    <div class="order-1 mt-5 mb-6 flex flex-col gap-3 sm:order-2 sm:flex-row sm:flex-wrap sm:items-center">
+    {% elif not activity_subtitle and media.score_count is None and not trakt_score and not imdb_score and not mal_score and user_medias and not current_instance %}
+      <div class="order-1 mt-5 mb-6 flex flex-col gap-3 sm:order-2 sm:flex-row sm:flex-wrap sm:items-center">
+      {% else %}
+        <div class="order-1 mb-6 flex flex-col gap-3 sm:order-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <div class="mt-4 mb-5 flex flex-wrap gap-2">
+          {% endif %}
+          {# Keep the hero tracker action full-width on mobile so the split button cannot collapse to content width after flex/layout merges. #}
+          <div x-data="{ trackOpen: false }" class="w-full sm:w-auto sm:shrink-0">
+            {% if media_type == MediaTypes.PODCAST.value and podcast_show %}
+              <button type="button"
+                      class="inline-flex w-full items-center justify-center gap-3 rounded-xl px-5 py-3 text-white shadow-sm transition duration-300 cursor-pointer sm:w-auto {% if podcast_tracker %}bg-indigo-600 hover:bg-indigo-700{% else %}bg-gray-600 hover:bg-gray-700{% endif %}"
+                      hx-get="{% url 'podcast_show_track_modal' podcast_show.id %}"
+                      hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
+                      hx-target="#podcast-show-track-modal"
+                      hx-trigger="click"
+                      @click="trackOpen = true">
+                {% include "app/icons/edit.svg" with classes="w-5 h-5 shrink-0" %}
+                <span class="font-medium">
+                  {% if podcast_tracker %}
+                    {{ podcast_tracker.status_readable }}
+                  {% else %}
+                    Add to Library
+                  {% endif %}
+                </span>
+              </button>
+
+              <div x-show="trackOpen"
+                   @keydown.escape.window="trackOpen = false"
+                   class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
+                     style="width: min(96vw, 72rem)"
+                     @click.outside="trackOpen = false"
+                     @click.stop>
+                  <div id="podcast-show-track-modal"></div>
+                </div>
+              </div>
+            {% else %}
+              {% if user_medias and media_type != MediaTypes.TV.value and media_type != MediaTypes.SEASON.value %}
+                <div x-data="{ editTrackOpen: false, createTrackOpen: false, trackMenuOpen: false }"
+                     class="relative inline-flex w-full sm:w-auto"
+                     @click.outside="trackMenuOpen = false">
+                  <div class="inline-flex w-full overflow-hidden rounded-xl shadow-sm sm:w-auto">
+                    <button type="button"
+                            class="inline-flex flex-1 items-center justify-center gap-2 whitespace-nowrap border-r border-indigo-500 bg-indigo-600 px-5 py-3 text-white transition duration-300 hover:bg-indigo-700 cursor-pointer sm:flex-none"
+                            hx-get="{% media_view_url 'track_modal' media %}"
+                            hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}", "instance_id": "{{ current_instance.id }}"}'
+                            hx-target="#{% component_id 'track' media current_instance.id %}"
+                            hx-trigger="click"
+                            @click="editTrackOpen = true">
+                      {% include "app/icons/edit.svg" with classes="w-5 h-5 shrink-0" %}
+                      <span class="font-medium">{{ current_instance.status|media_status_readable }}</span>
+                    </button>
+                    <button @click="trackMenuOpen = !trackMenuOpen"
+                            class="inline-flex shrink-0 items-center bg-indigo-600 px-3 py-3 text-white transition duration-300 hover:bg-indigo-700 cursor-pointer"
+                            aria-label="More tracking actions"
+                            type="button">{% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}</button>
+                  </div>
+                  <div class="absolute left-0 top-full mt-2 w-52 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface-strong)] py-1 shadow-lg overflow-hidden z-50"
+                       x-cloak
+                       x-show="trackMenuOpen"
+                       x-transition:enter="transition ease-out duration-100"
+                       x-transition:enter-start="transform opacity-0 scale-95"
+                       x-transition:enter-end="transform opacity-100 scale-100"
+                       x-transition:leave="transition ease-in duration-75"
+                       x-transition:leave-start="transform opacity-100 scale-100"
+                       x-transition:leave-end="transform opacity-0 scale-95">
+                    <button class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                            type="button"
+                            hx-get="{% media_view_url 'track_modal' media %}"
+                            hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}", "is_create": true}'
+                            hx-target="#{% component_id 'track' media %}"
+                            hx-trigger="click"
+                            @click.stop="trackMenuOpen = false; createTrackOpen = true">Add new entry</button>
+                  </div>
+
+                  <div x-show="editTrackOpen"
+                       @keydown.escape.window="editTrackOpen = false"
+                       class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
+                         style="width: min(96vw, 72rem)"
+                         @click.outside="editTrackOpen = false"
+                         @click.stop>
+                      <div id="{% component_id 'track' media current_instance.id %}"></div>
+                    </div>
+                  </div>
+
+                  <div x-show="createTrackOpen"
+                       @keydown.escape.window="createTrackOpen = false"
+                       class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
+                         style="width: min(96vw, 72rem)"
+                         @click.outside="createTrackOpen = false"
+                         @click.stop>
+                      <div id="{% component_id 'track' media %}"></div>
+                    </div>
+                  </div>
+                </div>
+              {% else %}
+                {% include "app/components/detail_track_action.html" with media=media current_instance=current_instance return_url=request.get_full_path|urlencode track_action_update=True edition_id=hardcover_edition_id %}
+              {% endif %}
+            {% endif %}
+          </div>
+
+          <div class="flex w-full items-center gap-2 sm:w-auto sm:flex-wrap">
+            {% if detail_link_sections %}
+              <div x-data="{ linksOpen: false, linksPinned: false }"
+                   class="relative flex-1 sm:flex-none"
+                   @mouseenter="linksOpen = true"
+                   @mouseleave="if (!linksPinned) linksOpen = false"
+                   @keydown.escape.window="linksOpen = false; linksPinned = false"
+                   @click.outside="linksOpen = false; linksPinned = false">
+                <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
+                        title="View source and external links"
+                        aria-haspopup="true"
+                        :aria-expanded="linksOpen.toString()"
+                        @click="linksPinned = !linksPinned; linksOpen = linksPinned">
+                  {% include "app/icons/link.svg" with classes="w-4 h-4" %}
+                </button>
+
+                <div x-show="linksOpen"
+                     x-cloak
+                     x-transition:enter="transition ease-out duration-150"
+                     x-transition:enter-start="opacity-0 -translate-y-1"
+                     x-transition:enter-end="opacity-100 translate-y-0"
+                     x-transition:leave="transition ease-in duration-100"
+                     x-transition:leave-start="opacity-100 translate-y-0"
+                     x-transition:leave-end="opacity-0 -translate-y-1"
+                     class="absolute left-0 top-full z-20 mt-3 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm">
+                  {% for detail_link_section in detail_link_sections %}
+                    <div class="{% if not forloop.first %}mt-3 border-t border-[var(--color-surface-border)] pt-3{% endif %}">
+                      <div class="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">
+                        {{ detail_link_section.title }}
+                      </div>
+                      <div class="flex flex-wrap gap-2">
+                        {% for detail_link in detail_link_section.entries %}
+                          <a href="{{ detail_link.url }}"
+                             target="_blank"
+                             rel="noreferrer"
+                             class="inline-flex h-8 items-center gap-2 rounded-full border {{ detail_link.chip_classes }} pl-0 pr-3 text-sm text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:brightness-110">
+                            <span class="-my-px -ml-px flex h-8 w-8 shrink-0 items-center justify-center rounded-full border {{ detail_link.badge_classes }}">
+                              {% if detail_link.logo_src %}
+                                <img src="{{ detail_link.logo_src|image_url }}"
+                                     alt=""
+                                     aria-hidden="true"
+                                     class="h-4 w-4 object-contain">
+                              {% else %}
+                                <span class="text-[9px] font-black tracking-[0.12em] {{ detail_link.accent_classes }}">{{ detail_link.fallback_text|slice:":4" }}</span>
+                              {% endif %}
+                            </span>
+                            <span class="text-sm font-medium text-[var(--color-text)]">{{ detail_link.label }}</span>
+                          </a>
+                        {% endfor %}
+                      </div>
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+            {% endif %}
+
+            {% component_id 'tag-preview' media as detail_tag_preview_id %}
+            {% component_id 'tag-preview-genres' media as detail_tag_preview_genres_id %}
+            {% component_id 'tag-preview-implied-genres' media as detail_tag_preview_implied_genres_id %}
+            <div x-data="{ tagsOpen: false, tagsPreviewOpen: false, hasTagPreview() { return this.$refs.tagsPreviewHost?.firstElementChild?.dataset.hasPreview === 'true' }, clampTagsPopup() { const el = this.$refs.tagsPopup; if (!el) return; el.style.left = '0'; const over = el.getBoundingClientRect().right - (window.innerWidth - 16); if (over > 0) el.style.left = (-over) + 'px'; } }"
+                 class="relative flex-1 sm:flex-none"
+                 @mouseenter="if (hasTagPreview()) tagsPreviewOpen = true"
+                 @mouseleave="tagsPreviewOpen = false"
+                 x-effect="if (tagsPreviewOpen) $nextTick(() => clampTagsPopup())">
+              <input id="{{ detail_tag_preview_genres_id }}"
+                     type="hidden"
+                     name="preview_genres_json"
+                     value="{{ detail_tag_preview_genres_json|escape }}">
+              <input id="{{ detail_tag_preview_implied_genres_id }}"
+                     type="hidden"
+                     name="preview_implied_genres_json"
+                     value="{{ detail_tag_preview_implied_genres_json|default:'[]'|escape }}">
+              <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
+                      x-ref="manageTagsButton"
+                      title="Manage tags"
+                      hx-get="{% media_view_url 'tags_modal' media %}"
+                      hx-include="#{{ detail_tag_preview_genres_id }},#{{ detail_tag_preview_implied_genres_id }}"
+                      hx-target="#{% component_id 'tags' media %}"
+                      hx-trigger="click once"
+                      @click="tagsOpen = true">{% include "app/icons/tag.svg" with classes="w-4 h-4" %}</button>
+
+              <div x-show="tagsPreviewOpen && hasTagPreview()"
+                   x-ref="tagsPopup"
+                   x-cloak
+                   x-transition:enter="transition ease-out duration-150"
+                   x-transition:enter-start="opacity-0 -translate-y-1"
+                   x-transition:enter-end="opacity-100 translate-y-0"
+                   x-transition:leave="transition ease-in duration-100"
+                   x-transition:leave-start="opacity-100 translate-y-0"
+                   x-transition:leave-end="opacity-0 -translate-y-1"
+                   class="absolute left-0 top-full z-20 mt-3 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm">
+                <div x-ref="tagsPreviewHost">
+                  {% include "app/components/detail_tag_preview.html" with preview_id=detail_tag_preview_id detail_tag_sections=detail_tag_sections only %}
+                </div>
+              </div>
+
+              <div x-show="tagsOpen"
+                   @keydown.escape.window="tagsOpen = false"
+                   class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                <div class="w-96 max-h-[90vh] px-4 md:px-0 relative z-60"
+                     @click.outside="tagsOpen = false">
+                  <div id="{% component_id 'tags' media %}"></div>
+                </div>
+              </div>
+            </div>
+
+            <div x-data="{ listsOpen: false }" class="flex-1 sm:flex-none">
+              <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
+                      title="Add to custom lists"
+                      hx-get="{% media_view_url 'lists_modal' media %}"
+                      hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
+                      hx-target="#{% component_id 'lists' media %}"
+                      hx-trigger="click once"
+                      @click="listsOpen = true">{% include "app/icons/list-add.svg" with classes="w-4 h-4" %}</button>
+
+              <div x-show="listsOpen"
+                   @keydown.escape.window="listsOpen = false"
+                   class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                <div class="w-96 max-h-[90vh] px-4 md:px-0 relative z-60"
+                     @click.outside="listsOpen = false">
+                  <div id="{% component_id 'lists' media %}"></div>
+                </div>
+              </div>
+            </div>
+
+            <a class="inline-flex h-11 w-full flex-1 items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11 sm:flex-none"
+               title="View your activity history"
+               href="{% url 'history' %}?{% if media_type == MediaTypes.SEASON.value %}media_type={{ MediaTypes.TV.value }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}&season_number={{ media.season_number }}{% elif media_type == MediaTypes.TV.value %}media_type={{ MediaTypes.TV.value }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}{% elif media_type == MediaTypes.PODCAST.value and podcast_show %}media_type={{ MediaTypes.PODCAST.value }}&podcast_show={{ podcast_show.id }}{% else %}media_type={{ media_type }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}{% endif %}{% if media_type == MediaTypes.GAME.value or media_type == MediaTypes.BOARDGAME.value %}&logging_style=sessions{% endif %}">
+              {% include "app/icons/history.svg" with classes="w-4 h-4" %}
+            </a>
+
+            <form method="post"
+                  action="{% media_view_url 'sync_metadata' media %}"
+                  class="flex-1 sm:flex-none"
+                  x-data="{ loading: false }"
+                  @submit="loading = true">
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{{ request.get_full_path }}">
+              <input type="hidden"
+                     name="library_media_type"
+                     value="{% if media_type == MediaTypes.ANIME.value or parent_media_type == MediaTypes.ANIME.value %}anime{% endif %}">
+              <button type="submit"
+                      title="Sync metadata with provider"
+                      class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer disabled:opacity-75 sm:size-11 sm:w-11"
+                      :disabled="loading">
+                <div :class="{ 'animate-spin': loading }">
+                  {% include "app/icons/circle-spinning-clockwise.svg" with classes="w-4 h-4" %}
+                </div>
+              </button>
+            </form>
+          </div>
+          {% if activity_subtitle or media.score_count is not None or trakt_score or imdb_score or mal_score or user_medias and current_instance %}
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}

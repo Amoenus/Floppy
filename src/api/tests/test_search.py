@@ -3,6 +3,7 @@ from unittest.mock import patch
 from django.urls import reverse
 
 from api.helpers import check_source_type
+from app.models import Item, MediaTypes, Sources
 
 from .base import FloppyApiTestCase
 from .helpers import check_pagination_structure
@@ -236,3 +237,64 @@ class SearchTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, 500)
+
+    @patch("api.views.services.search")
+    def test_search_game_results_include_cached_lengths_summary(self, mock_search):
+        """Game search results should carry a lengths summary when cached, #989."""
+        Item.objects.create(
+            media_id="9101",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="Cached Game",
+            provider_game_lengths={
+                "active_source": "hltb",
+                "hltb": {
+                    "summary": {
+                        "main_minutes": 600,
+                        "main_plus_minutes": 900,
+                        "completionist_minutes": 1500,
+                        "all_styles_minutes": 900,
+                    },
+                    "raw": {"should": "not leak"},
+                },
+            },
+        )
+        mock_search.return_value = {
+            "results": [
+                {
+                    "media_id": "9101",
+                    "source": Sources.IGDB.value,
+                    "media_type": MediaTypes.GAME.value,
+                    "title": "Cached Game",
+                    "image": None,
+                },
+                {
+                    "media_id": "9102",
+                    "source": Sources.IGDB.value,
+                    "media_type": MediaTypes.GAME.value,
+                    "title": "Uncached Game",
+                    "image": None,
+                },
+            ],
+            "total_results": 2,
+            "total_pages": 1,
+        }
+
+        response = self.call_api(
+            "get",
+            "api_search_provider",
+            args=(MediaTypes.GAME.value,),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        results = response.json()["results"]
+        cached, uncached = results[0], results[1]
+
+        summary = cached["provider_game_lengths_summary"]
+        self.assertEqual(summary["active_source"], "hltb")
+        self.assertEqual(summary["hltb_summary"]["main_minutes"], 600)
+        self.assertNotIn("raw", summary["hltb_summary"])
+        self.assertNotIn("single_player_table", summary)
+
+        self.assertNotIn("provider_game_lengths_summary", uncached)

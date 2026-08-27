@@ -617,6 +617,47 @@ class TrackModalViewTests(TestCase):
             Artist.objects.filter(musicbrainz_id="artist-two-mbid").exists(),
         )
 
+    @patch("app.providers.musicbrainz.get_release")
+    def test_create_album_from_search_existing_album_with_credits(
+        self,
+        mock_get_release,
+    ):
+        """Revisiting an already-created album should not crash on artist_credits."""
+        artist = Artist.objects.create(name="Artist One", musicbrainz_id="artist-one-mbid")
+        album = Album.objects.create(
+            title="Fetched Album",
+            musicbrainz_release_id="release-mbid",
+            artist=artist,
+        )
+        mock_get_release.return_value = {
+            "title": "Fetched Album",
+            "artist_id": "artist-one-mbid",
+            "artist_name": "Artist One & Artist Two",
+            "artist_credits": [
+                {
+                    "artist_id": "artist-one-mbid",
+                    "name": "Artist One",
+                    "join_phrase": " & ",
+                },
+                {
+                    "artist_id": "artist-two-mbid",
+                    "name": "Artist Two",
+                    "join_phrase": "",
+                },
+            ],
+        }
+
+        response = self.client.get(
+            reverse("create_album_from_search", args=["release-mbid"]),
+        )
+
+        self.assertEqual(response.status_code, 302)
+        credits = list(album.artist_credits.select_related("artist"))
+        self.assertEqual(
+            [credit.artist.name for credit in credits],
+            ["Artist One", "Artist Two"],
+        )
+
     @patch("app.providers.services.get_media_metadata")
     def test_track_modal_view_new_media(self, mock_get_metadata):
         """Test the track modal view for new media."""

@@ -4,6 +4,7 @@ from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
 from django.test import SimpleTestCase, TestCase
@@ -12,6 +13,8 @@ from django.utils import timezone
 
 from app.models import (
     TV,
+    Album,
+    Artist,
     CollectionEntry,
     Episode,
     Game,
@@ -19,6 +22,7 @@ from app.models import (
     ItemTag,
     MediaTypes,
     Movie,
+    Music,
     Season,
     Sources,
     Status,
@@ -813,6 +817,48 @@ class HomeScreenViewTests(TestCase):
         self.assertEqual(
             [entry.item.title for entry in entries], ["Home Action Comedy"]
         )
+
+    def test_library_query_entries_track_falls_back_to_album_cover(self):
+        """Issue #974: Home's music track row should fall back to the album's
+        cover when the track's own Item.image is stale/missing, matching History.
+        """
+        self._set_enabled_media_types(MediaTypes.MUSIC.value)
+        artist = Artist.objects.create(name="Home Fallback Artist")
+        album_image = "http://example.com/home-fallback-album.jpg"
+        album = Album.objects.create(
+            title="Home Fallback Album", artist=artist, image=album_image
+        )
+        item = Item.objects.create(
+            media_id="home-fallback-track-1",
+            source=Sources.MUSICBRAINZ.value,
+            media_type=MediaTypes.MUSIC.value,
+            title="Home Fallback Track",
+            image=settings.IMG_NONE,
+        )
+        Music.objects.create(
+            item=item,
+            user=self.user,
+            artist=artist,
+            album=album,
+            status=Status.COMPLETED.value,
+            progress=1,
+        )
+        row = HomeScreenRow.objects.create(
+            user=self.user,
+            media_type=MediaTypes.MUSIC.value,
+            position=0,
+            enabled=True,
+            row_type=HomeScreenRowTypeChoices.LIBRARY_QUERY,
+            sort_by=MediaSortChoices.TITLE,
+            direction=DirectionChoices.ASC,
+            filters={"subview": "tracks", "status": [Status.COMPLETED.value]},
+        )
+
+        entries = home_screen._library_query_entries(self.user, row)
+
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].media.card_image_override, album_image)
+        self.assertEqual(entries[0].media.card_image_source, "fallback")
 
     def test_home_screen_settings_do_not_expose_no_status_option(self):
         self._set_enabled_media_types(MediaTypes.MOVIE.value)
@@ -1887,6 +1933,50 @@ class HomeScreenUpcomingSortTests(SimpleTestCase):
         self.assertEqual(
             [entry.item.title for entry in result],
             ["Earlier Event Movie", "Later Event Movie"],
+        )
+
+
+class HomeScreenRecentSortTests(SimpleTestCase):
+    """Regression for #995: Recent sort must gate created_at on progress."""
+
+    def _entry(self, title, *, progress, last_played_at, progressed_at, created_at):
+        item = SimpleNamespace(title=title)
+        media = SimpleNamespace(
+            progress=progress,
+            last_played_at=last_played_at,
+            progressed_at=progressed_at,
+            created_at=created_at,
+        )
+        return home_screen.HomeRowEntry(item=item, media=media)
+
+    def test_unstarted_created_at_does_not_outrank_actively_watched_show(self):
+        now = timezone.now()
+        entries = [
+            self._entry(
+                "Unstarted Auto-Created Season",
+                progress=0,
+                last_played_at=None,
+                progressed_at=None,
+                created_at=now - timedelta(days=1),
+            ),
+            self._entry(
+                "Actively Watched Show",
+                progress=5,
+                last_played_at=None,
+                progressed_at=now - timedelta(days=5),
+                created_at=now - timedelta(days=10),
+            ),
+        ]
+
+        result = home_screen.sort_home_entries(
+            entries,
+            HomeSortChoices.RECENT,
+            DirectionChoices.DESC,
+        )
+
+        self.assertEqual(
+            [entry.item.title for entry in result],
+            ["Actively Watched Show", "Unstarted Auto-Created Season"],
         )
 
 

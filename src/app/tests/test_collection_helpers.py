@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from app.helpers import (
+    get_collection_completeness_map,
     get_collection_stats,
     get_season_collection_metadata,
     get_season_collection_stats,
@@ -611,3 +612,155 @@ class CollectionHelpersTest(TestCase):
         metadata = get_season_collection_metadata(self.user, season_two_item)
 
         self.assertIsNone(metadata)
+
+    def test_get_collection_completeness_map_empty_input(self):
+        """Passing no shows returns an empty map."""
+        self.assertEqual(get_collection_completeness_map(self.user, []), {})
+
+    def test_get_collection_completeness_map_partial_show(self):
+        """A show with some but not all episodes collected is flagged partial."""
+        season_item = Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Test TV Season 1",
+            image="http://example.com/season1.jpg",
+        )
+        collected_episode = Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Test TV Episode 1",
+            image="http://example.com/episode1.jpg",
+        )
+        Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=2,
+            title="Test TV Episode 2",
+            image="http://example.com/episode2.jpg",
+        )
+        CollectionEntry.objects.create(
+            user=self.user, item=collected_episode, media_type="digital"
+        )
+
+        completeness = get_collection_completeness_map(self.user, [self.tv_item])
+
+        self.assertEqual(
+            completeness[self.tv_item.id],
+            {"collected": 1, "total": 2, "is_partial": True},
+        )
+        self.assertEqual(
+            completeness[season_item.id],
+            {"collected": 1, "total": 2, "is_partial": True},
+        )
+
+    def test_get_collection_completeness_map_fully_collected_show(self):
+        """A show with every episode collected is not flagged partial."""
+        episode_one = Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Test TV Episode 1",
+            image="http://example.com/episode1.jpg",
+        )
+        episode_two = Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=2,
+            title="Test TV Episode 2",
+            image="http://example.com/episode2.jpg",
+        )
+        CollectionEntry.objects.create(user=self.user, item=episode_one)
+        CollectionEntry.objects.create(user=self.user, item=episode_two)
+
+        completeness = get_collection_completeness_map(self.user, [self.tv_item])
+
+        self.assertEqual(
+            completeness[self.tv_item.id],
+            {"collected": 2, "total": 2, "is_partial": False},
+        )
+
+    def test_get_collection_completeness_map_zero_collected_is_not_partial(self):
+        """A show with no collected episodes is not flagged partial."""
+        Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Test TV Episode 1",
+            image="http://example.com/episode1.jpg",
+        )
+
+        completeness = get_collection_completeness_map(self.user, [self.tv_item])
+
+        self.assertEqual(
+            completeness[self.tv_item.id],
+            {"collected": 0, "total": 1, "is_partial": False},
+        )
+
+    def test_get_collection_completeness_map_batches_multiple_shows(self):
+        """Stats for several shows are computed with a fixed number of queries."""
+        second_show = Item.objects.create(
+            media_id="tv2",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Second TV Show",
+            image="http://example.com/tv2.jpg",
+        )
+        first_show_episode_collected = Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Test TV Episode 1",
+            image="http://example.com/episode1.jpg",
+        )
+        Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=2,
+            title="Test TV Episode 2",
+            image="http://example.com/episode2.jpg",
+        )
+        second_show_episode = Item.objects.create(
+            media_id=second_show.media_id,
+            source=second_show.source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Second Show Episode 1",
+            image="http://example.com/second-episode1.jpg",
+        )
+        CollectionEntry.objects.create(
+            user=self.user, item=first_show_episode_collected
+        )
+        CollectionEntry.objects.create(user=self.user, item=second_show_episode)
+
+        with self.assertNumQueries(4):
+            completeness = get_collection_completeness_map(
+                self.user,
+                [self.tv_item, second_show],
+            )
+
+        self.assertEqual(
+            completeness[self.tv_item.id],
+            {"collected": 1, "total": 2, "is_partial": True},
+        )
+        self.assertEqual(
+            completeness[second_show.id],
+            {"collected": 1, "total": 1, "is_partial": False},
+        )

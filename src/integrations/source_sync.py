@@ -112,6 +112,7 @@ def upsert_collection_source_state(
     source: str,
     quality_label: str = "",
     source_updated_at=None,
+    source_instance_id: int | None = None,
 ):
     """Persist a source snapshot and reconcile the durable collection entry."""
     if source_updated_at is None:
@@ -122,6 +123,7 @@ def upsert_collection_source_state(
             user=user,
             item=item,
             source=source,
+            source_instance_id=source_instance_id,
             defaults={
                 "quality_label": quality_label or "",
                 "last_source_updated_at": source_updated_at,
@@ -132,7 +134,13 @@ def upsert_collection_source_state(
     return retry_on_lock(_upsert_state)
 
 
-def remove_collection_source_state(*, user, item, source: str):
+def remove_collection_source_state(
+    *,
+    user,
+    item,
+    source: str,
+    source_instance_id: int | None = None,
+):
     """Remove a source-specific collection snapshot and reconcile the durable entry."""
 
     def _remove_state():
@@ -140,6 +148,7 @@ def remove_collection_source_state(*, user, item, source: str):
             user=user,
             item=item,
             source=source,
+            source_instance_id=source_instance_id,
         ).delete()
         if not removed_count:
             return _collection_entry_queryset(user=user, item=item).first()

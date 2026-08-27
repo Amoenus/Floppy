@@ -1,8 +1,9 @@
 {% load static %}
 {% load app_tags %}
+{% load i18n %}
 
 <!DOCTYPE html>
-<html lang="en"
+<html lang="{{ LANGUAGE_CODE }}"
       class="{% if user.is_authenticated and user.theme == 'light' %}light{% elif user.is_authenticated and user.theme == 'dark' %}dark{% endif %} bg-[var(--color-page-bg)]">
   <head>
     {# Required meta tags #}
@@ -221,7 +222,7 @@
                       {% include "app/icons/house.svg" with classes="w-5 h-5" %}
 
                     {% endif %}
-                    <span>Home</span>
+                    <span>{% trans "Home" %}</span>
                   </a>
                 </li>
 
@@ -234,7 +235,7 @@
                     {% else %}
                       {% include "app/icons/four-square.svg" with classes="w-5 h-5" %}
                     {% endif %}
-                    <span>Discover</span>
+                    <span>{% trans "Discover" %}</span>
                   </a>
                 </li>
 
@@ -265,7 +266,7 @@
                         {% include "app/icons/calendar.svg" with classes="w-5 h-5" %}
 
                       {% endif %}
-                      <span>Calendar</span>
+                      <span>{% trans "Calendar" %}</span>
                     </a>
                   </li>
 
@@ -280,7 +281,7 @@
                         {% include "app/icons/cube.svg" with classes="w-5 h-5" %}
 
                       {% endif %}
-                      <span>Collection</span>
+                      <span>{% trans "Collection" %}</span>
                     </a>
                   </li>
 
@@ -294,7 +295,7 @@
                         {% include "app/icons/circle-plus.svg" with classes="w-5 h-5" %}
 
                       {% endif %}
-                      <span>Custom</span>
+                      <span>{% trans "Custom" %}</span>
                     </a>
                   </li>
 
@@ -302,7 +303,7 @@
                     <a href="{{ history_url }}"
                        class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == history_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
                       {% icon 'history' is_active=request.path|str_equals:history_url %}
-                      <span>History</span>
+                      <span>{% trans "History" %}</span>
                     </a>
                   </li>
 
@@ -317,7 +318,7 @@
                         {% include "app/icons/folder-plus.svg" with classes="w-5 h-5" %}
 
                       {% endif %}
-                      <span>Lists</span>
+                      <span>{% trans "Lists" %}</span>
                     </a>
                   </li>
 
@@ -332,7 +333,7 @@
                         {% include "app/icons/bars-pyramid.svg" with classes="w-5 h-5" %}
 
                       {% endif %}
-                      <span>Statistics</span>
+                      <span>{% trans "Statistics" %}</span>
                     </a>
                   </li>
 
@@ -347,7 +348,7 @@
                         {% include "app/icons/tag.svg" with classes="w-5 h-5" %}
 
                       {% endif %}
-                      <span>Tags</span>
+                      <span>{% trans "Tags" %}</span>
                     </a>
                   </li>
                 </ul>
@@ -379,7 +380,7 @@
                     {% include "app/icons/settings.svg" with classes="w-5 h-5" %}
 
                   {% endif %}
-                  <span>Settings</span>
+                  <span>{% trans "Settings" %}</span>
                 </a>
 
                 <form method="post" action="{% url 'account_logout' %}" class="w-full">
@@ -388,7 +389,7 @@
                           class="w-full flex items-center space-x-3 px-4 py-2 rounded-md text-[var(--color-text-muted)] hover:bg-[var(--color-hover-dim)] hover:text-[var(--color-text)] transition-colors duration-200 text-sm cursor-pointer">
                     {% include "app/icons/logout.svg" with classes="w-5 h-5" %}
 
-                    <span>Logout</span>
+                    <span>{% trans "Logout" %}</span>
                   </button>
                 </form>
               </div>

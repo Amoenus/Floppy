@@ -51,6 +51,14 @@ _DOWNLOAD_ENV = "FLOPPY_SQLITE_ALLOW_BACKUP_DOWNLOAD"
 # The approval code proves that the person has read the report file. The page
 # must never show it, or the code proves only that they opened the page.
 _SECRET_REPORT_KEYS = frozenset({"actions", "incident_token"})
+# "the container log" alone is ambiguous: Floppy also writes its own app log
+# files (LOG_DIR), and users have reported checking those instead (#960). Name
+# the actual command and disclaim the app logs explicitly wherever this comes up.
+_CONTAINER_LOG_HINT = (
+    "the container's own log output, not Floppy's log files &mdash; run "
+    "<code>docker compose logs floppy</code> (or <code>docker logs "
+    "&lt;container&gt;</code>) and search for &quot;approval code&quot;"
+)
 
 _HELP_LINKS = (
     ("Report a problem", "https://github.com/dannyvfilms/Floppy/issues"),
@@ -375,7 +383,7 @@ def render_page(
         body = (
             "<h1>Your data is safe. Nothing was deleted.</h1>"
             "<p>Floppy paused before it started. It cannot read the report that "
-            "explains why. Look at the container log for the reason.</p>"
+            f"explains why. Look at {_CONTAINER_LOG_HINT}.</p>"
             + _help_card()
         )
         return _document(body)
@@ -446,9 +454,10 @@ def render_page(
             parts.append(
                 "<div class='card'><h2>Repair the relationships, then start</h2>"
                 f"<p>{explanation}</p>"
-                "<p class='note'>Enter the current approval code from the container "
-                "log. The code is tied to this exact database state and changes if "
-                "Floppy safely repairs part of the incident first.</p>"
+                f"<p class='note'>Enter the current approval code, found in "
+                f"{_CONTAINER_LOG_HINT}. The code is tied to this exact database "
+                "state and changes if Floppy safely repairs part of the incident "
+                "first.</p>"
                 "<form method='POST' action='/quarantine'>"
                 "<p><label for='recovery-token'>Approval code</label><br>"
                 "<input id='recovery-token' name='token' required autocomplete='off' "
@@ -506,7 +515,7 @@ def _waiting_page() -> str:
         "<p role='status'>Floppy is applying it, then starting. This can take "
         "several minutes on a large database. You can leave this page open.</p>"
         "<p class='note'>This page opens Floppy when Floppy is ready. If it "
-        "stays on this message, look at the container log.</p>"
+        f"stays on this message, look at {_CONTAINER_LOG_HINT}.</p>"
         "<p><a class='button' href='/'>Open Floppy</a></p>"
         "</div>"
     )
@@ -744,8 +753,9 @@ class _Handler(BaseHTTPRequestHandler):
                     403,
                     _document(
                         "<h1>That code is not correct.</h1><p>Use the current "
-                        "approval code from the container log. The code changes "
-                        "when the database state changes. No entry was changed.</p>",
+                        f"approval code, found in {_CONTAINER_LOG_HINT}. The code "
+                        "changes when the database state changes. No entry was "
+                        "changed.</p>",
                     ),
                     "text/html; charset=utf-8",
                 )

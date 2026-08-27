@@ -27,3 +27,9 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(f"Updated {episodes_updated} episode item(s)."),
         )
+
+        self.stdout.write("Deriving season ratings from episode ratings...")
+        seasons_updated = imdb_ratings.sync_season_ratings()
+        self.stdout.write(
+            self.style.SUCCESS(f"Updated {seasons_updated} season item(s)."),
+        )

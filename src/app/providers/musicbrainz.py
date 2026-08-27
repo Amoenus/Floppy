@@ -1,6 +1,7 @@
 """MusicBrainz API provider for music metadata."""
 
 import logging
+import re
 import time
 from collections import OrderedDict
 from http import HTTPStatus
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 COVER_ART_BASE = "https://coverartarchive.org"
 WIKIPEDIA_API_BASE = "https://en.wikipedia.org/api/rest_v1/page/summary"
+LASTFM_API_BASE = "https://ws.audioscrobbler.com/2.0/"
 MIN_REQUEST_INTERVAL = 1.0  # MusicBrainz requires 1 req/sec for unauth requests
 DISCOGRAPHY_CACHE_VERSION = 2
 RELEASE_CACHE_VERSION = 2
@@ -131,22 +133,27 @@ def get_wikipedia_data(title):
         if response.ok:
             data = response.json()
 
-            # Get the extract (bio)
-            extract = data.get("extract", "")
-            result["extract"] = extract or None
+            # Disambiguation pages have a short "extract" too, but it's not a
+            # bio - it's a list of unrelated things sharing the title (e.g.
+            # "Tool" the band vs. "Tool" the implement). Treat as a miss so
+            # callers fall through to a more specific lookup strategy.
+            if data.get("type") != "disambiguation":
+                extract = data.get("extract", "")
+                result["extract"] = extract or None
 
-            # Get the image - prefer originalimage, fall back to thumbnail
-            original = data.get("originalimage", {})
-            thumbnail = data.get("thumbnail", {})
+                # Get the image - prefer originalimage, fall back to thumbnail
+                original = data.get("originalimage", {})
+                thumbnail = data.get("thumbnail", {})
 
-            # Use original if available and reasonable size, otherwise thumbnail
-            if original.get("source"):
-                result["image"] = original["source"]
-            elif thumbnail.get("source"):
-                result["image"] = thumbnail["source"]
+                # Use original if available and reasonable size, otherwise thumbnail
+                if original.get("source"):
+                    result["image"] = original["source"]
+                elif thumbnail.get("source"):
+                    result["image"] = thumbnail["source"]
 
-            # Cache for 7 days
-            cache.set(cache_key, result, 60 * 60 * 24 * 7)
+            # Cache for 7 days on a real hit, 1 day on a miss/disambiguation
+            ttl = 60 * 60 * 24 * 7 if result["extract"] else 60 * 60 * 24
+            cache.set(cache_key, result, ttl)
         else:
             # Cache the miss to avoid repeated failed lookups
             cache.set(cache_key, result, 60 * 60 * 24)  # Cache miss for 1 day
@@ -155,6 +162,59 @@ def get_wikipedia_data(title):
         logger.debug("Failed to fetch Wikipedia data for %s: %s", title, e)
 
     return result
+
+
+_LASTFM_READ_MORE_RE = re.compile(r"\s*<a[^>]*>Read more on Last\.fm</a>\.?\s*$")
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def get_lastfm_bio(mbid):
+    """Fetch an artist bio from Last.fm's artist.getInfo, keyed by MBID.
+
+    Last.fm resolves the artist deterministically by MusicBrainz ID, so
+    unlike guessing a Wikipedia article title from the artist name, this
+    can't land on the wrong, same-named entity (see issue #979).
+
+    Returns the bio text, or None if unavailable (no API key configured,
+    artist not found, empty bio, or a request error).
+    """
+    api_key = getattr(settings, "LASTFM_API_KEY", None)
+    if not api_key or not mbid:
+        return None
+
+    cache_key = f"lastfm_bio_{mbid}"
+    cached = cache.get(cache_key, "unset")
+    if cached != "unset":
+        return cached
+
+    bio = None
+    try:
+        response = requests.get(
+            LASTFM_API_BASE,
+            params={
+                "method": "artist.getinfo",
+                "mbid": mbid,
+                "api_key": api_key,
+                "format": "json",
+            },
+            headers={"User-Agent": USER_AGENT},
+            timeout=10,
+        )
+
+        if response.ok:
+            data = response.json()
+            summary = data.get("artist", {}).get("bio", {}).get("summary", "")
+            summary = _LASTFM_READ_MORE_RE.sub("", summary)
+            summary = _HTML_TAG_RE.sub("", summary).strip()
+            bio = summary or None
+
+    except Exception as e:
+        logger.debug("Failed to fetch Last.fm bio for mbid %s: %s", mbid, e)
+
+    # Cache hits for 7 days, misses for 1 day (mirrors get_wikipedia_data)
+    ttl = 60 * 60 * 24 * 7 if bio else 60 * 60 * 24
+    cache.set(cache_key, bio, ttl)
+    return bio
 
 
 def get_wikipedia_extract(artist_name):
@@ -1002,6 +1062,12 @@ def get_artist(artist_id):
     # Annotation from MusicBrainz (often just editor notes, not a bio)
     mb_annotation = response.get("annotation", "")
 
+    # Primary bio source: Last.fm's artist.getInfo, resolved by MusicBrainz ID.
+    # Unlike guessing a Wikipedia title from the artist name, this can't land
+    # on an unrelated same-named entity (e.g. "Tool" the band vs. the tool).
+    artist_bio = get_lastfm_bio(artist_id)
+    bio_image = None
+
     # Try to get the Wikipedia article title from MusicBrainz relations
     # This is more reliable than guessing (e.g., "Queen" -> "Queen_(band)")
     wikipedia_title = None
@@ -1017,28 +1083,30 @@ def get_artist(artist_id):
                 if "en.wikipedia.org" in url:
                     break
 
-    # Get Wikipedia data - try multiple strategies
-    wikipedia_bio = None
-    wikipedia_image = None
-
-    if wikipedia_title:
-        # Best case: MusicBrainz has the exact Wikipedia URL
+    if not artist_bio and wikipedia_title:
+        # Next best: MusicBrainz has the exact Wikipedia URL
         wiki_data = get_wikipedia_data(wikipedia_title)
-        wikipedia_bio = wiki_data.get("extract")
-        wikipedia_image = wiki_data.get("image")
+        artist_bio = wiki_data.get("extract")
+        bio_image = wiki_data.get("image")
 
-    if not wikipedia_bio:
+    if not artist_bio and artist_type == "Group":
+        # Try the standard Wikipedia disambiguation suffix for bands
+        wiki_data = get_wikipedia_data(f"{name}_(band)")
+        artist_bio = wiki_data.get("extract")
+        bio_image = wiki_data.get("image")
+
+    if not artist_bio:
         # Try artist name directly (works for "Kenny G", etc.)
         wiki_data = get_wikipedia_data(name)
-        wikipedia_bio = wiki_data.get("extract")
-        wikipedia_image = wiki_data.get("image")
+        artist_bio = wiki_data.get("extract")
+        bio_image = wiki_data.get("image")
 
-    if not wikipedia_bio and disambiguation:
+    if not artist_bio and disambiguation:
         # Last resort: try name with disambiguation (e.g., "Queen_(band)")
         wiki_title_with_disambig = f"{name}_({disambiguation.replace(' ', '_')})"
         wiki_data = get_wikipedia_data(wiki_title_with_disambig)
-        wikipedia_bio = wiki_data.get("extract")
-        wikipedia_image = wiki_data.get("image")
+        artist_bio = wiki_data.get("extract")
+        bio_image = wiki_data.get("image")
 
     # Genres from MusicBrainz (new genre system)
     genres = []
@@ -1124,8 +1192,8 @@ def get_artist(artist_id):
         "begin_date": begin_date,
         "end_date": end_date,
         "ended": ended,
-        "bio": wikipedia_bio,  # Wikipedia extract as bio
-        "image": wikipedia_image,  # Wikipedia image URL
+        "bio": artist_bio,  # Last.fm or Wikipedia extract, in that priority order
+        "image": bio_image,  # Image from whichever bio source was used
         "annotation": mb_annotation,  # MusicBrainz annotation (usually editor notes)
         "genres": genres[:10],  # Top 10 genres
         "tags": tags[:15],  # Top 15 tags

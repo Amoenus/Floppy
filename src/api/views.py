@@ -11,13 +11,19 @@ from django.utils.timezone import datetime, localdate, make_aware
 
 # FORK: the fork pins django-health-check 3.x (no async HealthCheckView);
 # HealthView below is implemented against the 3.x CheckMixin plugin API.
-from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
+from drf_spectacular.utils import (
+    OpenApiExample,
+    OpenApiParameter,
+    PolymorphicProxySerializer,
+    extend_schema,
+)
 from health_check.mixins import CheckMixin
 from rest_framework import permissions
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
 from app.activity_builders import (
+    _get_game_lengths_refresh_lock,
     _queue_game_lengths_refresh,
     _should_queue_game_lengths_refresh,
 )
@@ -56,6 +62,7 @@ from .changes_history_processor import (
 )
 from .contract_serializers import (
     CompleteEpisodeResponseSerializer,
+    CompleteGameResponseSerializer,
     CompleteMediaResponseSerializer,
     ConsumptionResponseSerializer,
     DetailErrorSerializer,
@@ -69,6 +76,7 @@ from .helpers import (
     MEDIA_TYPE_COMPLETE_MODEL_MAP,
     apply_aggregated_sort,
     apply_list_sort,
+    build_game_lengths_summary,
     build_lists_by_item_id,
     check_source_type,
     check_valid_type,
@@ -127,11 +135,11 @@ def _resolve_api_episode_coordinate(
             library_media_type=library_media_type,
             language=metadata_resolution.metadata_language_default(request.user),
         )
-    except Exception as error:
+    except Exception:
+        logger.exception("An error occurred while fetching media metadata.")
         return None, Response(
             {
                 "detail": "An error occurred while fetching media metadata.",
-                "errors": str(error),
             },
             status=HTTP.INTERNAL_SERVER_ERROR,
         )
@@ -187,11 +195,11 @@ class CalendarView(drf_views.APIView):
 
         try:
             releases = Event.objects.get_user_events(request.user, first_day, last_day)
-        except Exception as e:
+        except Exception:
+            logger.exception("Error occurred while fetching events.")
             return Response(
                 {
                     "detail": "Error occurred while fetching events.",
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -244,11 +252,11 @@ class MediaTypeChangesHistoryDetailView(drf_views.APIView):
                 serializer_class=ChangesHistoryEntrySerializer,
             )
             return Response(serialized_data, status=HTTP.OK)
-        except Exception as e:
+        except Exception:
+            logger.exception("History record not found")
             return Response(
                 {
                     "detail": "History record not found",
-                    "errors": str(e),
                 },
                 status=HTTP.NOT_FOUND,
             )
@@ -268,11 +276,11 @@ class MediaTypeChangesHistoryDetailView(drf_views.APIView):
                 {"detail": "Record removed correctly"},
                 status=HTTP.NO_CONTENT,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception("History record not found")
             return Response(
                 {
                     "detail": "History record not found",
-                    "errors": str(e),
                 },
                 status=HTTP.NOT_FOUND,
             )
@@ -436,11 +444,11 @@ class ListsView(drf_views.APIView):
             )
             return Response(serialized_data, status=HTTP.CREATED)
 
-        except Exception as e:
+        except Exception:
+            logger.exception("An error occurred while creating the list.")
             return Response(
                 {
                     "detail": "An error occurred while creating the list.",
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -1011,11 +1019,11 @@ class MediaTypeListView(drf_views.APIView):
                 [season_number],
                 language=metadata_resolution.metadata_language_default(request.user),
             )
-        except Exception as e:
+        except Exception:
+            logger.exception("Internal Server Error.")
             return Response(
                 {
                     "detail": "Internal Server Error.",
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -1046,11 +1054,11 @@ class MediaTypeListView(drf_views.APIView):
                     image=metadata.get("image") or "",
                     **Item.title_fields_from_metadata(metadata),
                 )
-            except Exception as e:
+            except Exception:
+                logger.exception("Internal Server Error.")
                 return Response(
                     {
                         "detail": "Internal Server Error.",
-                        "errors": str(e),
                     },
                     status=HTTP.INTERNAL_SERVER_ERROR,
                 )
@@ -1114,11 +1122,11 @@ class MediaDetailView(drf_views.APIView):
                 media_type,
                 source,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception("Internal Server Error.")
             return Response(
                 {
                     "detail": "Internal Server Error.",
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -1140,7 +1148,14 @@ class MediaDetailView(drf_views.APIView):
         parameters=[MEDIA_TYPE_PARAM],
         operation_id="retrieveMediaItem",
         responses={
-            200: CompleteMediaResponseSerializer,
+            200: PolymorphicProxySerializer(
+                component_name="CompleteMediaItemResponse",
+                serializers=[
+                    CompleteMediaResponseSerializer,
+                    CompleteGameResponseSerializer,
+                ],
+                resource_type_field_name=None,
+            ),
             400: DetailErrorSerializer,
             403: DetailErrorSerializer,
             404: DetailErrorSerializer,
@@ -1186,11 +1201,11 @@ class MediaDetailView(drf_views.APIView):
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.INTERNAL_SERVER_ERROR.phrase)
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -1204,11 +1219,11 @@ class MediaDetailView(drf_views.APIView):
                 source,
                 library_media_type=library_media_type,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.INTERNAL_SERVER_ERROR.phrase)
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -1254,28 +1269,61 @@ class MediaDetailView(drf_views.APIView):
             game_length_item = (
                 user_medias[0].item
                 if user_medias
-                else Item.objects.filter(
-                    media_id=media_id,
-                    source=source,
-                    media_type=media_type,
-                ).first()
+                else resolve_item_queryset(media_id, source, media_type).first()
             )
+            if game_length_item is None and source == Sources.IGDB.value:
+                try:
+                    game_length_item = Item.objects.create(
+                        media_id=media_id,
+                        source=source,
+                        media_type=media_type,
+                        image=media_metadata.get("image") or "",
+                        **Item.title_fields_from_metadata(media_metadata),
+                    )
+                except Exception:
+                    logger.warning(
+                        "game_length_item_create_failed media_id=%s",
+                        media_id,
+                        exc_info=True,
+                    )
+                    game_length_item = None
+
             if game_length_item:
-                media_metadata["provider_game_lengths"] = (
-                    game_length_item.provider_game_lengths
-                )
+                queued = False
                 if _should_queue_game_lengths_refresh(game_length_item):
-                    _queue_game_lengths_refresh(
+                    queued = _queue_game_lengths_refresh(
                         game_length_item,
                         force=False,
                         fetch_hltb=True,
                     )
+
+                payload = dict(game_length_item.provider_game_lengths or {})
+                if payload:
+                    state = "ready"
+                elif queued or _get_game_lengths_refresh_lock(game_length_item):
+                    state = "pending"
+                else:
+                    state = "unavailable"
+                payload["state"] = state
+                media_metadata["provider_game_lengths"] = payload
+
+        # FORK: resolve the top-level Item so CompleteMediaSerializer can
+        # expose imdb_rating/imdb_rating_count alongside the TMDB-based score.
+        if media_type == MediaTypes.GAME.value:
+            top_level_item = game_length_item
+        else:
+            top_level_item = (
+                user_medias[0].item
+                if user_medias
+                else resolve_item_queryset(media_id, source, media_type).first()
+            )
 
         data = {
             "media_metadata": media_metadata,
             "user_medias": user_medias,
             "seasons": seasons_by_number,
             "lists": lists,
+            "item": top_level_item,
         }
 
         serialized = serialize_data(
@@ -1327,11 +1375,11 @@ class MediaDetailView(drf_views.APIView):
                 media_type,
                 source,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.INTERNAL_SERVER_ERROR.phrase)
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -1358,11 +1406,11 @@ class MediaDetailView(drf_views.APIView):
 
         try:
             media.save()
-        except Exception as e:
+        except Exception:
+            logger.exception("Failed to update media.")
             return Response(
                 {
                     "detail": "Failed to update media.",
-                    "errors": str(e),
                 },
                 status=HTTP.BAD_REQUEST,
             )
@@ -1376,11 +1424,11 @@ class MediaDetailView(drf_views.APIView):
                 source,
                 language=metadata_resolution.metadata_language_default(request.user),
             )
-        except Exception as e:
+        except Exception:
+            logger.exception("Internal Server Error.")
             return Response(
                 {
                     "detail": "Internal Server Error.",
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -1398,6 +1446,7 @@ class MediaDetailView(drf_views.APIView):
             "media_metadata": media_metadata,
             "user_medias": user_medias,
             "lists": lists,
+            "item": media.item,
         }
 
         serialized = serialize_data(
@@ -1499,11 +1548,11 @@ class MediaConsumptionHistoryView(drf_views.APIView):
                 media_type,
                 source,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception("Internal Server Error.")
             return Response(
                 {
                     "detail": "Internal Server Error.",
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -1573,11 +1622,11 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
                 media_type,
                 source,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception("Internal Server Error.")
             return Response(
                 {
                     "detail": "Internal Server Error.",
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -1625,11 +1674,11 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
                 media_type,
                 source,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.INTERNAL_SERVER_ERROR.phrase)
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -1690,11 +1739,11 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
                 media_type,
                 source,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.INTERNAL_SERVER_ERROR.phrase)
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -1730,9 +1779,10 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
 
         try:
             consumption.save()
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.BAD_REQUEST.phrase)
             return Response(
-                {"detail": HTTP.BAD_REQUEST.phrase, "errors": str(e)},
+                {"detail": HTTP.BAD_REQUEST.phrase},
                 status=HTTP.BAD_REQUEST,
             )
 
@@ -1940,11 +1990,11 @@ class MediaRecommendationsView(drf_views.APIView):
                 source,
                 language=metadata_resolution.metadata_language_default(request.user),
             )
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.INTERNAL_SERVER_ERROR.phrase)
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -2003,11 +2053,11 @@ class MediaSeasonsView(drf_views.APIView):
                 source,
                 language=metadata_resolution.metadata_language_default(request.user),
             )
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.INTERNAL_SERVER_ERROR.phrase)
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -2239,11 +2289,11 @@ class MediaSyncView(drf_views.APIView):
                 status=HTTP.ACCEPTED,
             )
 
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.INTERNAL_SERVER_ERROR.phrase)
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -2291,11 +2341,11 @@ class MediaSeasonDetailView(drf_views.APIView):
                 source,
                 season_number=season_number,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.INTERNAL_SERVER_ERROR.phrase)
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -2358,11 +2408,11 @@ class MediaSeasonDetailView(drf_views.APIView):
                 [season_number],
                 language=metadata_resolution.metadata_language_default(request.user),
             )
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.INTERNAL_SERVER_ERROR.phrase)
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -2383,11 +2433,11 @@ class MediaSeasonDetailView(drf_views.APIView):
                 season_number=season_number,
                 library_media_type=library_media_type,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.INTERNAL_SERVER_ERROR.phrase)
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -2425,11 +2475,25 @@ class MediaSeasonDetailView(drf_views.APIView):
             season_number=season_number,
         )
 
+        # FORK: resolve the season's own Item so CompleteMediaSerializer can
+        # expose imdb_rating/imdb_rating_count alongside the TMDB-based score.
+        season_item = (
+            user_medias[0].item
+            if user_medias
+            else resolve_item_queryset(
+                media_id,
+                source,
+                MediaTypes.SEASON.value,
+                season_number=season_number,
+            ).first()
+        )
+
         data = {
             "media_metadata": media_metadata,
             "user_medias": user_medias,
             "episodes": episodes_by_number,
             "lists": lists,
+            "item": season_item,
         }
 
         serialized = serialize_data(
@@ -2475,11 +2539,11 @@ class MediaSeasonDetailView(drf_views.APIView):
                 source,
                 season_number=season_number,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.INTERNAL_SERVER_ERROR.phrase)
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -2522,11 +2586,11 @@ class MediaSeasonDetailView(drf_views.APIView):
                 [season_number],
                 language=metadata_resolution.metadata_language_default(request.user),
             )
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.INTERNAL_SERVER_ERROR.phrase)
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -2543,6 +2607,7 @@ class MediaSeasonDetailView(drf_views.APIView):
             "media_metadata": media_metadata,
             "user_medias": user_medias,
             "lists": lists,
+            "item": media.item,
         }
 
         serialized = serialize_data(
@@ -2663,11 +2728,11 @@ class MediaSeasonEpisodesView(drf_views.APIView):
                 [season_number],
                 language=metadata_resolution.metadata_language_default(request.user),
             )
-        except Exception as e:
+        except Exception:
+            logger.exception("Failed to retrieve season episodes.")
             return Response(
                 {
                     "detail": "Failed to retrieve season episodes.",
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -2778,11 +2843,11 @@ class MediaSeasonConsumptionHistoryView(drf_views.APIView):
                 season_number=season_number,
                 library_media_type=request.query_params.get("library_media_type"),
             )
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.INTERNAL_SERVER_ERROR.phrase)
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -2857,11 +2922,11 @@ class MediaSeasonConsumptionEntryDetailView(drf_views.APIView):
                 source,
                 season_number=season_number,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception("Failed to retrieve consumption entry.")
             return Response(
                 {
                     "detail": "Failed to retrieve consumption entry.",
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -2910,11 +2975,11 @@ class MediaSeasonConsumptionEntryDetailView(drf_views.APIView):
                 source,
                 season_number=season_number,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.INTERNAL_SERVER_ERROR.phrase)
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -2973,11 +3038,11 @@ class MediaSeasonConsumptionEntryDetailView(drf_views.APIView):
                 source,
                 season_number=season_number,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.INTERNAL_SERVER_ERROR.phrase)
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -3005,9 +3070,10 @@ class MediaSeasonConsumptionEntryDetailView(drf_views.APIView):
 
         try:
             consumption.save()
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.BAD_REQUEST.phrase)
             return Response(
-                {"detail": HTTP.BAD_REQUEST.phrase, "errors": str(e)},
+                {"detail": HTTP.BAD_REQUEST.phrase},
                 status=HTTP.BAD_REQUEST,
             )
 
@@ -3385,11 +3451,11 @@ class MediaSeasonSyncView(drf_views.APIView):
                 status=HTTP.ACCEPTED,
             )
 
-        except Exception as e:
+        except Exception:
+            logger.exception("An error occurred while syncing metadata.")
             return Response(
                 {
                     "detail": "An error occurred while syncing metadata.",
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -3460,11 +3526,11 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 season_number=season_number,
                 episode_number=episode_number,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception("An error occurred while fetching media.")
             return Response(
                 {
                     "detail": "An error occurred while fetching media.",
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -3545,11 +3611,11 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 episode_number=episode_number,
                 library_media_type=request.query_params.get("library_media_type"),
             )
-        except Exception as e:
+        except Exception:
+            logger.exception("An error occurred while fetching user media.")
             return Response(
                 {
                     "detail": "An error occurred while fetching user media.",
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -3565,11 +3631,26 @@ class MediaEpisodeDetailView(drf_views.APIView):
             episode_number=episode_number,
         )
 
+        # FORK: resolve the episode's own Item so CompleteEpisodeSerializer
+        # can expose imdb_rating/imdb_rating_count alongside the TMDB score.
+        episode_item = (
+            user_medias[0].item
+            if user_medias
+            else resolve_item_queryset(
+                media_id,
+                source,
+                MediaTypes.EPISODE.value,
+                season_number=season_number,
+                episode_number=episode_number,
+            ).first()
+        )
+
         data = {
             "media_metadata": media_metadata,
             "episode": episode,
             "user_medias": user_medias,
             "lists": lists,
+            "item": episode_item,
         }
 
         serialized = serialize_data(
@@ -3639,11 +3720,11 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 season_number=season_number,
                 episode_number=episode_number,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception("An error occurred while fetching user media.")
             return Response(
                 {
                     "detail": "An error occurred while fetching user media.",
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -3672,9 +3753,10 @@ class MediaEpisodeDetailView(drf_views.APIView):
 
         try:
             media.save()
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.BAD_REQUEST.phrase)
             return Response(
-                {"detail": HTTP.BAD_REQUEST.phrase, "errors": str(e)},
+                {"detail": HTTP.BAD_REQUEST.phrase},
                 status=HTTP.BAD_REQUEST,
             )
 
@@ -3688,11 +3770,11 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 [season_number],
                 language=metadata_resolution.metadata_language_default(request.user),
             )
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.INTERNAL_SERVER_ERROR.phrase)
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -3733,6 +3815,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
             "episode": episode,
             "user_medias": user_medias,
             "lists": lists,
+            "item": media.item,
         }
 
         serialized = serialize_data(
@@ -3746,6 +3829,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
 class MediaEpisodeChangesHistoryView(drf_views.APIView):
     """Changes history episode view."""
 
+    serializer_class = ChangesHistoryEntrySerializer
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
@@ -3884,11 +3968,11 @@ class MediaEpisodeConsumptionHistoryView(drf_views.APIView):
                 episode_number=episode_number,
                 library_media_type=request.query_params.get("library_media_type"),
             )
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.INTERNAL_SERVER_ERROR.phrase)
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(e),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -4158,9 +4242,10 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
 
         try:
             consumption.save()
-        except Exception as e:
+        except Exception:
+            logger.exception(HTTP.BAD_REQUEST.phrase)
             return Response(
-                {"detail": HTTP.BAD_REQUEST.phrase, "errors": str(e)},
+                {"detail": HTTP.BAD_REQUEST.phrase},
                 status=HTTP.BAD_REQUEST,
             )
 
@@ -4590,6 +4675,27 @@ class SearchProviderView(drf_views.APIView):
             if isinstance(last_response, dict)
             else len(results_accum)
         )
+
+        if media_type == MediaTypes.GAME.value:
+            media_ids = [
+                r.get("media_id")
+                for r in results_accum
+                if r.get("source") == Sources.IGDB.value
+            ]
+            lengths_by_media_id = {
+                item.media_id: item.provider_game_lengths
+                for item in Item.objects.filter(
+                    media_type=MediaTypes.GAME.value,
+                    source=Sources.IGDB.value,
+                    media_id__in=media_ids,
+                ).exclude(provider_game_lengths={})
+            }
+            for r in results_accum:
+                summary = build_game_lengths_summary(
+                    lengths_by_media_id.get(r.get("media_id")),
+                )
+                if summary:
+                    r["provider_game_lengths_summary"] = summary
 
         resolved_total = total or len(results_accum)
         paginated_data = paginate_data(

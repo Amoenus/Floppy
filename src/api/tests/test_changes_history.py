@@ -5,6 +5,19 @@ from .helpers import check_changes_history_entry_structure, check_pagination_str
 class ChangesHistoryTests(FloppyApiTestCase):
     """Validate changes history endpoint contracts."""
 
+    def setUp(self):
+        """Seed authoritative episode metadata for route validation."""
+        super().setUp()
+        self._metadata_mock.return_value = {
+            "max_progress": None,
+            "related": {"seasons": [], "recommendations": []},
+            "episodes": [
+                {"episode_number": 1},
+                {"episode_number": 2},
+                {"episode_number": 3},
+            ],
+        }
+
     def test_changes_history_get(self):
         """Changes-history list should return paginated entries with expected shape."""
         movie_item = self.items_by_type["movie"][0]

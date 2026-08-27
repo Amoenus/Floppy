@@ -69,6 +69,7 @@ class AnimeMappingSnapshot:
     raw_data: Mapping[str, Any]
     indexes: Mapping[str, Mapping[str, tuple[Mapping[str, Any], ...]]]
     groups: Mapping[str, tuple[Mapping[str, Any], ...]]
+    mal_index: Mapping[str, tuple[Mapping[str, Any], ...]]
     entry_count: int
     build_ms: float
 
@@ -280,6 +281,17 @@ def build_mapping_indexes(
     return indexes, groups
 
 
+def _build_mal_index(
+    mapping_data: dict[str, Any],
+) -> dict[str, tuple[dict[str, Any], ...]]:
+    """Build a MAL id -> raw entries index for O(1) lookups."""
+    mal_members: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for raw_entry in mapping_data.values():
+        for mal_id in _normalize_ids(raw_entry.get("mal_id")):
+            mal_members[mal_id].append(raw_entry)
+    return {mal_id: tuple(entries) for mal_id, entries in mal_members.items()}
+
+
 def _snapshot_cache_key(revision: str, digest: str) -> str:
     return f"{SNAPSHOT_CACHE_PREFIX}:{revision}:{digest}"
 
@@ -296,6 +308,7 @@ def _build_snapshot(
     started = time.perf_counter()
     validated = _validate_mapping_data(data)
     indexes, groups = build_mapping_indexes(validated, revision=revision)
+    mal_index = _build_mal_index(validated)
     build_ms = (time.perf_counter() - started) * 1000
     snapshot = AnimeMappingSnapshot(
         revision=revision,
@@ -303,6 +316,7 @@ def _build_snapshot(
         raw_data=_freeze(validated),
         indexes=_freeze(indexes),
         groups=_freeze(groups),
+        mal_index=_freeze(mal_index),
         entry_count=len(validated),
         build_ms=build_ms,
     )
@@ -327,6 +341,7 @@ def _snapshot_payload(snapshot: AnimeMappingSnapshot) -> dict[str, Any]:
         "raw_data": _thaw(snapshot.raw_data),
         "indexes": _thaw(snapshot.indexes),
         "groups": _thaw(snapshot.groups),
+        "mal_index": _thaw(snapshot.mal_index),
         "entry_count": snapshot.entry_count,
         "build_ms": snapshot.build_ms,
     }
@@ -340,6 +355,7 @@ def _snapshot_from_cache(cached: dict[str, Any]) -> AnimeMappingSnapshot:
         raw_data=_freeze(cached["raw_data"]),
         indexes=_freeze(cached["indexes"]),
         groups=_freeze(cached["groups"]),
+        mal_index=_freeze(cached["mal_index"]),
         entry_count=int(cached["entry_count"]),
         build_ms=float(cached["build_ms"]),
     )
@@ -470,19 +486,10 @@ def load_mapping_data() -> dict[str, Any]:
     return load_mapping_snapshot().raw_data
 
 
-def _normalize_mal_ids(mal_value: Any) -> set[str]:
-    """Return MAL IDs normalized from scalar or comma-separated values."""
-    return _normalize_ids(mal_value)
-
-
 def find_entries_for_mal_id(mal_id: str | int) -> list[dict[str, Any]]:
     """Return mapping entries that include the MAL ID."""
     normalized = str(mal_id)
-    return [
-        entry
-        for entry in load_mapping_data().values()
-        if normalized in _normalize_mal_ids(entry.get("mal_id"))
-    ]
+    return list(load_mapping_snapshot().mal_index.get(normalized, ()))
 
 
 def resolve_provider_series_id(mal_id: str | int, provider: str) -> str | None:

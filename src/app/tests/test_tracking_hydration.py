@@ -1,8 +1,10 @@
 from unittest.mock import patch
 
+from django.core.cache import cache
 from django.db import IntegrityError
 from django.test import TestCase
 
+from app import view_constants
 from app.models import (
     Item,
     MediaTypes,
@@ -175,3 +177,45 @@ class TrackingHydrationTests(TestCase):
         self.assertEqual(state.fail_count, 1)
         self.assertIsNotNone(state.next_retry_at)
         self.assertEqual(state.strategy_version, WATCH_PROVIDERS_BACKFILL_VERSION)
+
+    @patch("app.services.tracking_hydration.credits.sync_item_credits_from_metadata")
+    @patch("app.services.tracking_hydration.upsert_provider_links")
+    def test_ensure_item_metadata_forces_live_metadata_on_next_detail_view(
+        self,
+        _mock_upsert_provider_links,
+        _mock_sync_item_credits,
+    ):
+        """After a live fetch, the detail view must not serve the stored-metadata
+        fallback on the page load(s) that follow.
+
+        Regression test for GitHub issue #992: Discover's "planning" bookmark for
+        a movie calls ensure_item_metadata, which persists metadata_fetched_at
+        without setting the force_live_metadata cache flag - so the next detail
+        page view took the impoverished Item-only fallback (cast/recommendations
+        gone) instead of a live fetch. TV/anime were unaffected because their
+        Discover path never sets metadata_fetched_at. See also #931.
+        """
+        result = tracking_hydration.ensure_item_metadata(
+            None,
+            MediaTypes.MOVIE.value,
+            "603692",
+            Sources.TMDB.value,
+            prefetched_metadata={
+                "media_id": "603692",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.MOVIE.value,
+                "title": "John Wick: Chapter 4",
+                "image": "https://example.com/john-wick-4.jpg",
+                "genres": [],
+                "details": {},
+                "related": {},
+            },
+        )
+
+        self.assertTrue(result.created)
+        self.assertIsNotNone(result.item.metadata_fetched_at)
+        self.assertTrue(
+            cache.get(
+                view_constants.force_live_metadata_cache_key(result.item.id),
+            ),
+        )

@@ -711,6 +711,40 @@ class SeasonStatusTests(TestCase):
 
         self.assertEqual(resolved.id, anime_tv.id)
 
+    def test_get_tv_creates_separate_tv_when_only_other_bucket_exists(self):
+        """get_tv must not collide with a TV row from the other bucket.
+
+        Regression test for GitHub issue #997: when the season's own bucket
+        has no TV row yet but the show already has one under the *other*
+        bucket (e.g. tracked as TV, then a season is added under its anime
+        identity), the fallback creation path used to look up the parent
+        Item without scoping by library_media_type, find the other bucket's
+        Item (which already has a TV row for this user), and then try to
+        create a second TV for that same (user, item) pair — raising
+        IntegrityError on app_tv_unique_item_user.
+        """
+        self.season.related_tv = None
+        self.season.item.library_media_type = MediaTypes.ANIME.value
+        self.season.item.save(update_fields=["library_media_type"])
+
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+        ) as mock_get_metadata:
+            mock_get_metadata.return_value = {
+                "title": "Test Show",
+                "image": "tv_img.jpg",
+                "details": {"seasons": 1},
+            }
+
+            resolved = self.season.get_tv()
+
+        self.assertNotEqual(resolved.id, self.tv.id)
+        self.assertEqual(resolved.item.library_media_type, MediaTypes.ANIME.value)
+        self.assertEqual(
+            TV.objects.filter(user=self.user, item__media_id="123").count(),
+            2,
+        )
+
 
 class SeasonGetRemainingEpsQuickWatchDateTests(TestCase):
     """Tests for Season.get_remaining_eps with different quick_watch_date settings."""

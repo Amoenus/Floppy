@@ -122,6 +122,51 @@ class ImportDataViewTests(TestCase):
             reverse("bulk_delete_by_import_source", args=["movie", "simkl"]),
         )
 
+    def test_import_data_activity_media_summary_query_count_is_flat(self):
+        """Media summary should not issue one COUNT query per import source (N+1 guard)."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from app.models import Item, MediaTypes, Movie, Sources, Status
+        from integrations.models import ImportRun
+
+        for index, source in enumerate(["trakt", "simkl", "plex", "lastfm", "yamtrack"]):
+            run = ImportRun.objects.create(user=self.user, source=source)
+            item = Item.objects.create(
+                media_id=f"n1-guard-movie-{index}",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title=f"N+1 Guard Movie {index}",
+            )
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+                import_run=run,
+            )
+
+        with CaptureQueriesContext(connection) as few_sources:
+            self.client.get(reverse("import_data_activity"), HTTP_HX_REQUEST="true")
+
+        extra_run = ImportRun.objects.create(user=self.user, source="steam")
+        extra_item = Item.objects.create(
+            media_id="n1-guard-movie-extra",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="N+1 Guard Movie Extra",
+        )
+        Movie.objects.create(
+            item=extra_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            import_run=extra_run,
+        )
+
+        with CaptureQueriesContext(connection) as more_sources:
+            self.client.get(reverse("import_data_activity"), HTTP_HX_REQUEST="true")
+
+        self.assertEqual(len(few_sources.captured_queries), len(more_sources.captured_queries))
+
     def test_import_data_shows_lastfm_history_status_and_action(self):
         """Last.fm card should render history backfill status and rerun controls."""
         LastFMAccount.objects.create(

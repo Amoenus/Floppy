@@ -75,6 +75,18 @@ def minutes_to_hhmm(total_minutes):
     return f"{hours}h {minutes:02d}min"
 
 
+def seconds_to_hm(total_seconds):
+    """Convert a duration in seconds to "1h 9m", or to "46m" under an hour.
+
+    Returns "" for a missing or zero duration.
+    """
+    if not total_seconds:
+        return ""
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    return f"{hours}h {minutes}m" if hours else f"{minutes}m"
+
+
 def has_real_image(image):
     """Return whether the value is a usable artwork URL."""
     return bool(image and image != settings.IMG_NONE)
@@ -886,6 +898,156 @@ def get_season_collection_stats(user, season_item):
         "collected_episodes": collected_count,
         "total_episodes": total_episodes,
     }
+
+
+def get_collection_completeness_map(user, show_items):
+    """Get TV/anime collection completeness for multiple shows in a batch.
+
+    Mirrors the fallback logic of get_tv_show_collection_stats and
+    get_season_collection_stats (show-level entry counts as fully collected
+    when no season/episode rows exist; a season-level entry counts as fully
+    collected when it has no episode rows), but computes it for many shows
+    using a fixed number of queries instead of looping per show/season, so
+    it is safe to call once per page of collection rows.
+
+    Args:
+        user: Django user object
+        show_items: iterable of Item objects with media_type in (tv, anime)
+
+    Returns:
+        Dict keyed by show Item id and by season Item id (for seasons with
+        at least one episode), each mapping to:
+        {"collected": int, "total": int, "is_partial": bool}
+        A row is "is_partial" only when 0 < collected < total.
+    """
+    from app.models import Item, MediaTypes
+
+    show_items = list(show_items)
+    if not show_items:
+        return {}
+
+    show_keys = {(item.media_id, item.source) for item in show_items}
+    media_ids = {media_id for media_id, _source in show_keys}
+    sources = {source for _media_id, source in show_keys}
+
+    all_season_items = [
+        item
+        for item in Item.objects.filter(
+            media_id__in=media_ids,
+            source__in=sources,
+            media_type=MediaTypes.SEASON.value,
+        ).exclude(season_number=0)
+        if (item.media_id, item.source) in show_keys
+    ]
+    all_episode_items = [
+        item
+        for item in Item.objects.filter(
+            media_id__in=media_ids,
+            source__in=sources,
+            media_type=MediaTypes.EPISODE.value,
+        ).exclude(season_number=0)
+        if (item.media_id, item.source) in show_keys
+    ]
+
+    def collected_item_ids(item_ids):
+        if not item_ids:
+            return set()
+        item_ids = list(item_ids)
+        chunk_size = 500
+        collected = set()
+        for offset in range(0, len(item_ids), chunk_size):
+            collected.update(
+                CollectionEntry.objects.filter(
+                    user=user,
+                    item_id__in=item_ids[offset : offset + chunk_size],
+                ).values_list("item_id", flat=True)
+            )
+        return collected
+
+    collected_season_ids = collected_item_ids([item.id for item in all_season_items])
+    collected_episode_ids = collected_item_ids([item.id for item in all_episode_items])
+    collected_show_ids = collected_item_ids([item.id for item in show_items])
+
+    seasons_by_show = {}
+    for item in all_season_items:
+        seasons_by_show.setdefault((item.media_id, item.source), []).append(item)
+    episodes_by_show = {}
+    for item in all_episode_items:
+        episodes_by_show.setdefault((item.media_id, item.source), []).append(item)
+
+    result = {}
+    for show_item in show_items:
+        key = (show_item.media_id, show_item.source)
+        season_items_for_show = seasons_by_show.get(key, [])
+        episode_items_for_show = episodes_by_show.get(key, [])
+        total_episodes = len(episode_items_for_show)
+
+        episode_ids_by_season_number = {}
+        for item in episode_items_for_show:
+            if item.season_number is not None:
+                episode_ids_by_season_number.setdefault(
+                    item.season_number,
+                    set(),
+                ).add(item.id)
+
+        show_seasons_collected = {
+            item.id for item in season_items_for_show if item.id in collected_season_ids
+        }
+        show_episodes_collected = {
+            item.id
+            for item in episode_items_for_show
+            if item.id in collected_episode_ids
+        }
+        show_has_granular_collection = bool(
+            show_seasons_collected or show_episodes_collected,
+        )
+
+        if not show_has_granular_collection:
+            collected_episodes_count = (
+                total_episodes if show_item.id in collected_show_ids else 0
+            )
+        else:
+            collected_episode_id_set = set(show_episodes_collected)
+            for season_item in season_items_for_show:
+                if season_item.id in show_seasons_collected:
+                    collected_episode_id_set.update(
+                        episode_ids_by_season_number.get(
+                            season_item.season_number,
+                            set(),
+                        ),
+                    )
+            collected_episodes_count = len(collected_episode_id_set)
+
+        result[show_item.id] = {
+            "collected": collected_episodes_count,
+            "total": total_episodes,
+            "is_partial": 0 < collected_episodes_count < total_episodes,
+        }
+
+        for season_item in season_items_for_show:
+            season_episode_ids = episode_ids_by_season_number.get(
+                season_item.season_number,
+                set(),
+            )
+            season_total = len(season_episode_ids)
+            if season_total == 0:
+                continue
+            season_collected = len(season_episode_ids & show_episodes_collected)
+            if season_collected == 0 and season_item.id in show_seasons_collected:
+                season_collected = season_total
+            if (
+                season_collected == 0
+                and not show_has_granular_collection
+                and show_item.id in collected_show_ids
+            ):
+                season_collected = season_total
+            result[season_item.id] = {
+                "collected": season_collected,
+                "total": season_total,
+                "is_partial": 0 < season_collected < season_total,
+            }
+
+    return result
 
 
 def get_season_collection_metadata(user, season_item):

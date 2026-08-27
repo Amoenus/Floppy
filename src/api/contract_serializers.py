@@ -26,6 +26,61 @@ class DateOrDateTimeField(serializers.Field):
     """TRACK_TIME determines whether dates retain a time component."""
 
 
+class HltbGameLengthSummarySerializer(serializers.Serializer):
+    """HLTB main/main+extras/completionist/all-styles minute estimates."""
+
+    main_minutes = serializers.IntegerField(allow_null=True)
+    main_plus_minutes = serializers.IntegerField(allow_null=True)
+    completionist_minutes = serializers.IntegerField(allow_null=True)
+    all_styles_minutes = serializers.IntegerField(allow_null=True)
+
+
+class IgdbGameLengthSummarySerializer(serializers.Serializer):
+    """IGDB hastily/normally/completely second estimates."""
+
+    hastily_seconds = serializers.IntegerField()
+    normally_seconds = serializers.IntegerField()
+    completely_seconds = serializers.IntegerField()
+    count = serializers.IntegerField()
+
+
+class ProviderGameLengthsSummarySerializer(serializers.Serializer):
+    """Search-result length summary: totals only, no per-platform tables."""
+
+    active_source = serializers.CharField(allow_blank=True)
+    hltb_summary = HltbGameLengthSummarySerializer(required=False)
+    igdb_summary = IgdbGameLengthSummarySerializer(required=False)
+
+
+class HltbGameLengthSerializer(serializers.Serializer):
+    """Full persisted HLTB game-length detail."""
+
+    game_id = serializers.IntegerField()
+    url = serializers.CharField()
+    title = serializers.CharField(allow_blank=True)
+    release_year = serializers.IntegerField(allow_null=True)
+    summary = HltbGameLengthSummarySerializer()
+    counts = serializers.DictField(child=serializers.IntegerField())
+    single_player_table = serializers.ListField(child=serializers.DictField())
+    platform_table = serializers.ListField(child=serializers.DictField())
+
+
+class IgdbGameLengthSerializer(serializers.Serializer):
+    """Full persisted IGDB game-length detail."""
+
+    game_id = serializers.IntegerField()
+    summary = IgdbGameLengthSummarySerializer()
+
+
+class ProviderGameLengthsSerializer(serializers.Serializer):
+    """Full persisted game-length payload, as returned on the detail endpoint."""
+
+    active_source = serializers.CharField(allow_blank=True)
+    state = serializers.ChoiceField(choices=["ready", "pending", "unavailable"])
+    hltb = HltbGameLengthSerializer(required=False)
+    igdb = IgdbGameLengthSerializer(required=False)
+
+
 class SearchResultSerializer(serializers.Serializer):
     """Fields guaranteed by every provider search result."""
 
@@ -34,6 +89,9 @@ class SearchResultSerializer(serializers.Serializer):
     media_type = serializers.CharField()
     title = serializers.CharField(allow_blank=True, allow_null=True)
     image = serializers.CharField(allow_blank=True, allow_null=True)
+    provider_game_lengths_summary = ProviderGameLengthsSummarySerializer(
+        required=False,
+    )
 
 
 class PaginationSerializer(serializers.Serializer):
@@ -148,10 +206,15 @@ class CompleteMediaResponseSerializer(serializers.Serializer):
     title = serializers.CharField(allow_blank=True, allow_null=True)
     max_progress = serializers.IntegerField()
     image = serializers.CharField(allow_blank=True, allow_null=True)
+    # FORK: 16:9 artwork
+    backdrop = serializers.CharField(allow_null=True)
     synopsis = serializers.CharField(allow_blank=True, allow_null=True)
     genres = serializers.ListField(child=serializers.CharField(), allow_null=True)
     score = serializers.FloatField(allow_null=True)
     score_count = serializers.IntegerField(allow_null=True)
+    # FORK: IMDb rating alongside TMDB-based score
+    imdb_rating = serializers.FloatField(allow_null=True)
+    imdb_rating_count = serializers.IntegerField(allow_null=True)
     cast = serializers.ListField(child=serializers.DictField())
     crew = serializers.ListField(child=serializers.DictField())
     details = serializers.DictField()
@@ -180,6 +243,21 @@ class CompleteEpisodeResponseSerializer(CompleteMediaResponseSerializer):
     """Episode detail uses the same envelope with numbers inside details."""
 
     details = EpisodeDetailsSerializer()
+
+
+class GameDetailsSerializer(serializers.Serializer):
+    """Game detail fields plus the provider-owned game-lengths record."""
+
+    provider_game_lengths = ProviderGameLengthsSerializer(
+        allow_null=True,
+        required=False,
+    )
+
+
+class CompleteGameResponseSerializer(CompleteMediaResponseSerializer):
+    """Game detail uses the same envelope with lengths data inside details."""
+
+    details = GameDetailsSerializer()
 
 
 class InfoResponseSerializer(serializers.Serializer):

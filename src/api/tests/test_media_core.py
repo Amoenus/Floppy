@@ -706,10 +706,13 @@ class MediaCoreTests(FloppyApiTestCase):
                 "title",
                 "max_progress",
                 "image",
+                "backdrop",
                 "synopsis",
                 "genres",
                 "score",
                 "score_count",
+                "imdb_rating",
+                "imdb_rating_count",
                 "cast",
                 "crew",
                 "details",
@@ -758,6 +761,51 @@ class MediaCoreTests(FloppyApiTestCase):
         self.assertTrue(season["tracked"])
         self.assertEqual(season["id"], season_media.item_id)
 
+    @patch("api.views.services.get_media_metadata")
+    def test_tv_detail_untracked_season_reports_synced_imdb_rating(
+        self,
+        mock_metadata,
+    ):
+        """An untracked season with a previously-synced Item still shows its rating."""
+        tv_item = self.items_by_type[MediaTypes.TV.value][0]
+        Item.objects.create(
+            media_id=tv_item.media_id,
+            source=tv_item.source,
+            media_type=MediaTypes.SEASON.value,
+            title="Untracked Season 5",
+            season_number=5,
+            imdb_rating=6.7,
+            imdb_rating_count=42,
+        )
+        mock_metadata.return_value = {
+            "media_id": tv_item.media_id,
+            "source": tv_item.source,
+            "media_type": MediaTypes.TV.value,
+            "related": {
+                "seasons": [
+                    {
+                        "media_id": tv_item.media_id,
+                        "source": tv_item.source,
+                        "media_type": MediaTypes.SEASON.value,
+                        "season_number": 5,
+                    },
+                ],
+            },
+        }
+
+        response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=(MediaTypes.TV.value, tv_item.source, tv_item.media_id),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        season = response.json()["related"]["seasons"][0]
+        self.assertFalse(season["tracked"])
+        self.assertEqual(season["item"]["imdb_rating"], 6.7)
+        self.assertEqual(season["item"]["imdb_rating_count"], 42)
+
     def test_media_detail_get_invalid_type_returns_bad_request(self):
         """Media detail endpoint should reject unsupported media types."""
         response = self.call_api(
@@ -787,6 +835,41 @@ class MediaCoreTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.data["item_id"])
         self.assertIsNone(response.data["parent_id"])
+
+    def test_media_detail_get_exposes_imdb_rating_for_untracked_item(self):
+        """Untracked movies with a previously-synced Item still show IMDb rating."""
+        Item.objects.create(
+            media_id="777",
+            source="tmdb",
+            media_type=MediaTypes.MOVIE.value,
+            title="Synced Movie",
+            imdb_rating=8.5,
+            imdb_rating_count=1200,
+        )
+
+        response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=(MediaTypes.MOVIE.value, "tmdb", 777),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["imdb_rating"], 8.5)
+        self.assertEqual(response.data["imdb_rating_count"], 1200)
+
+    def test_media_detail_get_imdb_rating_none_without_synced_item(self):
+        """Media with no Item row at all reports a null IMDb rating."""
+        response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=(MediaTypes.MOVIE.value, "tmdb", 999999),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.data["imdb_rating"])
+        self.assertIsNone(response.data["imdb_rating_count"])
 
     @patch("api.views.services.get_media_metadata")
     def test_media_detail_get_podcast_resolves_tracked_and_untracked_episodes(
@@ -932,7 +1015,108 @@ class MediaCoreTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, 500)
-        self.assertEqual(response.data["errors"], "boom")
+        self.assertNotIn("errors", response.data)
+        self.assertNotIn("boom", response.data["detail"])
+
+    @patch("api.views._queue_game_lengths_refresh", return_value=True)
+    @patch("api.views.services.get_media_metadata")
+    def test_media_detail_get_game_creates_item_for_untracked_game(
+        self,
+        mock_metadata,
+        _mock_queue_refresh,
+    ):
+        """Untracked IGDB games should get an Item so lengths can resolve, #989."""
+        mock_metadata.return_value = {
+            "media_id": "9201",
+            "source": Sources.IGDB.value,
+            "media_type": MediaTypes.GAME.value,
+            "title": "Untracked Game",
+            "image": "https://example.com/untracked-game.jpg",
+            "synopsis": "",
+            "genres": [],
+            "related": {},
+            "details": {},
+            "max_progress": None,
+        }
+
+        self.assertFalse(
+            Item.objects.filter(
+                media_id="9201",
+                source=Sources.IGDB.value,
+                media_type=MediaTypes.GAME.value,
+            ).exists(),
+        )
+
+        response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=(MediaTypes.GAME.value, Sources.IGDB.value, "9201"),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            Item.objects.filter(
+                media_id="9201",
+                source=Sources.IGDB.value,
+                media_type=MediaTypes.GAME.value,
+            ).exists(),
+        )
+        payload = response.json()
+        self.assertEqual(payload["details"]["provider_game_lengths"]["state"], "pending")
+
+    @patch("api.views.services.get_media_metadata")
+    def test_media_detail_get_game_ready_state_strips_raw_provider_payload(
+        self,
+        mock_metadata,
+    ):
+        """Existing lengths should report ready and omit raw provider blobs, #989."""
+        Item.objects.create(
+            media_id="9202",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="Ready Game",
+            provider_game_lengths={
+                "active_source": "igdb",
+                "igdb": {
+                    "game_id": 9202,
+                    "summary": {
+                        "hastily_seconds": 3600,
+                        "normally_seconds": 7200,
+                        "completely_seconds": 10800,
+                        "count": 12,
+                    },
+                    "raw": [{"should": "not leak"}],
+                },
+            },
+            provider_game_lengths_source="igdb",
+            provider_game_lengths_match="exact_title_year",
+        )
+        mock_metadata.return_value = {
+            "media_id": "9202",
+            "source": Sources.IGDB.value,
+            "media_type": MediaTypes.GAME.value,
+            "title": "Ready Game",
+            "image": "https://example.com/ready-game.jpg",
+            "synopsis": "",
+            "genres": [],
+            "related": {},
+            "details": {},
+            "max_progress": None,
+        }
+
+        response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=(MediaTypes.GAME.value, Sources.IGDB.value, "9202"),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        lengths = response.json()["details"]["provider_game_lengths"]
+        self.assertEqual(lengths["state"], "ready")
+        self.assertEqual(lengths["igdb"]["summary"]["normally_seconds"], 7200)
+        self.assertNotIn("raw", lengths["igdb"])
 
     @patch("api.views.services.get_media_metadata")
     def test_media_detail_patch_updates_media_fields(self, mock_metadata):

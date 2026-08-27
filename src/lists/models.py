@@ -12,8 +12,13 @@ from app.providers import services
 from lists import smart_rules
 
 # IGDB artwork_type values used to classify fetched artwork images.
-IGDB_ARTWORK_TYPE_HERO = 7
-IGDB_ARTWORK_TYPE_TOP_BANNER = 4
+# Verified by sampling artwork_type + image dimensions across titles already
+# tracked on this instance (Hades, Big Walk, 007 First Light, and others):
+# type=2 is the one that is consistently a clean widescreen promotional image.
+# type=7 was tried previously on a guess, but its shape is inconsistent across
+# titles (a wide banner for some, a square for others), so it does not hold up
+# as Key Art.
+IGDB_ARTWORK_TYPE_KEY_ART = 2
 
 # Acceptable image aspect ratio range for list artwork: from 3:2 (1.5) up to
 # 16:9 (1.777..., allowing a small rounding margin up to 1.778).
@@ -476,7 +481,7 @@ class CustomList(models.Model):
             # We request both artworks.image_id (to get image_ids) and artworks (to get artwork IDs for fetching image_type)
             # Note: IGDB API doesn't support artworks.image_type as nested field,
             # so we'll fetch artworks separately to get image_type
-            # Key Art is identified by image_type=4 in the artworks endpoint, not a separate field
+            # Key Art is identified by artwork_type=2 in the artworks endpoint, not a separate field
             access_token = igdb.get_access_token()
             url = "https://api.igdb.com/v4/games"
             data = (
@@ -592,7 +597,7 @@ class CustomList(models.Model):
                 )
 
                 # Fetch artwork details to get image_type (to identify Key Art)
-                # Key Art is identified by image_type=4 in the artworks endpoint
+                # Key Art is identified by artwork_type=2 in the artworks endpoint
                 key_arts = []
                 other_artworks = []
 
@@ -617,8 +622,7 @@ class CustomList(models.Model):
                         for i in range(0, len(artwork_ids), batch_size):
                             batch_ids = artwork_ids[i : i + batch_size]
                             artwork_id_list = ",".join(str(aid) for aid in batch_ids)
-                            # IGDB artwork types: 0=Other, 1=Box Art, 2=Screenshot, 3=Clear Logo, 4=Top Banner, 5=Marquee, 6=Steam Grid, 7=Hero, 8=Logo, 9=Icon
-                            # Key Art is typically artwork_type=4 (Top Banner) or artwork_type=7 (Hero)
+                            # Key Art is artwork_type=2, verified against sampled images
                             artworks_data = (
                                 f"fields image_id,artwork_type;"
                                 f"where id = ({artwork_id_list});"
@@ -678,27 +682,10 @@ class CustomList(models.Model):
                                 image_id = artwork.get("image_id")
                                 artwork_type = artwork.get("artwork_type")
                                 if image_id:
-                                    # IGDB artwork types: 0=Other, 1=Box Art, 2=Screenshot, 3=Clear Logo, 4=Top Banner, 5=Marquee, 6=Steam Grid, 7=Hero, 8=Logo, 9=Icon
-                                    # Based on user feedback, artwork_type=4 might be Concept Art, not Key Art
-                                    # Need to identify the correct type for Key Art - possibly type 7 (Hero) or a different value
-                                    # For now, let's try type 7 (Hero) as Key Art, and if that doesn't work, we'll need to check the actual values
-                                    if (
-                                        artwork_type == IGDB_ARTWORK_TYPE_HERO
-                                    ):  # Hero - trying this as Key Art
+                                    if artwork_type == IGDB_ARTWORK_TYPE_KEY_ART:
                                         key_arts.append(image_id)
                                         logger.debug(
-                                            "Identified Key Art (Hero) for game %s: image_id=%s, artwork_type=%s",
-                                            media_id,
-                                            image_id,
-                                            artwork_type,
-                                        )
-                                    elif (
-                                        artwork_type == IGDB_ARTWORK_TYPE_TOP_BANNER
-                                    ):  # Top Banner - might be Concept Art based on user feedback
-                                        # Skip type 4 for now since user says it's showing Concept Art
-                                        other_artworks.append(image_id)
-                                        logger.debug(
-                                            "Skipping Top Banner (might be Concept Art) for game %s: image_id=%s, artwork_type=%s",
+                                            "Identified Key Art for game %s: image_id=%s, artwork_type=%s",
                                             media_id,
                                             image_id,
                                             artwork_type,
@@ -866,6 +853,150 @@ class CustomList(models.Model):
         logger.debug("Caching IMG_NONE for game %s (no backdrop found)", media_id)
         cache.set(cache_key, settings.IMG_NONE, 60 * 60 * 24)
         return settings.IMG_NONE
+
+    def _get_igdb_carousel_media(self, media_id):
+        """Return {"video": {"key", "name"}|None, "photos": [image_id, ...]}.
+
+        Reuses the same games/artworks lookup as ``_get_igdb_backdrop`` but
+        returns every usable image (Key Art first, then other artworks, then
+        screenshots) instead of stopping at the first hit, plus the game's
+        first IGDB video (a YouTube video id) if one exists. Callers build
+        display URLs from the raw image ids so they can pick an
+        aspect-ratio-preserving size (IGDB's ``t_screenshot_big_2x`` and
+        similar named transforms crop to a fixed canvas -- fine for a
+        cropped thumbnail strip, wrong for a lightbox).
+
+        Unlike a single card backdrop, a carousel crops thumbnails with
+        object-cover, so the per-image aspect-ratio network check
+        ``_get_igdb_backdrop`` uses isn't applied here -- it would mean a
+        synchronous download per photo.
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        cache_key = f"igdb_carousel_v2_{media_id}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        photos = []
+        video = None
+        try:
+            from app.providers import igdb
+
+            access_token = igdb.get_access_token()
+            url = "https://api.igdb.com/v4/games"
+            data = (
+                "fields artworks,artworks.image_id,screenshots,screenshots.image_id;"
+                f"where id = {media_id};"
+            )
+            headers = {
+                "Client-ID": settings.IGDB_ID,
+                "Authorization": f"Bearer {access_token}",
+            }
+
+            try:
+                response = services.api_request(
+                    Sources.IGDB.value, "POST", url, data=data, headers=headers
+                )
+            except requests.exceptions.HTTPError as error:
+                from app.providers.igdb import handle_error
+
+                error_resp = handle_error(error)
+                if not (error_resp and error_resp.get("retry")):
+                    raise
+                headers["Authorization"] = f"Bearer {igdb.get_access_token()}"
+                response = services.api_request(
+                    Sources.IGDB.value, "POST", url, data=data, headers=headers
+                )
+
+            try:
+                videos_response = services.api_request(
+                    Sources.IGDB.value,
+                    "POST",
+                    "https://api.igdb.com/v4/game_videos",
+                    data=f"fields name,video_id;where game = {media_id};",
+                    headers=headers,
+                )
+            except requests.exceptions.HTTPError as error:
+                logger.warning(
+                    "IGDB game_videos lookup failed for game %s: %s", media_id, error
+                )
+                videos_response = []
+            videos = [v for v in (videos_response or []) if v.get("video_id")]
+            best_video = next(
+                (v for v in videos if "trailer" in (v.get("name") or "").lower()),
+                next(iter(videos), None),
+            )
+            if best_video:
+                video = {"key": best_video["video_id"], "name": best_video.get("name", "")}
+
+            game_response = response[0] if response else {}
+            artworks_raw = game_response.get("artworks") or []
+            screenshots_raw = game_response.get("screenshots") or []
+
+            artwork_ids = [a["id"] for a in artworks_raw if a.get("id")]
+            artwork_image_ids = {a["id"]: a["image_id"] for a in artworks_raw if a.get("image_id")}
+            screenshot_image_ids = [
+                s["image_id"] for s in screenshots_raw if s.get("image_id")
+            ]
+
+            key_art_image_ids = []
+            other_artwork_image_ids = []
+            if artwork_ids:
+                artwork_types = {}
+                artworks_url = "https://api.igdb.com/v4/artworks"
+                batch_size = 50
+                for i in range(0, len(artwork_ids), batch_size):
+                    batch = artwork_ids[i : i + batch_size]
+                    id_list = ",".join(str(aid) for aid in batch)
+                    try:
+                        details = services.api_request(
+                            Sources.IGDB.value,
+                            "POST",
+                            artworks_url,
+                            data=(
+                                f"fields image_id,artwork_type;where id = ({id_list});"
+                            ),
+                            headers=headers,
+                        )
+                    except requests.exceptions.HTTPError as error:
+                        logger.warning(
+                            "IGDB artworks lookup failed for game %s batch: %s",
+                            media_id,
+                            error,
+                        )
+                        continue
+                    for artwork in details or []:
+                        if artwork.get("image_id"):
+                            artwork_types[artwork["id"]] = artwork["artwork_type"]
+
+                for artwork_id, image_id in artwork_image_ids.items():
+                    if artwork_types.get(artwork_id) == IGDB_ARTWORK_TYPE_KEY_ART:
+                        key_art_image_ids.append(image_id)
+                    else:
+                        other_artwork_image_ids.append(image_id)
+
+            photos.extend(
+                (
+                    *key_art_image_ids,
+                    *other_artwork_image_ids,
+                    *screenshot_image_ids,
+                )
+            )
+        except Exception:
+            logger.warning(
+                "Failed to fetch IGDB carousel media for game %s", media_id, exc_info=True
+            )
+
+        data = {"video": video, "photos": photos}
+        cache.set(
+            cache_key,
+            data,
+            60 * 60 * 24 * 7 if (video or photos) else 60 * 60 * 24,
+        )
+        return data
 
     def _check_igdb_image_aspect_ratio(self, image_id, media_id, image_type_label):
         """Check if an IGDB image has a suitable aspect ratio for list covers.

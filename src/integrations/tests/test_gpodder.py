@@ -50,6 +50,27 @@ class GPodderApiTests(SimpleTestCase):
                 ),
             )
 
+    @patch("integrations.gpodder_api.requests.request")
+    def test_fetch_subscriptions_uses_device_scoped_endpoint(self, mock_request):
+        mock_request.return_value.status_code = 200
+        mock_request.return_value.text = ""
+        mock_request.return_value.json.return_value = ["https://example.com/feed.xml"]
+
+        feeds = gpodder_api.fetch_subscriptions(
+            gpodder_api.GPodderCredentials(
+                server_url="https://pinepods.example.com",
+                username="listener",
+                password="secret",
+            ),
+            "floppy-device",
+        )
+
+        self.assertEqual(feeds, ["https://example.com/feed.xml"])
+        self.assertEqual(
+            mock_request.call_args.args[1],
+            "https://pinepods.example.com/subscriptions/listener/floppy-device.json",
+        )
+
 
 class GPodderViewAndTaskTests(TestCase):
     """Tests for GPodder views and task registration."""

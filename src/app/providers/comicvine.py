@@ -129,7 +129,18 @@ def comic(media_id):
         publisher_id = response.get("publisher", {}).get("id")
         publisher_comics = []
         if publisher_id:
-            publisher_comics = get_publisher_comics(publisher_id, media_id)
+            try:
+                publisher_comics = get_publisher_comics(publisher_id, media_id)
+            except services.ProviderAPIError:
+                logger.warning(
+                    "Failed to fetch publisher comics for volume %s", media_id
+                )
+
+        try:
+            issues = get_volume_issues(media_id)
+        except services.ProviderAPIError:
+            logger.warning("Failed to fetch issues for volume %s", media_id)
+            issues = []
 
         data = {
             "media_id": media_id,
@@ -161,7 +172,7 @@ def comic(media_id):
             },
             # used for events fetching
             "last_issue_id": response["last_issue"]["id"],
-            "issues": get_volume_issues(media_id),
+            "issues": issues,
         }
 
         cache.set(cache_key, data)

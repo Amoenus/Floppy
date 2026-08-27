@@ -6,6 +6,7 @@ LOCAL_ONLY_MISSING_SEASON_BANNER = (
     "server, to restore provider data and progress tracking."
 )
 DETAIL_SECONDARY_FRAGMENT = "secondary"
+DETAIL_CAROUSEL_FRAGMENT = "carousel"
 
 FORCE_LIVE_METADATA_TIMEOUT = 60  # seconds
 

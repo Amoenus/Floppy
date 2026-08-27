@@ -47,6 +47,13 @@
             </div>
           {% endif %}
 
+          {% if collection_completeness.is_partial %}
+            <div class="absolute bottom-2 right-2 rounded-md border border-amber-500/30 bg-amber-500/15 px-2 py-1 text-[11px] font-medium text-amber-100 shadow-md"
+                 title="{{ collection_completeness.collected }} of {{ collection_completeness.total }} episodes collected">
+              {{ collection_completeness.collected }}/{{ collection_completeness.total }} collected
+            </div>
+          {% endif %}
+
           {% if media %}
             {% if show_progress_chip|default_if_none:True %}
               {% with aggregated_progress=media|safe_attr:"aggregated_progress" %}

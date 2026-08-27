@@ -11,7 +11,6 @@ from django.utils import translation
 from unidecode import unidecode
 
 import app
-import events
 from app import providers
 from app.mixins import CalendarTriggerMixin
 from app.models.choices import MediaTypes, Sources
@@ -46,6 +45,11 @@ class Item(CalendarTriggerMixin, models.Model):
         blank=True,
         default="",
         help_text="Cached provider synopsis, used as a fallback when live metadata is unavailable",
+    )
+    source_url = models.TextField(
+        blank=True,
+        default="",
+        help_text="Cached provider detail page URL, used as a fallback when live metadata is unavailable",
     )
     image = models.TextField(
         blank=True, default=""
@@ -742,6 +746,8 @@ class Item(CalendarTriggerMixin, models.Model):
         if settings.TESTING:
             return
 
+        from events import tasks as event_tasks  # avoid a module-load cycle
+
         if self.media_type == MediaTypes.SEASON.value:
             # Get or create the TV item for this season
             try:
@@ -783,9 +789,9 @@ class Item(CalendarTriggerMixin, models.Model):
         item_ids_to_process = [item.id for item in items_to_process]
 
         if delay:
-            events.tasks.reload_calendar.apply_async(
+            event_tasks.reload_calendar.apply_async(
                 kwargs={"item_ids": item_ids_to_process},
                 countdown=3,
             )
         else:
-            events.tasks.reload_calendar(item_ids=item_ids_to_process)
+            event_tasks.reload_calendar(item_ids=item_ids_to_process)

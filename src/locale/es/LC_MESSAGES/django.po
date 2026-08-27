@@ -1,0 +1,62 @@
+# Spanish translations for Floppy.
+# Copyright (C) 2026 Floppy contributors
+# This file is distributed under the same license as the Floppy package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Floppy\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-25 20:17+0000\n"
+"PO-Revision-Date: 2026-08-25 20:17+0000\n"
+"Last-Translator: Floppy contributors\n"
+"Language-Team: Spanish\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Nothing is configured for Home yet"
+msgstr "Todavía no hay nada configurado para Inicio"
+
+msgid ""
+"Add or enable rows from the Home Screen settings page to populate this view."
+msgstr ""
+"Añade o habilita filas desde la página de configuración de Inicio para "
+"completar esta vista."
+
+msgid "Open Home Screen Settings"
+msgstr "Abrir configuración de Inicio"
+
+msgid "Home"
+msgstr "Inicio"
+
+msgid "Discover"
+msgstr "Descubrir"
+
+msgid "Calendar"
+msgstr "Calendario"
+
+msgid "Collection"
+msgstr "Colección"
+
+msgid "Custom"
+msgstr "Personalizado"
+
+msgid "History"
+msgstr "Historial"
+
+msgid "Lists"
+msgstr "Listas"
+
+msgid "Statistics"
+msgstr "Estadísticas"
+
+msgid "Tags"
+msgstr "Etiquetas"
+
+msgid "Settings"
+msgstr "Ajustes"
+
+msgid "Logout"
+msgstr "Cerrar sesión"

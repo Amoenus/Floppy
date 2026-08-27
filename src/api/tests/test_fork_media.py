@@ -3,6 +3,8 @@
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
 
+from django.core.cache import cache
+
 from app.models import (
     CollectionEntry,
     ComicIssue,
@@ -14,6 +16,8 @@ from app.models import (
 )
 
 from .base import FloppyApiTestCase
+
+BACKDROP_URL = "https://image.tmdb.org/t/p/w1280/backdrop.jpg"
 
 
 class ForkMediaTypeOverlayTests(FloppyApiTestCase):
@@ -258,3 +262,128 @@ class ForkCollectionEndpointTests(FloppyApiTestCase):
             **self.auth_headers,
         )
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+
+
+class ForkBackdropFieldTests(FloppyApiTestCase):
+    """Detail responses carry 16:9 artwork alongside the portrait poster."""
+
+    def setUp(self):
+        """Start every test with a cold backdrop cache."""
+        super().setUp()
+        cache.clear()
+        self.addCleanup(cache.clear)
+        self.tv_item = self.items_by_type[MediaTypes.TV.value][0]
+
+    def _tv_metadata(self):
+        return {
+            "media_id": self.tv_item.media_id,
+            "source": self.tv_item.source,
+            "source_url": "https://www.themoviedb.org/tv/1",
+            "media_type": MediaTypes.TV.value,
+            "title": self.tv_item.title,
+            "max_progress": 1,
+            "image": self.tv_item.image,
+            "synopsis": "",
+            "genres": [],
+            "score": None,
+            "score_count": None,
+            "details": {},
+            "related": {"seasons": [], "recommendations": []},
+        }
+
+    def _get_detail(self):
+        return self.call_api(
+            "get",
+            "api_media_detail",
+            args=(MediaTypes.TV.value, self.tv_item.source, self.tv_item.media_id),
+            headers=self.auth_headers,
+        )
+
+    @patch("api.views.services.get_media_metadata")
+    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    def test_detail_serves_cached_backdrop_without_calling_tmdb(
+        self,
+        mock_backdrop,
+        mock_metadata,
+    ):
+        mock_metadata.return_value = self._tv_metadata()
+        cache.set(f"tmdb_backdrop_tv_{self.tv_item.media_id}", BACKDROP_URL, 60)
+
+        response = self._get_detail()
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        payload = response.json()
+        self.assertEqual(payload["backdrop"], BACKDROP_URL)
+        # The poster is unchanged — backdrop is an addition, not a replacement.
+        self.assertEqual(payload["image"], self.tv_item.image)
+        mock_backdrop.assert_not_called()
+
+    @patch("api.views.services.get_media_metadata")
+    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    def test_detail_fetches_backdrop_when_cache_is_cold(
+        self,
+        mock_backdrop,
+        mock_metadata,
+    ):
+        """A single detail view may pay for one provider call; the result caches."""
+        mock_metadata.return_value = self._tv_metadata()
+
+        response = self._get_detail()
+
+        self.assertEqual(response.json()["backdrop"], BACKDROP_URL)
+        mock_backdrop.assert_called_once_with(
+            MediaTypes.TV.value,
+            self.tv_item.media_id,
+        )
+
+    @patch("api.views.services.get_media_metadata")
+    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=None)
+    def test_detail_reports_null_when_no_backdrop_exists(
+        self,
+        mock_backdrop,
+        mock_metadata,
+    ):
+        """Clients need to distinguish "no artwork" from "a poster", so: null."""
+        mock_metadata.return_value = self._tv_metadata()
+
+        payload = self._get_detail().json()
+
+        self.assertIn("backdrop", payload)
+        self.assertIsNone(payload["backdrop"])
+
+    @patch("api.views.services.get_media_metadata")
+    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    def test_episode_detail_carries_the_show_backdrop(
+        self,
+        mock_backdrop,
+        mock_metadata,
+    ):
+        """Episode stills are often missing; the show backdrop covers that gap."""
+        season_item = self.items_by_type[MediaTypes.SEASON.value][0]
+        episode_item = self.items_by_type[MediaTypes.EPISODE.value][0]
+        mock_metadata.return_value = self.build_episode_metadata(
+            tv_item=self.tv_item,
+            season_number=season_item.season_number,
+            episode_number=episode_item.episode_number,
+            title=episode_item.title,
+            image=episode_item.image,
+        )
+
+        response = self.call_api(
+            "get",
+            "api_media_episode_detail",
+            args=(
+                MediaTypes.TV.value,
+                self.tv_item.source,
+                self.tv_item.media_id,
+                season_item.season_number,
+                episode_item.episode_number,
+            ),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        payload = response.json()
+        self.assertEqual(payload["backdrop"], BACKDROP_URL)
+        # The fixture has no still_path, which is exactly the gap being filled.
+        self.assertIsNone(payload["image"])

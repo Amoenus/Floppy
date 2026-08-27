@@ -230,8 +230,16 @@ def get_user_releases(users, target_events):
         user_events = []
         enabled_types = user_enabled_types[user.id]
         excluded_items = user_exclusions.get(user.id, set())
+        hidden_item_ids = Event.objects.hidden_duplicate_item_ids(
+            user,
+            enabled_types,
+        )
 
         for event in target_events.values():
+            # Check if a preferred cross-provider/cross-bucket duplicate exists
+            if event.item.id in hidden_item_ids:
+                continue
+
             # Check if user has excluded this item
             if event.item.media_type != Season and event.item.id in excluded_items:
                 continue

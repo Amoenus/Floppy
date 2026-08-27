@@ -12,7 +12,7 @@ from app.helpers import get_tv_show_collection_stats
 from app.models import CollectionEntry, Item, MediaTypes, Sources
 from integrations import tasks
 from integrations.imports import helpers, radarr, sonarr
-from integrations.models import CollectionSourceState, RadarrAccount, SonarrAccount
+from integrations.models import CollectionSourceState, RadarrInstance, SonarrInstance
 from integrations.source_sync import upsert_collection_source_state
 
 
@@ -43,17 +43,20 @@ class ArrImportViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 302)
-        account = RadarrAccount.objects.get(user=self.user)
-        self.assertEqual(account.base_url, "https://radarr.local:7878")
+        instance = RadarrInstance.objects.get(user=self.user)
+        self.assertEqual(instance.base_url, "https://radarr.local:7878")
         task = PeriodicTask.objects.get(task="Import from Radarr (Recurring)")
         self.assertTrue(task.enabled)
         self.assertEqual(
             task.name,
-            f"Import from Radarr for {self.user.username} (every 2 hours)",
+            f"Import from Radarr (Radarr #{instance.id}) for "
+            f"{self.user.username} (every 2 hours)",
         )
-        self.assertIn(f'"user_id": {self.user.id}', task.kwargs)
+        self.assertIn(f'"instance_id": {instance.id}', task.kwargs)
         mock_healthcheck.assert_called_once()
-        mock_delay.assert_called_once_with(user_id=self.user.id, mode="new")
+        mock_delay.assert_called_once_with(
+            user_id=self.user.id, mode="new", instance_id=instance.id
+        )
 
     @patch("integrations.views.tasks.import_radarr.delay")
     @patch("integrations.views.RadarrClient.healthcheck")
@@ -76,10 +79,13 @@ class ArrImportViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 302)
+        instance = RadarrInstance.objects.get(user=self.user)
         task = PeriodicTask.objects.get(task="Import from Radarr (Recurring)")
         self.assertEqual(task.start_time, datetime(2026, 4, 24, 22, 0, tzinfo=UTC))
         mock_healthcheck.assert_called_once()
-        mock_delay.assert_called_once_with(user_id=self.user.id, mode="new")
+        mock_delay.assert_called_once_with(
+            user_id=self.user.id, mode="new", instance_id=instance.id
+        )
 
     @patch("integrations.views.tasks.import_sonarr.delay")
     @patch("integrations.views.SonarrClient.healthcheck")
@@ -98,17 +104,139 @@ class ArrImportViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 302)
-        account = SonarrAccount.objects.get(user=self.user)
-        self.assertEqual(account.base_url, "https://sonarr.local:8989")
+        instance = SonarrInstance.objects.get(user=self.user)
+        self.assertEqual(instance.base_url, "https://sonarr.local:8989")
         task = PeriodicTask.objects.get(task="Import from Sonarr (Recurring)")
         self.assertTrue(task.enabled)
         self.assertEqual(
             task.name,
-            f"Import from Sonarr for {self.user.username} (every 2 hours)",
+            f"Import from Sonarr (Sonarr #{instance.id}) for "
+            f"{self.user.username} (every 2 hours)",
         )
-        self.assertIn(f'"user_id": {self.user.id}', task.kwargs)
+        self.assertIn(f'"instance_id": {instance.id}', task.kwargs)
         mock_healthcheck.assert_called_once()
-        mock_delay.assert_called_once_with(user_id=self.user.id, mode="new")
+        mock_delay.assert_called_once_with(
+            user_id=self.user.id, mode="new", instance_id=instance.id
+        )
+
+
+class ArrMultiInstanceTests(TestCase):
+    """Cover connecting, disconnecting, and scoping multiple Radarr instances."""
+
+    def setUp(self):
+        """Create an authenticated user for multi-instance ARR requests."""
+        self.user = get_user_model().objects.create_user(username="arr-multi-user")
+        self.other_user = get_user_model().objects.create_user(username="arr-other-user")
+        self.client.force_login(self.user)
+
+    @patch("integrations.views.tasks.import_radarr.delay")
+    @patch("integrations.views.RadarrClient.healthcheck")
+    def test_connect_two_instances_with_different_urls(
+        self, _mock_healthcheck, _mock_delay
+    ):
+        """A user can connect more than one Radarr instance."""
+        self.client.post(
+            reverse("radarr_connect"),
+            {"base_url": "https://radarr-4k.local:7878", "api_key": "key-1", "name": "4K"},
+        )
+        self.client.post(
+            reverse("radarr_connect"),
+            {"base_url": "https://radarr-anime.local:7878", "api_key": "key-2", "name": "Anime"},
+        )
+
+        self.assertEqual(RadarrInstance.objects.filter(user=self.user).count(), 2)
+
+    @patch("integrations.views.tasks.import_radarr.delay")
+    @patch("integrations.views.RadarrClient.healthcheck")
+    def test_connect_duplicate_url_is_rejected(self, _mock_healthcheck, _mock_delay):
+        """Connecting the same base_url twice for one user is rejected."""
+        self.client.post(
+            reverse("radarr_connect"),
+            {"base_url": "https://radarr.local:7878", "api_key": "key-1"},
+        )
+        response = self.client.post(
+            reverse("radarr_connect"),
+            {"base_url": "https://radarr.local:7878", "api_key": "key-2"},
+            follow=True,
+        )
+
+        self.assertEqual(RadarrInstance.objects.filter(user=self.user).count(), 1)
+        messages = [str(m) for m in response.context["messages"]]
+        self.assertTrue(
+            any("already have a Radarr instance" in m for m in messages)
+        )
+
+    @patch("integrations.views.tasks.import_radarr.delay")
+    @patch("integrations.views.RadarrClient.healthcheck")
+    def test_disconnect_one_instance_leaves_sibling_untouched(
+        self, _mock_healthcheck, _mock_delay
+    ):
+        """Disconnecting one instance must not affect another instance's schedule/state."""
+        self.client.post(
+            reverse("radarr_connect"),
+            {"base_url": "https://radarr-4k.local:7878", "api_key": "key-1"},
+        )
+        self.client.post(
+            reverse("radarr_connect"),
+            {"base_url": "https://radarr-anime.local:7878", "api_key": "key-2"},
+        )
+        first, second = RadarrInstance.objects.filter(user=self.user).order_by("id")
+        item = Item.objects.create(
+            media_id="1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Movie",
+        )
+        CollectionSourceState.objects.create(
+            user=self.user, item=item, source="radarr", source_instance_id=first.id
+        )
+        CollectionSourceState.objects.create(
+            user=self.user, item=item, source="radarr", source_instance_id=second.id
+        )
+
+        self.client.post(
+            reverse("radarr_disconnect"), {"instance_id": first.id}
+        )
+
+        self.assertFalse(RadarrInstance.objects.filter(pk=first.id).exists())
+        self.assertTrue(RadarrInstance.objects.filter(pk=second.id).exists())
+        self.assertFalse(
+            PeriodicTask.objects.filter(
+                task="Import from Radarr (Recurring)",
+                kwargs__contains=f'"instance_id": {first.id}',
+            ).exists()
+        )
+        self.assertTrue(
+            PeriodicTask.objects.filter(
+                task="Import from Radarr (Recurring)",
+                kwargs__contains=f'"instance_id": {second.id}',
+            ).exists()
+        )
+        self.assertFalse(
+            CollectionSourceState.objects.filter(
+                user=self.user, source="radarr", source_instance_id=first.id
+            ).exists()
+        )
+        self.assertTrue(
+            CollectionSourceState.objects.filter(
+                user=self.user, source="radarr", source_instance_id=second.id
+            ).exists()
+        )
+
+    def test_disconnect_scoped_to_owner(self):
+        """A user cannot disconnect another user's Radarr instance."""
+        other_instance = RadarrInstance.objects.create(
+            user=self.other_user,
+            base_url="https://radarr.local:7878",
+            api_key=helpers.encrypt("key"),
+        )
+
+        response = self.client.post(
+            reverse("radarr_disconnect"), {"instance_id": other_instance.id}
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(RadarrInstance.objects.filter(pk=other_instance.id).exists())
 
 
 class ArrImporterTests(TestCase):
@@ -117,12 +245,12 @@ class ArrImporterTests(TestCase):
     def setUp(self):
         """Create a user with connected ARR accounts."""
         self.user = get_user_model().objects.create_user(username="arr-importer")
-        self.radarr_account = RadarrAccount.objects.create(
+        self.radarr_instance = RadarrInstance.objects.create(
             user=self.user,
             base_url="https://radarr.local:7878",
             api_key=helpers.encrypt("radarr-key"),
         )
-        self.sonarr_account = SonarrAccount.objects.create(
+        self.sonarr_instance = SonarrInstance.objects.create(
             user=self.user,
             base_url="https://sonarr.local:8989",
             api_key=helpers.encrypt("sonarr-key"),
@@ -224,6 +352,7 @@ class ArrImporterTests(TestCase):
             user=self.user,
             item=show_item,
             source="sonarr",
+            source_instance_id=self.sonarr_instance.id,
         )
 
         mock_series.return_value = [
@@ -629,6 +758,7 @@ class ArrImporterTests(TestCase):
             user=self.user,
             item=episode_item,
             source="sonarr",
+            source_instance_id=self.sonarr_instance.id,
         )
 
         mock_series.return_value = [
@@ -666,10 +796,10 @@ class ArrImporterTests(TestCase):
         with self.assertRaises(helpers.MediaImportError) as cm:
             radarr.importer(None, self.user, "new")
 
-        self.radarr_account.refresh_from_db()
-        self.assertTrue(self.radarr_account.connection_broken)
+        self.radarr_instance.refresh_from_db()
+        self.assertTrue(self.radarr_instance.connection_broken)
         self.assertIn("Could not reach Radarr", str(cm.exception))
-        self.assertIn("Could not reach Radarr", self.radarr_account.last_error_message)
+        self.assertIn("Could not reach Radarr", self.radarr_instance.last_error_message)
 
     @patch("integrations.imports.sonarr.requests.get")
     def test_sonarr_import_marks_connection_broken_on_timeout(self, mock_get):
@@ -679,10 +809,10 @@ class ArrImporterTests(TestCase):
         with self.assertRaises(helpers.MediaImportError) as cm:
             sonarr.importer(None, self.user, "new")
 
-        self.sonarr_account.refresh_from_db()
-        self.assertTrue(self.sonarr_account.connection_broken)
+        self.sonarr_instance.refresh_from_db()
+        self.assertTrue(self.sonarr_instance.connection_broken)
         self.assertIn("Could not reach Sonarr", str(cm.exception))
-        self.assertIn("Could not reach Sonarr", self.sonarr_account.last_error_message)
+        self.assertIn("Could not reach Sonarr", self.sonarr_instance.last_error_message)
 
 
 class ArrImportTaskTests(TestCase):
@@ -759,3 +889,56 @@ class CollectionSourceSyncTests(TestCase):
         self.assertEqual(result, "ok")
         self.assertEqual(mock_update_or_create.call_count, 2)
         mock_reconcile.assert_called_once_with(user=self.user, item=self.item)
+
+    def test_two_radarr_instances_own_independent_states(self):
+        """Two Radarr instances reporting the same item get separate rows.
+
+        The better-quality instance's label should win the resolved collection
+        entry, and disconnecting one instance's state must not affect the
+        other's.
+        """
+        first = RadarrInstance.objects.create(
+            user=self.user,
+            base_url="https://radarr-1.local:7878",
+            api_key=helpers.encrypt("key-1"),
+        )
+        second = RadarrInstance.objects.create(
+            user=self.user,
+            base_url="https://radarr-2.local:7878",
+            api_key=helpers.encrypt("key-2"),
+        )
+
+        upsert_collection_source_state(
+            user=self.user,
+            item=self.item,
+            source="radarr",
+            source_instance_id=first.id,
+            quality_label="720p",
+        )
+        upsert_collection_source_state(
+            user=self.user,
+            item=self.item,
+            source="radarr",
+            source_instance_id=second.id,
+            quality_label="2160p",
+        )
+
+        states = CollectionSourceState.objects.filter(
+            user=self.user, item=self.item, source="radarr"
+        )
+        self.assertEqual(states.count(), 2)
+        entry = CollectionEntry.objects.get(user=self.user, item=self.item)
+        self.assertEqual(entry.resolution, "2160p")
+
+        from integrations.source_sync import remove_collection_source_state
+
+        remove_collection_source_state(
+            user=self.user, item=self.item, source="radarr", source_instance_id=second.id
+        )
+        entry.refresh_from_db()
+        self.assertEqual(entry.resolution, "720p")
+        self.assertTrue(
+            CollectionSourceState.objects.filter(
+                user=self.user, item=self.item, source="radarr", source_instance_id=first.id
+            ).exists()
+        )

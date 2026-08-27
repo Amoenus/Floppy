@@ -364,7 +364,7 @@
         </template>
       </div>
 
-      <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6" x-data="{ open: false, confirmOpen: false, selectedMediaType: '', selectedMediaLabel: 'Choose a media type...', deleteConfirmation: '', options: [
+      <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6" x-data="{ open: false, confirmOpen: false, selectedMediaType: '', selectedMediaLabel: 'Choose a media type...', deleteConfirmation: '', deleteMetadata: false, options: [
         {% for media_type in media_types %}
           { value: '{{ media_type|escapejs }}', label: '{{ media_type|media_type_readable_plural|escapejs }}' }
           {% if not forloop.last %},{% endif %}
@@ -433,6 +433,7 @@
               class="hidden">
           {% csrf_token %}
           <input type="hidden" name="media_type" x-bind:value="selectedMediaType">
+          <input type="hidden" name="delete_metadata" x-bind:value="deleteMetadata">
         </form>
 
         <template x-teleport="body">
@@ -451,6 +452,21 @@
                   You are about to permanently delete every tracked
                   <strong x-text="selectedMediaLabel.toLowerCase()"></strong>
                   entry in your account. This removes its progress, ratings, notes, and history.
+                </p>
+                <label class="flex items-center justify-between p-3 mb-3 bg-[var(--color-panel)] rounded-md cursor-pointer">
+                  <span class="text-sm text-[var(--color-text-secondary)] pr-3">
+                    Also delete cached metadata (posters, cast/crew, and for music, artists &amp; albums)
+                    with no remaining tracked entries.
+                  </span>
+                  <span class="relative inline-flex items-center shrink-0">
+                    <input class="sr-only peer" type="checkbox" x-model="deleteMetadata">
+                    <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
+                    </div>
+                  </span>
+                </label>
+                <p x-show="deleteMetadata" x-cloak class="text-sm text-[var(--color-error-text)] mb-3">
+                  Metadata deletion also removes any custom list entries, collections, or calendar
+                  events still pointing at that now-untracked media.
                 </p>
                 <p class="text-sm text-[var(--color-error-text)] font-medium mb-4">This action cannot be undone.</p>
                 <label class="block text-sm text-[var(--color-text-secondary)] mb-2">

@@ -7,6 +7,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import EmptyPage, Paginator
+from django.db.models import Q
 from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -34,6 +35,13 @@ COLLECTION_SORT_FIELDS = {
     "release_date": "item__release_datetime",
 }
 COLLECTION_RATING_CHOICES = {"all", "rated", "not_rated"}
+COLLECTION_COMPLETENESS_CHOICES = {"all", "partial", "full"}
+_TV_FAMILY_MEDIA_TYPES = {
+    MediaTypes.TV.value,
+    MediaTypes.ANIME.value,
+    MediaTypes.SEASON.value,
+    MediaTypes.EPISODE.value,
+}
 
 
 def _scored_item_ids(user, item_ids_by_media_type):
@@ -56,6 +64,23 @@ def _scored_item_ids(user, item_ids_by_media_type):
             ).values_list("item_id", flat=True),
         )
     return scored_ids
+
+
+def _shows_for_keys(show_keys):
+    """Resolve (media_id, source) keys to their TV/anime show Items."""
+    if not show_keys:
+        return []
+    media_ids = {media_id for media_id, _source in show_keys}
+    sources = {source for _media_id, source in show_keys}
+    return [
+        item
+        for item in Item.objects.filter(
+            media_type__in=[MediaTypes.TV.value, MediaTypes.ANIME.value],
+            media_id__in=media_ids,
+            source__in=sources,
+        )
+        if (item.media_id, item.source) in show_keys
+    ]
 
 
 @require_GET
@@ -89,6 +114,9 @@ def collection_list(request, media_type=None):
     rating_filter = request.GET.get("rating", "all")
     if rating_filter not in COLLECTION_RATING_CHOICES:
         rating_filter = "all"
+    completeness_filter = request.GET.get("completeness", "all")
+    if completeness_filter not in COLLECTION_COMPLETENESS_CHOICES:
+        completeness_filter = "all"
 
     collection = helpers.get_user_collection(request.user, effective_media_type)
     if search_query:
@@ -113,6 +141,41 @@ def collection_list(request, media_type=None):
         else:
             collection = collection.exclude(item_id__in=scored_ids)
 
+    if completeness_filter != "all":
+        show_keys = set(
+            collection.filter(item__media_type__in=_TV_FAMILY_MEDIA_TYPES)
+            .values_list("item__media_id", "item__source")
+            .distinct(),
+        )
+        show_items = _shows_for_keys(show_keys)
+        completeness_map = helpers.get_collection_completeness_map(
+            request.user,
+            show_items,
+        )
+        matching_keys = set()
+        for item in show_items:
+            stats = completeness_map.get(item.id)
+            if not stats or not stats["total"]:
+                continue
+            is_match = (completeness_filter == "partial" and stats["is_partial"]) or (
+                completeness_filter == "full" and stats["collected"] == stats["total"]
+            )
+            if is_match:
+                matching_keys.add((item.media_id, item.source))
+
+        if matching_keys:
+            key_query = Q()
+            for match_media_id, match_source in matching_keys:
+                key_query |= Q(
+                    item__media_id=match_media_id,
+                    item__source=match_source,
+                )
+            collection = collection.filter(
+                item__media_type__in=_TV_FAMILY_MEDIA_TYPES,
+            ).filter(key_query)
+        else:
+            collection = collection.none()
+
     order_field = COLLECTION_SORT_FIELDS[sort_by]
     if direction == "desc":
         order_field = f"-{order_field}"
@@ -125,6 +188,23 @@ def collection_list(request, media_type=None):
         page_obj = paginator.page(page_number)
     except EmptyPage:
         page_obj = paginator.page(paginator.num_pages)
+
+    page_entries = list(page_obj.object_list)
+    badge_entries = [
+        entry
+        for entry in page_entries
+        if entry.item.media_type in _SEASON_OR_SHOW_MEDIA_TYPES
+    ]
+    if badge_entries:
+        badge_show_keys = {
+            (entry.item.media_id, entry.item.source) for entry in badge_entries
+        }
+        badge_completeness_map = helpers.get_collection_completeness_map(
+            request.user,
+            _shows_for_keys(badge_show_keys),
+        )
+        for entry in badge_entries:
+            entry.completeness = badge_completeness_map.get(entry.item_id)
 
     base_collection = CollectionEntry.objects.filter(user=request.user)
     available_media_types = set(
@@ -176,6 +256,10 @@ def collection_list(request, media_type=None):
         "resolution_filter": resolution_filter,
         "hdr_filter": hdr_filter,
         "rating_filter": rating_filter,
+        "completeness_filter": completeness_filter,
+        "has_tv_family_collection": bool(
+            _TV_FAMILY_MEDIA_TYPES & available_media_types,
+        ),
         "search_query": search_query,
         "is_pagination": is_fragment and page_number > 1,
     }

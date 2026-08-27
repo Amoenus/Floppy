@@ -1321,3 +1321,97 @@ class NotificationTests(TestCase):
 
         # Verify the result message
         self.assertEqual(result, "Daily digest sent for 5 releases")
+
+
+class CrossBucketAnimeNotificationTests(TestCase):
+    """Release notifications must not duplicate a show across Anime and TV (#968)."""
+
+    def setUp(self):
+        self.credentials = {
+            "username": "notify-dedup-user",
+            "password": "12345",
+            "notification_urls": "https://example.com/notify",
+        }
+        self.user = get_user_model().objects.create_user(**self.credentials)
+
+        self.anime_item = Item.objects.create(
+            media_id="52991",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Test Anime",
+            image="http://example.com/anime.jpg",
+        )
+        self.tv_show_item = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Test TV Show",
+            image="http://example.com/tv.jpg",
+        )
+        self.season1_item = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Test TV Show - Season 1",
+            season_number=1,
+            image="http://example.com/tv.jpg",
+        )
+
+        Anime.objects.create(
+            item=self.anime_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        TV.objects.create(
+            item=self.tv_show_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        now = timezone.now()
+        ten_mins_ago = now - timedelta(minutes=10)
+        self.anime_event = Event.objects.create(
+            item=self.anime_item,
+            content_number=1,
+            datetime=ten_mins_ago,
+            notification_sent=False,
+        )
+        self.season1_event = Event.objects.create(
+            item=self.season1_item,
+            content_number=1,
+            datetime=ten_mins_ago,
+            notification_sent=False,
+        )
+
+    def test_get_user_releases_hides_anime_duplicate_of_tracked_tv_show(self):
+        users_with_notifications = (
+            get_user_model()
+            .objects.filter(~models.Q(notification_urls=""))
+            .prefetch_related("notification_excluded_items")
+        )
+        target_events = {
+            (
+                self.anime_event.item.id,
+                self.anime_event.content_number,
+            ): self.anime_event,
+            (
+                self.season1_event.item.id,
+                self.season1_event.content_number,
+            ): self.season1_event,
+        }
+
+        with patch(
+            "events.models.resolve_provider_series_id",
+            side_effect=lambda mal_id, provider: (
+                "1396" if provider == "tmdb" else None
+            ),
+        ):
+            user_releases = get_user_releases(users_with_notifications, target_events)
+
+        user_events = user_releases[self.user.id]
+        self.assertTrue(
+            any(event.id == self.season1_event.id for event in user_events),
+        )
+        self.assertFalse(
+            any(event.id == self.anime_event.id for event in user_events),
+        )

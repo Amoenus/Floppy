@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import requests
 from django.conf import settings
@@ -439,3 +439,178 @@ class MusicBrainzCombinedSearchTests(SimpleTestCase):
             self.assertEqual(data["artists"], [])
             self.assertEqual(data["releases"], [])
             self.assertEqual(data["tracks"]["page"], 2)
+
+
+class MusicBrainzWikipediaDataTests(SimpleTestCase):
+    """Test disambiguation-page handling in get_wikipedia_data (issue #979)."""
+
+    def test_disambiguation_page_is_treated_as_a_miss(self):
+        mock_response = Mock(ok=True)
+        mock_response.json.return_value = {
+            "type": "disambiguation",
+            "extract": "Tool may refer to: Tool, an implement...",
+        }
+        with (
+            patch("app.providers.musicbrainz.cache.get", return_value=None),
+            patch("app.providers.musicbrainz.cache.set") as mock_cache_set,
+            patch(
+                "app.providers.musicbrainz.requests.get", return_value=mock_response
+            ),
+        ):
+            result = musicbrainz.get_wikipedia_data("Tool")
+
+        self.assertIsNone(result["extract"])
+        self.assertIsNone(result["image"])
+        # Treated as a miss: cached with the shorter (1 day) miss TTL.
+        mock_cache_set.assert_called_once()
+        self.assertEqual(mock_cache_set.call_args.args[2], 60 * 60 * 24)
+
+    def test_standard_page_extract_is_returned_unchanged(self):
+        mock_response = Mock(ok=True)
+        mock_response.json.return_value = {
+            "type": "standard",
+            "extract": "Tool is an American rock band.",
+        }
+        with (
+            patch("app.providers.musicbrainz.cache.get", return_value=None),
+            patch("app.providers.musicbrainz.cache.set"),
+            patch(
+                "app.providers.musicbrainz.requests.get", return_value=mock_response
+            ),
+        ):
+            result = musicbrainz.get_wikipedia_data("Tool_(band)")
+
+        self.assertEqual(result["extract"], "Tool is an American rock band.")
+
+
+class MusicBrainzLastFmBioTests(SimpleTestCase):
+    """Test get_lastfm_bio, the new primary (MBID-resolved) bio source."""
+
+    @override_settings(LASTFM_API_KEY="")
+    def test_returns_none_without_configured_api_key(self):
+        with patch("app.providers.musicbrainz.requests.get") as mock_get:
+            result = musicbrainz.get_lastfm_bio("mbid-1")
+
+        self.assertIsNone(result)
+        mock_get.assert_not_called()
+
+    @override_settings(LASTFM_API_KEY="test-key")
+    def test_strips_read_more_boilerplate_and_html(self):
+        mock_response = Mock(ok=True)
+        mock_response.json.return_value = {
+            "artist": {
+                "bio": {
+                    "summary": (
+                        "Tool is an American rock band. "
+                        '<a href="https://www.last.fm/music/Tool">'
+                        "Read more on Last.fm</a>."
+                    ),
+                },
+            },
+        }
+        with (
+            patch("app.providers.musicbrainz.cache.get", return_value="unset"),
+            patch("app.providers.musicbrainz.cache.set"),
+            patch(
+                "app.providers.musicbrainz.requests.get", return_value=mock_response
+            ) as mock_get,
+        ):
+            result = musicbrainz.get_lastfm_bio("mbid-1")
+
+        self.assertEqual(result, "Tool is an American rock band.")
+        self.assertEqual(mock_get.call_args.kwargs["params"]["mbid"], "mbid-1")
+
+
+class MusicBrainzGetArtistBioTests(SimpleTestCase):
+    """Test get_artist's bio-resolution priority order (issue #979)."""
+
+    def _base_mb_response(self, **overrides):
+        base = {
+            "name": "Tool",
+            "sort-name": "Tool",
+            "disambiguation": "",
+            "type": "Group",
+            "country": "US",
+            "life-span": {},
+            "area": {},
+            "annotation": "",
+            "relations": [],
+            "genres": [],
+            "tags": [],
+            "rating": {},
+            "release-groups": [],
+        }
+        base.update(overrides)
+        return base
+
+    @override_settings(LASTFM_API_KEY="test-key")
+    def test_uses_lastfm_bio_and_skips_wikipedia(self):
+        with (
+            patch("app.providers.musicbrainz.cache.get", return_value=None),
+            patch("app.providers.musicbrainz.cache.set"),
+            patch(
+                "app.providers.musicbrainz._mb_request",
+                return_value=self._base_mb_response(),
+            ),
+            patch(
+                "app.providers.musicbrainz.get_lastfm_bio",
+                return_value="Tool is an American rock band.",
+            ) as mock_lastfm,
+            patch("app.providers.musicbrainz.get_wikipedia_data") as mock_wiki,
+        ):
+            result = musicbrainz.get_artist("artist-1")
+
+        mock_lastfm.assert_called_once_with("artist-1")
+        mock_wiki.assert_not_called()
+        self.assertEqual(result["bio"], "Tool is an American rock band.")
+
+    def test_falls_back_to_band_guess_when_lastfm_unavailable(self):
+        """No Last.fm bio and no MB wikipedia relation: try '{name} (band)'
+        before the bare name, so a same-named disambiguation page isn't hit.
+        """
+        with (
+            patch("app.providers.musicbrainz.cache.get", return_value=None),
+            patch("app.providers.musicbrainz.cache.set"),
+            patch(
+                "app.providers.musicbrainz._mb_request",
+                return_value=self._base_mb_response(),
+            ),
+            patch("app.providers.musicbrainz.get_lastfm_bio", return_value=None),
+            patch("app.providers.musicbrainz.get_wikipedia_data") as mock_wiki,
+        ):
+            mock_wiki.return_value = {
+                "extract": "Tool is an American rock band.",
+                "image": None,
+            }
+            result = musicbrainz.get_artist("artist-1")
+
+        mock_wiki.assert_called_once_with("Tool_(band)")
+        self.assertEqual(result["bio"], "Tool is an American rock band.")
+
+    def test_prefers_mb_wikipedia_relation_over_band_guess(self):
+        response = self._base_mb_response(
+            relations=[
+                {
+                    "type": "wikipedia",
+                    "url": {
+                        "resource": (
+                            "https://en.wikipedia.org/wiki/Tool_(American_band)"
+                        ),
+                    },
+                },
+            ],
+        )
+        with (
+            patch("app.providers.musicbrainz.cache.get", return_value=None),
+            patch("app.providers.musicbrainz.cache.set"),
+            patch("app.providers.musicbrainz._mb_request", return_value=response),
+            patch("app.providers.musicbrainz.get_lastfm_bio", return_value=None),
+            patch("app.providers.musicbrainz.get_wikipedia_data") as mock_wiki,
+        ):
+            mock_wiki.return_value = {
+                "extract": "Tool is an American rock band.",
+                "image": None,
+            }
+            musicbrainz.get_artist("artist-1")
+
+        mock_wiki.assert_called_once_with("Tool_(American_band)")

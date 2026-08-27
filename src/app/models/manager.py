@@ -626,6 +626,9 @@ class MediaManager(models.Manager):
                 ),
             )
 
+        if media_type == MediaTypes.MUSIC.value:
+            return base_queryset.select_related("album")
+
         return base_queryset
 
     def _sort_media_list(self, queryset, sort_filter, media_type=None, direction=None):
@@ -1390,6 +1393,25 @@ class MediaManager(models.Manager):
             season.card_image_override = image
             season.card_image_source = image_source
 
+    def _fix_missing_music_images(self, music_list):
+        """Annotate music track cards with an album-cover fallback without persisting it."""
+        from app import helpers
+
+        for music in music_list:
+            item = getattr(music, "item", None)
+            if item is None:
+                continue
+
+            album = getattr(music, "album", None)
+            album_image = getattr(album, "image", None)
+
+            image, image_source = helpers.resolve_image_with_fallback(
+                item.image,
+                album_image,
+            )
+            music.card_image_override = image
+            music.card_image_source = image_source
+
     def _sort_in_progress_media(self, media_list, sort_by):
         """Sort in-progress media based on the sort criteria."""
         # Define primary sort functions based on sort_by
@@ -1399,9 +1421,12 @@ class MediaManager(models.Manager):
                 x.next_event.datetime if x.next_event else None,
             ),
             users.models.HomeSortChoices.RECENT: lambda x: (
+                x.progressed_at is None and not x.progress,
                 -timezone.datetime.timestamp(
                     x.progressed_at if x.progressed_at is not None else x.created_at,
                 )
+                if (x.progressed_at is not None or x.progress)
+                else 0,
             ),
             users.models.HomeSortChoices.COMPLETION: lambda x: (
                 x.max_progress is None,

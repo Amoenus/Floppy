@@ -634,6 +634,7 @@ def _build_imdb_rating_context(detail_item, route_media_type):
             MediaTypes.TV.value,
             MediaTypes.ANIME.value,
             MediaTypes.EPISODE.value,
+            MediaTypes.SEASON.value,
         )
         or detail_item.imdb_rating_count is None
     ):

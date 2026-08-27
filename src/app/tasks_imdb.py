@@ -58,10 +58,12 @@ def sync_imdb_ratings_from_datasets():
 
     movies_and_shows_updated = imdb_ratings.sync_movie_and_show_ratings()
     episodes_updated = imdb_ratings.sync_episode_ratings()
+    seasons_updated = imdb_ratings.sync_season_ratings()
 
     return {
         "movies_and_shows_updated": movies_and_shows_updated,
         "episodes_updated": episodes_updated,
+        "seasons_updated": seasons_updated,
     }
 
 

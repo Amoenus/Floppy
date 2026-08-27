@@ -1,4 +1,5 @@
 import datetime
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -466,3 +467,141 @@ class EventManagerCrossProviderDedupTests(TestCase):
         filtered = events.filter(item__media_type__in=[MediaTypes.SEASON.value])
 
         self.assertEqual(filtered.count(), 1)
+
+
+class EventManagerCrossBucketAnimeDedupTests(TestCase):
+    """The calendar must not show the same real episode twice across buckets (#968)."""
+
+    def setUp(self):
+        self.credentials = {"username": "dedup-anime-user", "password": "testpass123"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+
+    def _anime_item(self, mal_id="52991"):
+        anime_item = Item.objects.create(
+            title="Test Anime",
+            media_id=mal_id,
+            media_type=MediaTypes.ANIME.value,
+            source=Sources.MAL.value,
+            image="",
+        )
+        Anime.objects.create(
+            item=anime_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        return anime_item
+
+    def _tv_show(self, media_id="1396", source=Sources.TMDB.value):
+        tv_item = Item.objects.create(
+            title="Test TV Show",
+            media_id=media_id,
+            media_type=MediaTypes.TV.value,
+            source=source,
+            image="",
+        )
+        season_item = Item.objects.create(
+            title="Test TV Show - Season 1",
+            media_id=media_id,
+            media_type=MediaTypes.SEASON.value,
+            source=source,
+            image="",
+            season_number=1,
+        )
+        TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        return season_item
+
+    def test_hides_anime_duplicate_with_matching_tmdb_show(self):
+        anime_item = self._anime_item()
+        season_item = self._tv_show(media_id="1396", source=Sources.TMDB.value)
+        when = timezone.now() + datetime.timedelta(days=1)
+        anime_event = Event.objects.create(
+            item=anime_item,
+            content_number=1,
+            datetime=when,
+        )
+        season_event = Event.objects.create(
+            item=season_item,
+            content_number=1,
+            datetime=when,
+        )
+
+        with mock.patch(
+            "events.models.resolve_provider_series_id",
+            side_effect=lambda mal_id, provider: (
+                "1396" if provider == "tmdb" else None
+            ),
+        ):
+            events = Event.objects.get_user_events(self.user, when.date(), when.date())
+
+        self.assertEqual(list(events), [season_event])
+        self.assertNotIn(anime_event, events)
+
+    def test_hides_anime_duplicate_with_matching_tvdb_show(self):
+        anime_item = self._anime_item()
+        season_item = self._tv_show(media_id="81189", source=Sources.TVDB.value)
+        when = timezone.now() + datetime.timedelta(days=1)
+        anime_event = Event.objects.create(
+            item=anime_item,
+            content_number=1,
+            datetime=when,
+        )
+        season_event = Event.objects.create(
+            item=season_item,
+            content_number=1,
+            datetime=when,
+        )
+
+        with mock.patch(
+            "events.models.resolve_provider_series_id",
+            side_effect=lambda mal_id, provider: (
+                "81189" if provider == "tvdb" else None
+            ),
+        ):
+            events = Event.objects.get_user_events(self.user, when.date(), when.date())
+
+        self.assertEqual(list(events), [season_event])
+        self.assertNotIn(anime_event, events)
+
+    def test_keeps_anime_event_without_tv_counterpart(self):
+        anime_item = self._anime_item()
+        when = timezone.now() + datetime.timedelta(days=1)
+        anime_event = Event.objects.create(
+            item=anime_item,
+            content_number=1,
+            datetime=when,
+        )
+
+        with mock.patch(
+            "events.models.resolve_provider_series_id",
+            return_value=None,
+        ):
+            events = Event.objects.get_user_events(self.user, when.date(), when.date())
+
+        self.assertEqual(list(events), [anime_event])
+
+    def test_keeps_both_when_mapping_does_not_match_tracked_show(self):
+        anime_item = self._anime_item()
+        season_item = self._tv_show(media_id="1396", source=Sources.TMDB.value)
+        when = timezone.now() + datetime.timedelta(days=1)
+        anime_event = Event.objects.create(
+            item=anime_item,
+            content_number=1,
+            datetime=when,
+        )
+        season_event = Event.objects.create(
+            item=season_item,
+            content_number=1,
+            datetime=when,
+        )
+
+        with mock.patch(
+            "events.models.resolve_provider_series_id",
+            return_value=None,
+        ):
+            events = Event.objects.get_user_events(self.user, when.date(), when.date())
+
+        self.assertCountEqual(list(events), [anime_event, season_event])

@@ -9,13 +9,20 @@ from app.discover.tab_cache import DISCOVER_TAB_PREFIX
 from app.history_cache_utils import HISTORY_DAY_PREFIX, HISTORY_INDEX_PREFIX
 from app.models import (
     TV,
+    Album,
+    AlbumTracker,
+    Artist,
+    ArtistTracker,
     Book,
     DeletedMedia,
     DiscoverRowCache,
     DiscoverTasteProfile,
+    Episode,
     Item,
     MediaTypes,
     Movie,
+    Music,
+    Season,
     Sources,
     Status,
 )
@@ -350,6 +357,162 @@ class CacheClearButtonsTests(TestCase):
         messages = list(get_messages(response.wsgi_request))
         self.assertEqual(len(messages), 1)
         self.assertIn("search, history, statistics, and discover", str(messages[0]))
+
+    def test_delete_media_type_without_metadata_flag_leaves_item_behind(self):
+        """The default (unchecked) behavior must not change: Item rows survive."""
+        item = Item.objects.create(
+            media_id="orphan-movie",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Orphan",
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.PLANNING.value)
+
+        response = self.client.post(
+            reverse("bulk_delete_by_media_type"),
+            {"media_type": MediaTypes.MOVIE.value},
+        )
+
+        self.assertRedirects(response, reverse("advanced"))
+        self.assertTrue(Item.objects.filter(id=item.id).exists())
+
+    def test_delete_media_type_with_metadata_flag_removes_orphaned_item(self):
+        """With delete_metadata=true, an Item with no other tracker is deleted."""
+        item = Item.objects.create(
+            media_id="orphan-movie",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Orphan",
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.PLANNING.value)
+
+        response = self.client.post(
+            reverse("bulk_delete_by_media_type"),
+            {"media_type": MediaTypes.MOVIE.value, "delete_metadata": "true"},
+        )
+
+        self.assertRedirects(response, reverse("advanced"))
+        self.assertFalse(Item.objects.filter(id=item.id).exists())
+        messages = list(get_messages(response.wsgi_request))
+        self.assertIn("Also removed 1 metadata entry", str(messages[0]))
+
+    def test_delete_media_type_with_metadata_flag_keeps_item_tracked_by_other_user(self):
+        """An Item still tracked by another user must survive metadata cleanup."""
+        item = Item.objects.create(
+            media_id="shared-movie",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Shared",
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.PLANNING.value)
+        Movie.objects.create(
+            item=item,
+            user=self.other_user,
+            status=Status.PLANNING.value,
+        )
+
+        response = self.client.post(
+            reverse("bulk_delete_by_media_type"),
+            {"media_type": MediaTypes.MOVIE.value, "delete_metadata": "true"},
+        )
+
+        self.assertRedirects(response, reverse("advanced"))
+        self.assertTrue(Item.objects.filter(id=item.id).exists())
+
+    def test_delete_tv_with_metadata_flag_cleans_up_seasons_and_episodes(self):
+        """Deleting TV with metadata on also removes now-orphaned Season/Episode Items."""
+        tv_item = Item.objects.create(
+            media_id="tv-show",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.TV.value,
+            title="Show",
+        )
+        tv = TV.objects.create(item=tv_item, user=self.user, status=Status.PLANNING.value)
+        season_item = Item.objects.create(
+            media_id="tv-show",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Show",
+        )
+        season = Season.objects.create(item=season_item, user=self.user, related_tv=tv)
+        episode_item = Item.objects.create(
+            media_id="tv-show",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Show",
+        )
+        Episode.objects.create(item=episode_item, related_season=season)
+
+        response = self.client.post(
+            reverse("bulk_delete_by_media_type"),
+            {"media_type": MediaTypes.TV.value, "delete_metadata": "true"},
+        )
+
+        self.assertRedirects(response, reverse("advanced"))
+        self.assertFalse(Item.objects.filter(id=tv_item.id).exists())
+        self.assertFalse(Item.objects.filter(id=season_item.id).exists())
+        self.assertFalse(Item.objects.filter(id=episode_item.id).exists())
+
+    def test_delete_music_with_metadata_flag_cleans_orphaned_artist_and_album(self):
+        """Deleting music with metadata on also removes orphaned Artist/Album rows."""
+        artist = Artist.objects.create(name="Orphan Artist")
+        album = Album.objects.create(title="Orphan Album", artist=artist)
+        item = Item.objects.create(
+            media_id="orphan-track",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.MUSIC.value,
+            title="Track",
+        )
+        Music.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            artist=artist,
+            album=album,
+        )
+
+        response = self.client.post(
+            reverse("bulk_delete_by_media_type"),
+            {"media_type": MediaTypes.MUSIC.value, "delete_metadata": "true"},
+        )
+
+        self.assertRedirects(response, reverse("advanced"))
+        self.assertFalse(Item.objects.filter(id=item.id).exists())
+        self.assertFalse(Album.objects.filter(id=album.id).exists())
+        self.assertFalse(Artist.objects.filter(id=artist.id).exists())
+
+    def test_delete_music_with_metadata_flag_keeps_artist_with_tracker(self):
+        """An Artist/Album still followed via ArtistTracker/AlbumTracker survives."""
+        artist = Artist.objects.create(name="Followed Artist")
+        album = Album.objects.create(title="Followed Album", artist=artist)
+        ArtistTracker.objects.create(user=self.other_user, artist=artist)
+        AlbumTracker.objects.create(user=self.other_user, album=album)
+        item = Item.objects.create(
+            media_id="tracked-track",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.MUSIC.value,
+            title="Track",
+        )
+        Music.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            artist=artist,
+            album=album,
+        )
+
+        response = self.client.post(
+            reverse("bulk_delete_by_media_type"),
+            {"media_type": MediaTypes.MUSIC.value, "delete_metadata": "true"},
+        )
+
+        self.assertRedirects(response, reverse("advanced"))
+        self.assertTrue(Album.objects.filter(id=album.id).exists())
+        self.assertTrue(Artist.objects.filter(id=artist.id).exists())
 
     def test_cache_clear_views_require_post(self):
         """GET requests to any clear-cache endpoint must be rejected."""

@@ -164,7 +164,7 @@ def lists(request):
         Prefetch(
             "customlistitem_set",
             queryset=CustomListItem.objects.select_related("item").order_by(
-                "-date_added"
+                "date_added"
             ),
         ),
     )
@@ -330,7 +330,7 @@ def list_cover_image(request, list_id):
             Prefetch(
                 "customlistitem_set",
                 queryset=CustomListItem.objects.select_related("item").order_by(
-                    "-date_added"
+                    "date_added"
                 ),
             )
         ),

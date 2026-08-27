@@ -6,6 +6,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import IntegrityError, transaction
+from django.db.models import Prefetch
 from django.test import TestCase
 from django.utils import timezone
 
@@ -114,6 +115,58 @@ class CustomListModelTest(TestCase):
                 item=self.item,
                 custom_list=self.custom_list,
             )
+
+    def _add_two_items(self):
+        """Add a first- and second-added item, returning (first, second)."""
+        first_item = Item.objects.create(
+            title="First Added",
+            media_id="first",
+            media_type=MediaTypes.TV.value,
+            source=Sources.MANUAL.value,
+            image="http://example.com/first.jpg",
+        )
+        second_item = Item.objects.create(
+            title="Second Added",
+            media_id="second",
+            media_type=MediaTypes.TV.value,
+            source=Sources.MANUAL.value,
+            image="http://example.com/second.jpg",
+        )
+        CustomListItem.objects.create(
+            item=first_item,
+            custom_list=self.custom_list,
+        )
+        CustomListItem.objects.create(
+            item=second_item,
+            custom_list=self.custom_list,
+        )
+        return first_item, second_item
+
+    def test_image_uses_first_added_item(self):
+        """CustomList.image should use the first-added item (no prefetch)."""
+        first_item, _second_item = self._add_two_items()
+
+        self.assertEqual(self.custom_list.image, first_item.image)
+
+    def test_image_uses_first_added_item_when_prefetched(self):
+        """CustomList.image should use the first-added item, matching the
+        prefetch ordering used by the lists grid and cover image views.
+        """
+        first_item, _second_item = self._add_two_items()
+
+        prefetched_list = (
+            CustomList.objects.prefetch_related(
+                Prefetch(
+                    "customlistitem_set",
+                    queryset=CustomListItem.objects.select_related(
+                        "item",
+                    ).order_by("date_added"),
+                ),
+            )
+            .get(id=self.custom_list.id)
+        )
+
+        self.assertEqual(prefetched_list.image, first_item.image)
 
 
 class CustomListManagerTest(TestCase):

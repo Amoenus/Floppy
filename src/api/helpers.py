@@ -823,3 +823,23 @@ def apply_list_sort(queryset, sort, sort_order):
         ).order_by(items_ordering, "name")
 
     return queryset.order_by(ordering)
+
+
+def build_game_lengths_summary(payload):
+    """Trim a persisted provider_game_lengths payload to a search-result summary."""
+    if not payload:
+        return None
+
+    summary = {"active_source": payload.get("active_source") or ""}
+
+    hltb = payload.get("hltb")
+    if isinstance(hltb, dict) and isinstance(hltb.get("summary"), dict):
+        summary["hltb_summary"] = hltb["summary"]
+
+    igdb = payload.get("igdb")
+    if isinstance(igdb, dict) and isinstance(igdb.get("summary"), dict):
+        summary["igdb_summary"] = igdb["summary"]
+
+    if "hltb_summary" not in summary and "igdb_summary" not in summary:
+        return None
+    return summary

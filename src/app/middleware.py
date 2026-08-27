@@ -11,6 +11,7 @@ from django.db.utils import OperationalError
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, resolve_url
 from django.urls import reverse
+from django.utils import translation
 
 from app.db_retry import is_retryable_error
 from app.discover import tab_cache as discover_tab_cache
@@ -49,6 +50,30 @@ class AutoLoginMiddleware:
                 pass
 
         return self.get_response(request)
+
+
+class UserLanguageMiddleware:
+    """Activate the authenticated user's preferred UI language, if set."""
+
+    def __init__(self, get_response):
+        """Initialize the middleware."""
+        self.get_response = get_response
+
+    def __call__(self, request):
+        """Activate translation for the request's language."""
+        user_language = getattr(request.user, "ui_language", "auto")
+        if request.user.is_authenticated and user_language != "auto":
+            language = user_language
+        else:
+            language = translation.get_language_from_request(request)
+
+        translation.activate(language)
+        request.LANGUAGE_CODE = translation.get_language()
+        try:
+            response = self.get_response(request)
+        finally:
+            translation.deactivate()
+        return response
 
 
 class NoStoreHtmlMiddleware:

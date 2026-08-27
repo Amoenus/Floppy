@@ -16,7 +16,7 @@ from integrations.imports.helpers import (
     decrypt_or_raise,
     find_item_across_buckets,
 )
-from integrations.models import RadarrAccount
+from integrations.models import RadarrInstance
 from integrations.source_sync import upsert_collection_source_state
 
 logger = logging.getLogger(__name__)
@@ -57,34 +57,39 @@ class RadarrClient:
         return self._request("/api/v3/movie")
 
 
-def importer(identifier, user, mode):
+def importer(identifier, user, mode, instance_id=None):
     """Import Radarr collection ownership."""
-    return RadarrImporter(user).import_data()
+    instance = (
+        RadarrInstance.objects.get(pk=instance_id, user=user) if instance_id else None
+    )
+    return RadarrImporter(user, instance=instance).import_data()
 
 
 class RadarrImporter:
     """Import collection data from Radarr."""
 
-    def __init__(self, user):
-        """Store the extra keyword arguments this form needs."""
+    def __init__(self, user, instance=None):
+        """Bind the importer to a user with a connected Radarr instance."""
         self.user = user
-        try:
-            self.account = user.radarr_account
-        except RadarrAccount.DoesNotExist as error:
+        if instance is not None:
+            self.instance = instance
+        else:
+            self.instance = user.radarr_instances.first()
+        if self.instance is None:
             msg = "Connect Radarr before importing"
-            raise MediaImportError(msg) from error
+            raise MediaImportError(msg)
 
         try:
-            api_key = decrypt_or_raise(self.account.api_key)
+            api_key = decrypt_or_raise(self.instance.api_key)
         except MediaImportError as error:
-            self.account.connection_broken = True
-            self.account.last_error_message = str(error)
-            self.account.save(
+            self.instance.connection_broken = True
+            self.instance.last_error_message = str(error)
+            self.instance.save(
                 update_fields=["connection_broken", "last_error_message", "updated_at"],
             )
             raise
 
-        self.client = RadarrClient(self.account.base_url, api_key)
+        self.client = RadarrClient(self.instance.base_url, api_key)
         self.warnings = []
 
     def import_data(self):
@@ -94,9 +99,9 @@ class RadarrImporter:
         try:
             movies = self.client.movies()
         except MediaImportError as error:
-            self.account.connection_broken = True
-            self.account.last_error_message = str(error)
-            self.account.save(
+            self.instance.connection_broken = True
+            self.instance.last_error_message = str(error)
+            self.instance.save(
                 update_fields=["connection_broken", "last_error_message", "updated_at"]
             )
             raise
@@ -120,16 +125,17 @@ class RadarrImporter:
                 user=self.user,
                 item=item,
                 source="radarr",
+                source_instance_id=self.instance.pk,
                 quality_label=quality_label,
                 source_updated_at=updated_at,
             )
             imported_counts[item.media_type] += 1
             imported_counts["updated"] += 1
 
-        self.account.last_sync_at = timezone.now()
-        self.account.connection_broken = False
-        self.account.last_error_message = ""
-        self.account.save(
+        self.instance.last_sync_at = timezone.now()
+        self.instance.connection_broken = False
+        self.instance.last_error_message = ""
+        self.instance.save(
             update_fields=[
                 "last_sync_at",
                 "connection_broken",
