@@ -161,6 +161,7 @@
                       <template x-teleport="body">
                         <div x-show="openMenu === field.client_id + ':type'"
                              @click.outside="if (openMenu === field.client_id + ':type') openMenu = null"
+                             data-cf-dropdown-menu
                              :style="menuStyle"
                              class="z-[70] overflow-y-auto rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface-strong)] py-1 shadow-lg">
                           <template x-for="choice in fieldTypeChoices" :key="choice.value">
@@ -186,6 +187,7 @@
                       <template x-teleport="body">
                         <div x-show="openMenu === field.client_id + ':mediaTypes'"
                              @click.outside="if (openMenu === field.client_id + ':mediaTypes') openMenu = null"
+                             data-cf-dropdown-menu
                              :style="menuStyle"
                              class="z-[70] overflow-y-auto rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface-strong)] py-1 shadow-lg">
                           <template x-for="choice in mediaTypeChoices" :key="choice.value">
