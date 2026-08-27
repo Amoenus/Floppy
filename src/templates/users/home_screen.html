@@ -9,6 +9,7 @@
        x-data="homeScreenSettings({
          sections: JSON.parse('{{ home_screen_sections_json|escapejs }}'),
          listSearchUrl: '{{ home_screen_list_search_url|escapejs }}',
+         filterFieldsUrl: '{{ home_screen_filter_fields_url|escapejs }}',
          directionChoices: JSON.parse('{{ direction_choices_json|escapejs }}')
        })"
        x-init="init()">
@@ -27,7 +28,7 @@
               </button>
               <button type="button"
                       class="flex flex-1 items-center justify-between gap-3 text-left cursor-pointer"
-                      @click="section.expanded = !section.expanded">
+                      @click="section.expanded = !section.expanded; ensureFilterFields(section)">
                 <div class="flex h-5 w-5 shrink-0 items-center justify-center text-[var(--color-text-secondary)]"
                      x-html="section.icon_svg"></div>
                 <div class="min-w-0 flex-1">
@@ -361,12 +362,14 @@
 
 {% block js %}
   <script>
-    function homeScreenSettings({ sections, listSearchUrl, directionChoices }) {
+    function homeScreenSettings({ sections, listSearchUrl, filterFieldsUrl, directionChoices }) {
       return {
         sections: (sections || []).map(section => ({
           ...section,
           addRowMenuOpen: false,
           expanded: false,
+          filterFieldsLoaded: false,
+          filterFieldsLoading: false,
           rows: (section.rows || []).map(row => ({
             ...row,
             enabled: true,
@@ -378,6 +381,7 @@
           }))
         })),
         listSearchUrl,
+        filterFieldsUrl,
         directionChoices: directionChoices || [],
         sortables: [],
         sortableLoadPromise: null,
@@ -733,6 +737,19 @@
           }
           const payload = await response.json();
           row.listResults = payload.results || [];
+        },
+        async ensureFilterFields(section) {
+          if (!section.expanded || section.filterFieldsLoaded || section.filterFieldsLoading) return;
+          section.filterFieldsLoading = true;
+          try {
+            const response = await fetch(`${this.filterFieldsUrl}?media_type=${encodeURIComponent(section.media_type)}`);
+            if (!response.ok) return;
+            const payload = await response.json();
+            section.filter_fields = payload.filter_fields || [];
+            section.filterFieldsLoaded = true;
+          } finally {
+            section.filterFieldsLoading = false;
+          }
         },
         applyListResult(row, result) {
           row.custom_list_id = result.id;
