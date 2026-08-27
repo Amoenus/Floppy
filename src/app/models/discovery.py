@@ -81,6 +81,13 @@ class CollectionEntry(models.Model):
         help_text="Where the item was purchased or which service/retailer it's tied to",
     )
 
+    # User-defined custom fields
+    custom_field_values = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Values for user-defined CollectionField entries, keyed by field id",
+    )
+
     # Plex rating key cache (for faster bulk imports)
     plex_rating_key = models.CharField(
         max_length=50,
@@ -114,6 +121,82 @@ class CollectionEntry(models.Model):
     def __str__(self):
         """Return a readable label for this record."""
         return f"{self.user.username} - {self.item.title}"
+
+
+class CollectionFieldGroup(models.Model):
+    """User-defined header grouping custom Collection fields."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="collection_field_groups",
+    )
+    name = models.CharField(max_length=100)
+    position = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model and field configuration."""
+
+        ordering = ["position", "id"]
+        indexes = [
+            models.Index(fields=["user", "position"]),
+        ]
+
+    def __str__(self):
+        """Return a readable label for this record."""
+        return f"{self.user.username} - {self.name}"
+
+
+class CollectionFieldType(models.TextChoices):
+    """Widget types available for a user-defined Collection field."""
+
+    TEXT = "text", "Text"
+    NUMBER = "number", "Number"
+    DATE = "date", "Date"
+    SELECT = "select", "Select"
+    CHECKBOX = "checkbox", "Checkbox"
+
+
+class CollectionField(models.Model):
+    """User-defined custom field belonging to a CollectionFieldGroup."""
+
+    group = models.ForeignKey(
+        CollectionFieldGroup,
+        on_delete=models.CASCADE,
+        related_name="fields",
+    )
+    label = models.CharField(max_length=100)
+    field_type = models.CharField(
+        max_length=20,
+        choices=CollectionFieldType,
+        default=CollectionFieldType.TEXT,
+    )
+    options = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Selectable choices, only used when field_type is 'select'",
+    )
+    media_types = models.JSONField(
+        default=list,
+        help_text="MediaTypes values this field applies to",
+    )
+    position = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model and field configuration."""
+
+        ordering = ["position", "id"]
+        indexes = [
+            models.Index(fields=["group", "position"]),
+        ]
+
+    def __str__(self):
+        """Return a readable label for this record."""
+        return f"{self.group.name} - {self.label}"
 
 
 class Tag(models.Model):

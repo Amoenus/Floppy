@@ -64,6 +64,20 @@ def get_static_file_mtime(file_path):
 
 
 @register.filter
+def dict_get(dictionary, key):
+    """Look up a value in a dict by key, keyed by its string form."""
+    if not dictionary:
+        return None
+    return dictionary.get(str(key))
+
+
+@register.filter
+def newline_join(values):
+    """Join a list of strings with newlines, for round-tripping into a textarea."""
+    return "\n".join(values or [])
+
+
+@register.filter
 def no_underscore(arg1):
     """Return the title case of the string."""
     return arg1.replace("_", " ")

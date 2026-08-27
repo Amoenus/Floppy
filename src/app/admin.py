@@ -116,6 +116,8 @@ SpecialModels = [
     "HardcoverEditionPreference",
     "MusicReleasePreference",
     "CollectionEntry",
+    "CollectionField",
+    "CollectionFieldGroup",
     "Tag",
     "ItemTag",
     "DiscoverFeedback",
@@ -305,6 +307,30 @@ class CollectionEntryAdmin(admin.ModelAdmin):
 from app.models import CollectionEntry  # noqa: E402
 
 admin.site.register(CollectionEntry, CollectionEntryAdmin)
+
+
+class CollectionFieldGroupAdmin(admin.ModelAdmin):
+    """Admin for CollectionFieldGroup model."""
+
+    search_fields = ["name", "user__username"]
+    list_display = ["name", "user", "position"]
+    list_filter = ["user"]
+    raw_id_fields = ["user"]
+
+
+class CollectionFieldAdmin(admin.ModelAdmin):
+    """Admin for CollectionField model."""
+
+    search_fields = ["label", "group__name"]
+    list_display = ["label", "group", "field_type", "position"]
+    list_filter = ["field_type"]
+    raw_id_fields = ["group"]
+
+
+from app.models import CollectionField, CollectionFieldGroup  # noqa: E402
+
+admin.site.register(CollectionFieldGroup, CollectionFieldGroupAdmin)
+admin.site.register(CollectionField, CollectionFieldAdmin)
 
 
 class TagAdmin(admin.ModelAdmin):

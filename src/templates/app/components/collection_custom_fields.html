@@ -1,0 +1,252 @@
+{% load app_tags %}
+  <div id="custom-fields-{{ item.id }}"
+       x-data="collectionCustomFields({
+         schema: JSON.parse('{{ custom_field_schema_json|escapejs }}'),
+         fieldTypeChoices: JSON.parse('{{ field_type_choices_json|escapejs }}'),
+         mediaTypeChoices: JSON.parse('{{ media_type_choices_json|escapejs }}'),
+         saveUrl: '{{ collection_fields_save_url|escapejs }}',
+         itemId: {{ item.id }},
+         itemMediaType: '{{ item.media_type|escapejs }}',
+         hostId: 'custom-fields-host-{{ item.id }}',
+         manageOpen: {{ manage_fields_open|yesno:'true,false' }}
+       })"
+       x-init="init()">
+    {% csrf_token %}
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+        Custom Fields
+      </h3>
+      <button type="button"
+              @click="manageFields = !manageFields"
+              class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
+              title="Manage custom fields">
+        {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
+      </button>
+    </div>
+
+    <div x-show="!manageFields">
+      {% if not custom_field_groups %}
+        <p class="text-sm text-[var(--color-text-muted)]">No custom fields for this media type yet.</p>
+      {% endif %}
+      {% for group in custom_field_groups %}
+        <div class="mb-5">
+          <h4 class="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2">
+            {{ group.name }}
+          </h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+            {% for field in group.visible_fields %}
+              {% with current_value=entry_custom_field_values|dict_get:field.id %}
+                <div class="mb-5">
+                  <label class="block text-sm font-medium mb-1 text-[var(--color-text-secondary)]"
+                         for="custom_field_{{ field.id }}">{{ field.label }}</label>
+                  <div class="relative">
+                    {% if field.field_type == "checkbox" %}
+                      <label class="flex items-center gap-2 text-[var(--color-text-secondary)]">
+                        <input type="checkbox"
+                               id="custom_field_{{ field.id }}"
+                               name="custom_field_{{ field.id }}"
+                               form="collection-add-form"
+                               {% if current_value %}checked{% endif %}
+                               class="h-4 w-4 rounded border-gray-600 bg-[var(--color-surface-strong)] text-indigo-500 focus:ring-[var(--color-accent)]">
+                        <span>Yes</span>
+                      </label>
+                    {% elif field.field_type == "select" %}
+                      <div class="relative overflow-visible"
+                           @click.outside="open = false"
+                           @keydown.escape.window="open = false"
+                           x-data="{ open: false, selectedValue: '{{ current_value|default_if_none:''|escapejs }}' }">
+                        <button type="button"
+                                @click="open = !open"
+                                class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
+                          <span x-text="selectedValue || '—'" :class="selectedValue === '' ? 'text-[var(--color-text-muted)]' : ''"></span>
+                          {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 text-[var(--color-text-muted)]" %}
+                        </button>
+                        <div x-show="open"
+                             x-transition:enter="transition ease-out duration-100"
+                             x-transition:enter-start="transform opacity-0 scale-95"
+                             x-transition:enter-end="transform opacity-100 scale-100"
+                             x-transition:leave="transition ease-in duration-75"
+                             x-transition:leave-start="transform opacity-100 scale-100"
+                             x-transition:leave-end="transform opacity-0 scale-95"
+                             class="absolute left-0 right-0 top-full mt-2 py-1 max-h-60 bg-[var(--color-panel)] rounded-md shadow-lg overflow-y-auto z-50 border border-gray-600">
+                          <button type="button"
+                                  @click="selectedValue = ''; open = false"
+                                  class="block w-full px-3 py-2 text-left text-sm text-[var(--color-text-muted)]">
+                            —
+                          </button>
+                          {% for option in field.options %}
+                            <button type="button"
+                                    @click="selectedValue = '{{ option|escapejs }}'; open = false"
+                                    class="block w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+                              {{ option }}
+                            </button>
+                          {% endfor %}
+                        </div>
+                        <input type="hidden" name="custom_field_{{ field.id }}" form="collection-add-form" x-model="selectedValue">
+                      </div>
+                    {% else %}
+                      <input type="{% if field.field_type == 'number' %}number{% elif field.field_type == 'date' %}date{% else %}text{% endif %}"
+                             id="custom_field_{{ field.id }}"
+                             name="custom_field_{{ field.id }}"
+                             form="collection-add-form"
+                             value="{{ current_value|default_if_none:'' }}"
+                             class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]">
+                    {% endif %}
+                  </div>
+                </div>
+              {% endwith %}
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div x-show="manageFields" x-cloak class="space-y-4">
+      <div data-cf-group-list class="rounded-md border border-[var(--color-surface-border)]">
+        <template x-for="group in groups" :key="group.client_id">
+          <div :data-cf-group-client-id="group.client_id" class="border-t border-[var(--color-surface-strong)] first:border-t-0">
+            <div class="flex h-10 items-center gap-2 bg-[var(--color-hover-dim)] px-3">
+              <button type="button"
+                      class="cf-group-handle drag-handle hidden h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--color-surface-hover)] bg-[var(--color-page-bg)] text-slate-400 transition-colors hover:text-[var(--color-text)] cursor-grab active:cursor-grabbing lg:inline-flex"
+                      @click.stop>
+                {% include "app/icons/drag-handle.svg" with classes="h-4 w-4" %}
+              </button>
+              <div class="min-w-0 flex-1">
+                <input type="text"
+                       x-model="group.name"
+                       maxlength="100"
+                       placeholder="Group name"
+                       title="Rename this group"
+                       @click.stop
+                       @keydown.enter.prevent="$el.blur()"
+                       class="w-full truncate rounded border border-transparent bg-transparent px-1 -mx-1 text-sm font-medium text-[var(--color-text)] hover:border-[var(--color-surface-hover)] focus:border-indigo-500 focus:outline-none">
+              </div>
+              <button type="button"
+                      class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 hover:text-red-400 hover:bg-red-400/10 cursor-pointer"
+                      @click.stop="removeGroup(group.client_id)">
+                {% include "app/icons/trashcan.svg" with classes="w-5 h-5" %}
+              </button>
+            </div>
+
+            <div class="pl-6" :data-cf-field-list="group.client_id">
+              <template x-for="field in group.fields" :key="field.client_id">
+                <div :data-cf-field-client-id="field.client_id"
+                     class="border-t border-[var(--color-surface-strong)]">
+                  <div class="flex h-10 items-center gap-2 px-3">
+                    <button type="button"
+                            class="cf-field-handle drag-handle hidden h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--color-surface-hover)] bg-[var(--color-page-bg)] text-slate-400 transition-colors hover:text-[var(--color-text)] cursor-grab active:cursor-grabbing lg:inline-flex"
+                            @click.stop>
+                      {% include "app/icons/drag-handle.svg" with classes="h-3.5 w-3.5" %}
+                    </button>
+                    <div class="min-w-0 flex-1">
+                      <input type="text"
+                             x-model="field.label"
+                             maxlength="100"
+                             placeholder="Field name"
+                             title="Rename this field"
+                             @click.stop
+                             @keydown.enter.prevent="$el.blur()"
+                             class="w-full truncate rounded border border-transparent bg-transparent px-1 -mx-1 text-sm text-[var(--color-text-secondary)] hover:border-[var(--color-surface-hover)] focus:border-indigo-500 focus:outline-none">
+                    </div>
+
+                    <div class="relative filter-control">
+                      <button type="button"
+                              class="flex items-center rounded-md px-2 py-2 text-sm text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text)] cursor-pointer"
+                              @click="toggleMenu(field.client_id + ':type', $event)">
+                        <span x-text="fieldTypeLabel(field)"></span>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="w-4 h-4 ml-2 text-[var(--color-text-muted)]" aria-hidden="true">
+                          <path d="M10 14 L4.5 7 H15.5 Z" fill="currentColor"></path>
+                        </svg>
+                      </button>
+                      <template x-teleport="body">
+                        <div x-show="openMenu === field.client_id + ':type'"
+                             @click.outside="if (openMenu === field.client_id + ':type') openMenu = null"
+                             :style="menuStyle"
+                             class="z-[70] overflow-y-auto rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface-strong)] py-1 shadow-lg">
+                          <template x-for="choice in fieldTypeChoices" :key="choice.value">
+                            <button type="button"
+                                    class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
+                                    :class="field.field_type === choice.value ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
+                                    @click="field.field_type = choice.value; openMenu = null"
+                                    x-text="choice.label"></button>
+                          </template>
+                        </div>
+                      </template>
+                    </div>
+
+                    <div class="relative filter-control">
+                      <button type="button"
+                              class="flex items-center rounded-md px-2 py-2 text-sm text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text)] cursor-pointer"
+                              @click="toggleMenu(field.client_id + ':mediaTypes', $event)">
+                        <span class="block min-w-0 max-w-[8rem] truncate" x-text="mediaTypesLabel(field)"></span>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="w-4 h-4 ml-2 text-[var(--color-text-muted)]" aria-hidden="true">
+                          <path d="M10 14 L4.5 7 H15.5 Z" fill="currentColor"></path>
+                        </svg>
+                      </button>
+                      <template x-teleport="body">
+                        <div x-show="openMenu === field.client_id + ':mediaTypes'"
+                             @click.outside="if (openMenu === field.client_id + ':mediaTypes') openMenu = null"
+                             :style="menuStyle"
+                             class="z-[70] overflow-y-auto rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface-strong)] py-1 shadow-lg">
+                          <template x-for="choice in mediaTypeChoices" :key="choice.value">
+                            <button type="button"
+                                    class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
+                                    :class="field.media_types.includes(choice.value) ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
+                                    @click="toggleMediaType(field, choice.value)"
+                                    x-text="choice.label"></button>
+                          </template>
+                        </div>
+                      </template>
+                    </div>
+
+                    <button type="button"
+                            class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-400 hover:text-red-400 hover:bg-red-400/10 cursor-pointer"
+                            @click.stop="removeField(group, field.client_id)">
+                      {% include "app/icons/trashcan.svg" with classes="w-4 h-4" %}
+                    </button>
+                  </div>
+
+                  <div x-show="field.field_type === 'select'" x-cloak class="px-3 pb-2 pl-12">
+                    <textarea x-model="field.optionsText" rows="2" placeholder="One option per line"
+                              class="w-full rounded-md border border-gray-600 bg-[var(--color-panel)] p-2 text-sm text-[var(--color-text)]"></textarea>
+                  </div>
+                </div>
+              </template>
+            </div>
+
+            <button type="button"
+                    @click="addField(group)"
+                    class="flex w-full items-center px-3 py-2 pl-9 text-left text-xs text-[var(--color-accent)] hover:text-[var(--color-text)] cursor-pointer">
+              {% include "app/icons/plus.svg" with classes="mr-2 h-3.5 w-3.5" %} Add field
+            </button>
+          </div>
+        </template>
+      </div>
+
+      <button type="button"
+              @click="addGroup()"
+              class="inline-flex items-center rounded-md border border-[var(--color-surface-border)] bg-[var(--color-panel)] px-3 py-2 text-sm font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-strong)] cursor-pointer">
+        {% include "app/icons/plus.svg" with classes="mr-2 h-4 w-4" %} Add group
+      </button>
+
+      <p x-show="error" x-cloak x-text="error" class="text-sm text-red-400"></p>
+
+      <div class="flex items-center justify-end gap-3">
+        <span x-show="dirty" x-cloak class="text-xs text-[var(--color-text-muted)]">Unsaved changes</span>
+        <button type="button"
+                x-show="dirty"
+                x-cloak
+                @click="resetFields()"
+                class="rounded-md border border-gray-600 px-3 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] cursor-pointer">
+          Discard
+        </button>
+        <button type="button"
+                @click="saveFields()"
+                :disabled="saving"
+                :class="saving ? 'opacity-60 cursor-not-allowed' : 'hover:bg-indigo-700 cursor-pointer'"
+                class="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors">
+          <span x-text="saving ? 'Saving…' : 'Save Fields'"></span>
+        </button>
+      </div>
+    </div>
+  </div>

@@ -50,7 +50,7 @@
       </div>
     {% endif %}
 
-    <form method="post" action="{% url 'collection_add' %}?next={{ return_url }}">
+    <form id="collection-add-form" method="post" action="{% url 'collection_add' %}?next={{ return_url }}">
       {% csrf_token %}
       <input type="hidden" name="item_id" value="{{ item.id }}">
       {{ form.item }}
@@ -207,5 +207,9 @@
         </button>
       </div>
     </form>
+
+    <div id="custom-fields-host-{{ item.id }}" class="mt-6">
+      {% include "app/components/collection_custom_fields.html" %}
+    </div>
   </div>
 </div>

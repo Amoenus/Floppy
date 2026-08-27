@@ -478,6 +478,12 @@ urlpatterns = [
         views.collection_status_api,
         name="collection_status_api",
     ),
+    # Collection custom field endpoints
+    path(
+        "collection/fields/save/",
+        views.collection_fields_save,
+        name="collection_fields_save",
+    ),
     # Tag endpoints
     path(
         "tags_modal/<source:source>/<media_type:media_type>/<path:media_id>/<int:season_number>/<int:episode_number>",
