@@ -776,6 +776,24 @@ class MediaListViewTests(TestCase):
         self.assertContains(response, "Test Movie 1")
         self.assertContains(response, "3 plays")
 
+    def test_grid_layout_wires_select_mode_click_guard(self):
+        """Grid cards must toggle selection, not navigate, once bulk-select was wired (issue #972)."""
+        response = self.client.get(
+            reverse("medialist", args=[MediaTypes.MOVIE.value]) + "?layout=grid",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "toggleItemSelected(")
+
+    def test_table_layout_title_link_respects_select_mode(self):
+        """Table view's title link must also guard against navigating during select mode (issue #972)."""
+        response = self.client.get(
+            reverse("medialist", args=[MediaTypes.MOVIE.value]) + "?layout=table",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "if (selectMode) { $event.preventDefault(); toggleItemSelected(")
+
     def test_movie_grid_counts_completed_plays_when_progress_is_zero(self):
         """Completed movie duplicates should count as plays even when progress is zero."""
         item = Item.objects.get(

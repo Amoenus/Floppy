@@ -2,6 +2,7 @@
 <div class="flex justify-between items-center">
   <a href="{% if public_list_reference %}{{ media.item|media_url }}?public_view=1&amp;public_list={{ public_list_reference|urlencode }}{% else %}{{ media.item|media_url }}{% endif %}"
      hx-boost="true"
+     {% if enable_bulk_select %}@click="if (selectMode) { $event.preventDefault(); toggleItemSelected({{ media.item.id }}) }"{% endif %}
      class="hover:text-[var(--color-link)] transition-colors line-clamp-1">{{ media.item }}</a>
 
   {% if media.repeats > 1 %}
