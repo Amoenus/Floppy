@@ -65,6 +65,11 @@ urlpatterns = [
         name="home_screen_list_search",
     ),
     path(
+        "settings/home-screen/filter-fields",
+        views.home_screen_filter_fields,
+        name="home_screen_filter_fields",
+    ),
+    path(
         "settings/home-screen/rows/<int:row_id>/toggle-direction",
         views.toggle_home_screen_row_direction,
         name="toggle_home_screen_row_direction",
