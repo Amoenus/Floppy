@@ -8,6 +8,8 @@ requested) and only for the media types/sources that actually expose a
 trailer or photo gallery.
 """
 
+from django.core.cache import cache
+
 from app.models import MediaTypes, Sources
 from app.providers import tmdb
 
@@ -19,6 +21,22 @@ def carousel_supported(media_type, source):
     if source == Sources.TMDB.value and media_type in _TMDB_CAROUSEL_TYPES:
         return True
     return bool(source == Sources.IGDB.value and media_type == MediaTypes.GAME.value)
+
+
+def confirmed_empty(media_type, source, media_id, *, season_number=None) -> bool:
+    """Return True if a prior fetch already confirmed there's no trailer/photos.
+
+    Cache peek only (never fetches), so a page whose carousel was already
+    found empty on an earlier view can render the plain, non-carousel layout
+    up front instead of paying for the lazy carousel round trip again.
+    """
+    if source == Sources.TMDB.value and media_type in _TMDB_CAROUSEL_TYPES:
+        data = tmdb.peek_carousel_media(media_type, media_id, season_number=season_number)
+    elif source == Sources.IGDB.value and media_type == MediaTypes.GAME.value:
+        data = cache.get(f"igdb_carousel_v2_{media_id}")
+    else:
+        return False
+    return data is not None and not data["video"] and not data["photos"]
 
 
 def resolve_carousel_media(media_type, source, media_id, *, season_number=None) -> dict | None:

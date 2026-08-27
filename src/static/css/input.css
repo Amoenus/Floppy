@@ -661,6 +661,22 @@ html.light .theme-toggle-icon-moon {
   .detail-carousel-grid__header {
     margin-top: 1.5rem;
   }
+
+  /* No trailer/photos to show (fragment swapped in empty): fall back to the
+     pre-carousel arrangement, poster beside the title/chips/synopsis column
+     instead of a carousel next to it, rather than stacking full-width rows
+     below the poster and leaving its column dead. */
+  .detail-carousel-grid:has(#detail-carousel-wrap:empty) {
+    grid-template-areas: "poster header" "poster chips" "poster synopsis";
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:empty) .detail-carousel-grid__carousel {
+    display: none;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:empty) .detail-carousel-grid__header {
+    margin-top: 0;
+  }
 }
 
 /* Mobile default: active playback card spans all columns on very small screens */

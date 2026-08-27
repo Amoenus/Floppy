@@ -89,6 +89,11 @@ def season_details(
     detail_view_started_at = time.perf_counter()
     carousel_supported = carousel_media.carousel_supported(
         MediaTypes.SEASON.value, source
+    ) and not carousel_media.confirmed_empty(
+        MediaTypes.SEASON.value,
+        source,
+        media_id,
+        season_number=season_number,
     )
     render_secondary_only = request.GET.get("fragment") == DETAIL_SECONDARY_FRAGMENT
     defer_detail_secondary = not render_secondary_only

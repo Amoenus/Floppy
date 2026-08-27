@@ -1133,6 +1133,17 @@ def _parse_carousel_photos(response):
     ]
 
 
+def peek_carousel_media(media_type, media_id, season_number=None):
+    """Return the cached carousel payload, or None if nothing is cached yet.
+
+    Never triggers a provider fetch -- callers use this to check whether a
+    prior ``carousel_media`` call already confirmed there's no trailer/photos,
+    so the page can render the plain layout up front instead of paying for
+    the lazy carousel round trip again.
+    """
+    return cache.get(_carousel_cache_key(media_type, media_id, season_number))
+
+
 def carousel_media(media_type, media_id, season_number=None, language=None):
     """Return {"video": {...}|None, "photos": [...]} for the details carousel.
 

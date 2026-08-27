@@ -187,7 +187,10 @@ def media_details(
         )
 
     detail_view_started_at = time.perf_counter()
-    carousel_supported = carousel_media.carousel_supported(media_type, source)
+    carousel_supported = carousel_media.carousel_supported(
+        media_type,
+        source,
+    ) and not carousel_media.confirmed_empty(media_type, source, media_id)
     render_secondary_only = (
         request.GET.get("fragment") == DETAIL_SECONDARY_FRAGMENT
         and media_type != MediaTypes.PODCAST.value
