@@ -80,7 +80,10 @@ class OnboardingSource:
         """Whether this user already has a persistent connection for this source."""
         if not self.account_attr:
             return False
-        return getattr(user, self.account_attr, None) is not None
+        value = getattr(user, self.account_attr, None)
+        if hasattr(value, "exists"):
+            return value.exists()
+        return value is not None
 
     def has_integration(self) -> bool:
         """Whether this source has a separate realtime integration (e.g. a webhook)."""
@@ -109,7 +112,7 @@ ONBOARDING_SOURCES: tuple[OnboardingSource, ...] = (
         "radarr",
         (MOVIE,),
         "host_url",
-        "radarr_account",
+        "radarr_instances",
         tags=("screen",),
         connect_url_name="radarr_connect",
         connect_fields=(("base_url", "Base URL", "url"), ("api_key", "API Key", "password")),
@@ -118,7 +121,7 @@ ONBOARDING_SOURCES: tuple[OnboardingSource, ...] = (
         "sonarr",
         (TV,),
         "host_url",
-        "sonarr_account",
+        "sonarr_instances",
         tags=("screen",),
         connect_url_name="sonarr_connect",
         connect_fields=(("base_url", "Base URL", "url"), ("api_key", "API Key", "password")),

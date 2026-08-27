@@ -17,7 +17,7 @@ from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.db.models import Count, Q
-from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
+from django.http import Http404, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.defaultfilters import pluralize
 from django.urls import reverse
@@ -52,8 +52,10 @@ from users.forms import (
 from users.home_screen import (
     HomeScreenValidationError,
     build_home_page_groups,
+    get_home_configurable_media_types,
     save_home_screen_configuration,
     search_home_screen_lists,
+    serialize_settings_filter_fields,
     serialize_settings_sections,
     toggle_home_row_direction,
 )
@@ -225,8 +227,9 @@ def _get_import_data_user(user):
         "pocketcasts_account",
         "lastfm_account",
         "koito_account",
-        "radarr_account",
-        "sonarr_account",
+    ).prefetch_related(
+        "radarr_instances",
+        "sonarr_instances",
     ).get(pk=user.pk)
 
 
@@ -739,6 +742,7 @@ def home_screen(request):
         ),
         "show_media_type_headers": request.user.home_show_media_type_headers,
         "home_screen_list_search_url": reverse("home_screen_list_search"),
+        "home_screen_filter_fields_url": reverse("home_screen_filter_fields"),
         "direction_choices_json": json.dumps(
             [
                 {"value": "asc", "label": "Ascending"},
@@ -760,6 +764,26 @@ def home_screen_list_search(request):
                 request.GET.get("media_type", ""),
             ),
         },
+    )
+
+
+@require_GET
+def home_screen_filter_fields(request):
+    """Return filter field options for one Home Screen settings section.
+
+    Computed on demand rather than eagerly for every section: a full
+    smart-rule facet scan per media type is too expensive to run for every
+    section on every page load when the UI only shows one section's filters
+    at a time.
+    """
+    media_type = request.GET.get("media_type", "")
+    allowed_media_types = get_home_configurable_media_types(
+        request.user, include_disabled_season=False
+    )
+    if media_type not in allowed_media_types:
+        raise Http404
+    return JsonResponse(
+        {"filter_fields": serialize_settings_filter_fields(request.user, media_type)},
     )
 
 
@@ -1378,8 +1402,8 @@ def import_data(request):
         koito_history_can_start = koito_account.history_import_can_start
         if koito_account.history_import_status in {"completed", "failed"}:
             koito_history_button_label = "Reimport full history"
-    radarr_account = getattr(user, "radarr_account", None)
-    sonarr_account = getattr(user, "sonarr_account", None)
+    radarr_instances = list(user.radarr_instances.order_by("created_at"))
+    sonarr_instances = list(user.sonarr_instances.order_by("created_at"))
     stremio_account = getattr(user, "stremio_account", None)
     xbox_account = getattr(user, "xbox_account", None)
     psn_account = getattr(user, "psn_account", None)
@@ -1448,8 +1472,8 @@ def import_data(request):
         "gpodder_account": gpodder_account,
         "lastfm_account": lastfm_account,
         "koito_account": koito_account,
-        "radarr_account": radarr_account,
-        "sonarr_account": sonarr_account,
+        "radarr_instances": radarr_instances,
+        "sonarr_instances": sonarr_instances,
         "stremio_account": stremio_account,
         "xbox_account": xbox_account,
         "psn_account": psn_account,

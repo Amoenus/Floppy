@@ -18,7 +18,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
 from django.core.exceptions import ObjectDoesNotExist
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.http import (
     HttpResponse,
@@ -26,7 +26,7 @@ from django.http import (
     JsonResponse,
     StreamingHttpResponse,
 )
-from django.shortcuts import redirect
+from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -80,6 +80,7 @@ from integrations.lastfm_api import (
 )
 from integrations.models import (
     AudiobookshelfAccount,
+    CollectionSourceState,
     GPodderAccount,
     JellyfinAccount,
     KoitoAccount,
@@ -89,8 +90,8 @@ from integrations.models import (
     PlexWebhookShare,
     PocketCastsAccount,
     PSNAccount,
-    RadarrAccount,
-    SonarrAccount,
+    RadarrInstance,
+    SonarrInstance,
     StorytellerAccount,
     StremioAccount,
     XboxAccount,
@@ -193,6 +194,16 @@ def _plex_watchlist_task_filter(user_id):
 def _periodic_task_filter_for_user(user_id):
     """Match a user's periodic task regardless of JSON spacing/quotes."""
     return _plex_watchlist_task_filter(user_id)
+
+
+def _periodic_task_filter_for_instance(instance_id):
+    """Match a Radarr/Sonarr instance's periodic task regardless of JSON spacing/quotes."""
+    return (
+        Q(kwargs__contains=f"'instance_id': {instance_id},")
+        | Q(kwargs__contains=f"'instance_id': {instance_id}" + "}")
+        | Q(kwargs__contains=f'"instance_id": {instance_id},')
+        | Q(kwargs__contains=f'"instance_id": {instance_id}' + "}")
+    )
 
 
 def _next_arr_sync_start(now=None):
@@ -428,10 +439,11 @@ def _disable_jellyfin_pull_schedule(user):
     ).delete()
 
 
-def _ensure_arr_schedule(user, task_name, source_label):
-    """Create or enable the per-user Radarr/Sonarr recurring schedule."""
+def _ensure_arr_schedule(instance, task_name, source_label):
+    """Create or enable the per-instance Radarr/Sonarr recurring schedule."""
     from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
+    user = instance.user
     next_sync_start = _next_arr_sync_start()
     crontab, _ = CrontabSchedule.objects.get_or_create(
         minute=0,
@@ -442,7 +454,7 @@ def _ensure_arr_schedule(user, task_name, source_label):
         timezone=timezone.get_default_timezone(),
     )
     task_filter = PeriodicTask.objects.filter(
-        _periodic_task_filter_for_user(user.id),
+        _periodic_task_filter_for_instance(instance.id),
         task=task_name,
     )
     existing_task = task_filter.first()
@@ -450,10 +462,10 @@ def _ensure_arr_schedule(user, task_name, source_label):
         was_enabled = existing_task.enabled
         updated_fields = []
         desired_name = (
-            f"Import from {source_label} for {user.username} "
-            f"(every {ARR_SYNC_INTERVAL_HOURS} hours)"
+            f"Import from {source_label} ({instance.display_name} #{instance.id}) for "
+            f"{user.username} (every {ARR_SYNC_INTERVAL_HOURS} hours)"
         )
-        desired_kwargs = json.dumps({"user_id": user.id})
+        desired_kwargs = json.dumps({"instance_id": instance.id})
         if existing_task.name != desired_name:
             existing_task.name = desired_name
             updated_fields.append("name")
@@ -487,12 +499,12 @@ def _ensure_arr_schedule(user, task_name, source_label):
 
     return PeriodicTask.objects.create(
         name=(
-            f"Import from {source_label} for {user.username} "
-            f"(every {ARR_SYNC_INTERVAL_HOURS} hours)"
+            f"Import from {source_label} ({instance.display_name} #{instance.id}) for "
+            f"{user.username} (every {ARR_SYNC_INTERVAL_HOURS} hours)"
         ),
         task=task_name,
         crontab=crontab,
-        kwargs=json.dumps({"user_id": user.id}),
+        kwargs=json.dumps({"instance_id": instance.id}),
         start_time=next_sync_start,
         enabled=True,
     )
@@ -1297,9 +1309,10 @@ def import_steam(request):
 
 @require_POST
 def radarr_connect(request):
-    """Connect Radarr account using base URL + API key."""
+    """Connect a new Radarr instance using base URL + API key."""
     base_url = request.POST.get("base_url", "").strip()
     api_key = request.POST.get("api_key", "").strip()
+    name = request.POST.get("name", "").strip()
     if not base_url or not api_key:
         messages.error(request, "Radarr base URL and API key are required.")
         return _integration_redirect(request)
@@ -1310,17 +1323,22 @@ def radarr_connect(request):
         messages.error(request, f"Failed to connect to Radarr: {exc}")
         return _integration_redirect(request)
 
-    RadarrAccount.objects.update_or_create(
-        user=request.user,
-        defaults={
-            "base_url": base_url,
-            "api_key": helpers.encrypt(api_key),
-            "connection_broken": False,
-            "last_error_message": "",
-        },
-    )
-    _ensure_arr_schedule(request.user, RADARR_RECURRING_TASK_NAME, "Radarr")
-    tasks.import_radarr.delay(user_id=request.user.id, mode="new")
+    try:
+        with transaction.atomic():
+            instance = RadarrInstance.objects.create(
+                user=request.user,
+                name=name,
+                base_url=base_url,
+                api_key=helpers.encrypt(api_key),
+            )
+    except IntegrityError:
+        messages.error(
+            request, "You already have a Radarr instance connected at this URL."
+        )
+        return _integration_redirect(request)
+
+    _ensure_arr_schedule(instance, RADARR_RECURRING_TASK_NAME, "Radarr")
+    tasks.import_radarr.delay(user_id=request.user.id, mode="new", instance_id=instance.id)
     messages.success(
         request,
         "Connected Radarr. Initial import queued and recurring sync enabled.",
@@ -1330,14 +1348,20 @@ def radarr_connect(request):
 
 @require_POST
 def radarr_disconnect(request):
-    """Disconnect Radarr integration."""
+    """Disconnect one Radarr instance."""
     from django_celery_beat.models import PeriodicTask
 
+    instance = get_object_or_404(
+        RadarrInstance, pk=request.POST.get("instance_id"), user=request.user
+    )
     PeriodicTask.objects.filter(
-        _periodic_task_filter_for_user(request.user.id),
+        _periodic_task_filter_for_instance(instance.id),
         task=RADARR_RECURRING_TASK_NAME,
     ).delete()
-    RadarrAccount.objects.filter(user=request.user).delete()
+    CollectionSourceState.objects.filter(
+        user=request.user, source="radarr", source_instance_id=instance.id
+    ).delete()
+    instance.delete()
     messages.info(request, "Disconnected Radarr.")
     return redirect("import_data")
 
@@ -1345,22 +1369,22 @@ def radarr_disconnect(request):
 @require_POST
 def import_radarr(request):
     """Queue Radarr import and ensure recurring schedule exists."""
-    account = getattr(request.user, "radarr_account", None)
-    if not account:
-        messages.error(request, "Connect Radarr before importing.")
-        return redirect("import_data")
+    instance = get_object_or_404(
+        RadarrInstance, pk=request.POST.get("instance_id"), user=request.user
+    )
 
-    tasks.import_radarr.delay(user_id=request.user.id, mode="new")
-    _ensure_arr_schedule(request.user, RADARR_RECURRING_TASK_NAME, "Radarr")
+    tasks.import_radarr.delay(user_id=request.user.id, mode="new", instance_id=instance.id)
+    _ensure_arr_schedule(instance, RADARR_RECURRING_TASK_NAME, "Radarr")
     messages.info(request, "Radarr import queued.")
     return redirect("import_data")
 
 
 @require_POST
 def sonarr_connect(request):
-    """Connect Sonarr account using base URL + API key."""
+    """Connect a new Sonarr instance using base URL + API key."""
     base_url = request.POST.get("base_url", "").strip()
     api_key = request.POST.get("api_key", "").strip()
+    name = request.POST.get("name", "").strip()
     if not base_url or not api_key:
         messages.error(request, "Sonarr base URL and API key are required.")
         return _integration_redirect(request)
@@ -1371,17 +1395,22 @@ def sonarr_connect(request):
         messages.error(request, f"Failed to connect to Sonarr: {exc}")
         return _integration_redirect(request)
 
-    SonarrAccount.objects.update_or_create(
-        user=request.user,
-        defaults={
-            "base_url": base_url,
-            "api_key": helpers.encrypt(api_key),
-            "connection_broken": False,
-            "last_error_message": "",
-        },
-    )
-    _ensure_arr_schedule(request.user, SONARR_RECURRING_TASK_NAME, "Sonarr")
-    tasks.import_sonarr.delay(user_id=request.user.id, mode="new")
+    try:
+        with transaction.atomic():
+            instance = SonarrInstance.objects.create(
+                user=request.user,
+                name=name,
+                base_url=base_url,
+                api_key=helpers.encrypt(api_key),
+            )
+    except IntegrityError:
+        messages.error(
+            request, "You already have a Sonarr instance connected at this URL."
+        )
+        return _integration_redirect(request)
+
+    _ensure_arr_schedule(instance, SONARR_RECURRING_TASK_NAME, "Sonarr")
+    tasks.import_sonarr.delay(user_id=request.user.id, mode="new", instance_id=instance.id)
     messages.success(
         request,
         "Connected Sonarr. Initial import queued and recurring sync enabled.",
@@ -1391,14 +1420,20 @@ def sonarr_connect(request):
 
 @require_POST
 def sonarr_disconnect(request):
-    """Disconnect Sonarr integration."""
+    """Disconnect one Sonarr instance."""
     from django_celery_beat.models import PeriodicTask
 
+    instance = get_object_or_404(
+        SonarrInstance, pk=request.POST.get("instance_id"), user=request.user
+    )
     PeriodicTask.objects.filter(
-        _periodic_task_filter_for_user(request.user.id),
+        _periodic_task_filter_for_instance(instance.id),
         task=SONARR_RECURRING_TASK_NAME,
     ).delete()
-    SonarrAccount.objects.filter(user=request.user).delete()
+    CollectionSourceState.objects.filter(
+        user=request.user, source="sonarr", source_instance_id=instance.id
+    ).delete()
+    instance.delete()
     messages.info(request, "Disconnected Sonarr.")
     return redirect("import_data")
 
@@ -1406,13 +1441,12 @@ def sonarr_disconnect(request):
 @require_POST
 def import_sonarr(request):
     """Queue Sonarr import and ensure recurring schedule exists."""
-    account = getattr(request.user, "sonarr_account", None)
-    if not account:
-        messages.error(request, "Connect Sonarr before importing.")
-        return redirect("import_data")
+    instance = get_object_or_404(
+        SonarrInstance, pk=request.POST.get("instance_id"), user=request.user
+    )
 
-    tasks.import_sonarr.delay(user_id=request.user.id, mode="new")
-    _ensure_arr_schedule(request.user, SONARR_RECURRING_TASK_NAME, "Sonarr")
+    tasks.import_sonarr.delay(user_id=request.user.id, mode="new", instance_id=instance.id)
+    _ensure_arr_schedule(instance, SONARR_RECURRING_TASK_NAME, "Sonarr")
     messages.info(request, "Sonarr import queued.")
     return redirect("import_data")
 

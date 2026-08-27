@@ -16,7 +16,7 @@ from integrations.imports.helpers import (
     find_item_across_buckets,
     retry_on_lock,
 )
-from integrations.models import SonarrAccount
+from integrations.models import SonarrInstance
 from integrations.source_sync import (
     remove_collection_source_state,
     upsert_collection_source_state,
@@ -67,34 +67,39 @@ class SonarrClient:
         return self._request("/api/v3/episode", params={"seriesId": series_id})
 
 
-def importer(identifier, user, mode):
+def importer(identifier, user, mode, instance_id=None):
     """Import Sonarr collection ownership."""
-    return SonarrImporter(user).import_data()
+    instance = (
+        SonarrInstance.objects.get(pk=instance_id, user=user) if instance_id else None
+    )
+    return SonarrImporter(user, instance=instance).import_data()
 
 
 class SonarrImporter:
     """Import collection data from Sonarr."""
 
-    def __init__(self, user):
-        """Bind the importer to a user with a connected Sonarr account."""
+    def __init__(self, user, instance=None):
+        """Bind the importer to a user with a connected Sonarr instance."""
         self.user = user
-        try:
-            self.account = user.sonarr_account
-        except SonarrAccount.DoesNotExist as error:
+        if instance is not None:
+            self.instance = instance
+        else:
+            self.instance = user.sonarr_instances.first()
+        if self.instance is None:
             msg = "Connect Sonarr before importing"
-            raise MediaImportError(msg) from error
+            raise MediaImportError(msg)
 
         try:
-            api_key = decrypt_or_raise(self.account.api_key)
+            api_key = decrypt_or_raise(self.instance.api_key)
         except MediaImportError as error:
-            self.account.connection_broken = True
-            self.account.last_error_message = str(error)
-            self.account.save(
+            self.instance.connection_broken = True
+            self.instance.last_error_message = str(error)
+            self.instance.save(
                 update_fields=["connection_broken", "last_error_message", "updated_at"],
             )
             raise
 
-        self.client = SonarrClient(self.account.base_url, api_key)
+        self.client = SonarrClient(self.instance.base_url, api_key)
         self.warnings = []
 
     def import_data(self):
@@ -104,9 +109,9 @@ class SonarrImporter:
         try:
             series_rows = self.client.series()
         except MediaImportError as error:
-            self.account.connection_broken = True
-            self.account.last_error_message = str(error)
-            self.account.save(
+            self.instance.connection_broken = True
+            self.instance.last_error_message = str(error)
+            self.instance.save(
                 update_fields=["connection_broken", "last_error_message", "updated_at"],
             )
             raise
@@ -132,10 +137,10 @@ class SonarrImporter:
             imported_counts[item.media_type] += 1
             imported_counts["updated"] += 1
 
-        self.account.last_sync_at = timezone.now()
-        self.account.connection_broken = False
-        self.account.last_error_message = ""
-        self.account.save(
+        self.instance.last_sync_at = timezone.now()
+        self.instance.connection_broken = False
+        self.instance.last_error_message = ""
+        self.instance.save(
             update_fields=[
                 "last_sync_at",
                 "connection_broken",
@@ -233,6 +238,7 @@ class SonarrImporter:
                 user=self.user,
                 item=show_item,
                 source="sonarr",
+                source_instance_id=self.instance.pk,
                 quality_label="",
                 source_updated_at=self._parse_source_timestamp(row),
             )
@@ -260,6 +266,7 @@ class SonarrImporter:
                 user=self.user,
                 item=episode_item,
                 source="sonarr",
+                source_instance_id=self.instance.pk,
                 quality_label=self._extract_episode_quality_label(episode_row),
                 source_updated_at=self._parse_source_timestamp(episode_row),
             )
@@ -456,7 +463,11 @@ class SonarrImporter:
                 media_type=MediaTypes.EPISODE.value,
             )
             .exclude(id__in=keep_episode_item_ids)
-            .filter(source_states__user=self.user, source_states__source="sonarr")
+            .filter(
+                source_states__user=self.user,
+                source_states__source="sonarr",
+                source_states__source_instance_id=self.instance.pk,
+            )
             .values_list("id", flat=True)
             .distinct()
         )
@@ -466,6 +477,7 @@ class SonarrImporter:
                 user=self.user,
                 item=episode_item,
                 source="sonarr",
+                source_instance_id=self.instance.pk,
             )
 
         if keep_episode_item_ids:
@@ -475,6 +487,7 @@ class SonarrImporter:
             user=self.user,
             item=show_item,
             source="sonarr",
+            source_instance_id=self.instance.pk,
         )
 
     def _retire_legacy_series_collection_entry(self, show_item):
@@ -482,6 +495,7 @@ class SonarrImporter:
         if not show_item.source_states.filter(
             user=self.user,
             source="sonarr",
+            source_instance_id=self.instance.pk,
         ).exists():
             return
 

@@ -548,13 +548,24 @@ class KoitoAccount(models.Model):
         self.history_import_last_error_message = ""
 
 
-class RadarrAccount(models.Model):
-    """Store Radarr connection settings and sync state for a user."""
+class RadarrInstance(models.Model):
+    """Store connection settings and sync state for one Radarr instance.
 
-    user = models.OneToOneField(
+    A user may connect more than one Radarr server (e.g. a 4K instance and
+    an anime instance), so this is a ForeignKey rather than a OneToOne like
+    the other single-account integrations in this file.
+    """
+
+    user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name="radarr_account",
+        related_name="radarr_instances",
+    )
+    name = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Optional label to distinguish multiple instances, e.g. '4K' or 'Anime'",
     )
     base_url = models.URLField(help_text="Radarr server URL")
     api_key = models.TextField(help_text="Encrypted Radarr API key")
@@ -567,26 +578,47 @@ class RadarrAccount(models.Model):
     class Meta:
         """Model options."""
 
-        verbose_name = "Radarr account"
-        verbose_name_plural = "Radarr accounts"
+        verbose_name = "Radarr instance"
+        verbose_name_plural = "Radarr instances"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "base_url"],
+                name="integrations_radarrinstance_unique_user_base_url",
+            ),
+        ]
+
+    def __str__(self):
+        """Return a readable label for this radarr instance."""
+        return f"{self.display_name} ({self.user})"
 
     @property
-    def __str__(self):
-        """Return a readable label for this radarr account."""
-        return f"{self.user}"
+    def display_name(self):
+        """Return the instance's label, falling back to a generic name."""
+        return self.name or "Radarr"
 
     def is_connected(self):
-        """Return True when the account appears connected."""
+        """Return True when the instance appears connected."""
         return bool(self.base_url and self.api_key) and not self.connection_broken
 
 
-class SonarrAccount(models.Model):
-    """Store Sonarr connection settings and sync state for a user."""
+class SonarrInstance(models.Model):
+    """Store connection settings and sync state for one Sonarr instance.
 
-    user = models.OneToOneField(
+    A user may connect more than one Sonarr server (e.g. a 4K instance and
+    an anime instance), so this is a ForeignKey rather than a OneToOne like
+    the other single-account integrations in this file.
+    """
+
+    user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name="sonarr_account",
+        related_name="sonarr_instances",
+    )
+    name = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Optional label to distinguish multiple instances, e.g. '4K' or 'Anime'",
     )
     base_url = models.URLField(help_text="Sonarr server URL")
     api_key = models.TextField(help_text="Encrypted Sonarr API key")
@@ -599,16 +631,26 @@ class SonarrAccount(models.Model):
     class Meta:
         """Model options."""
 
-        verbose_name = "Sonarr account"
-        verbose_name_plural = "Sonarr accounts"
+        verbose_name = "Sonarr instance"
+        verbose_name_plural = "Sonarr instances"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "base_url"],
+                name="integrations_sonarrinstance_unique_user_base_url",
+            ),
+        ]
+
+    def __str__(self):
+        """Return a readable label for this sonarr instance."""
+        return f"{self.display_name} ({self.user})"
 
     @property
-    def __str__(self):
-        """Return a readable label for this sonarr account."""
-        return f"{self.user}"
+    def display_name(self):
+        """Return the instance's label, falling back to a generic name."""
+        return self.name or "Sonarr"
 
     def is_connected(self):
-        """Return True when the account appears connected."""
+        """Return True when the instance appears connected."""
         return bool(self.base_url and self.api_key) and not self.connection_broken
 
 
@@ -743,6 +785,14 @@ class CollectionSourceState(models.Model):
         related_name="source_states",
     )
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES)
+    source_instance_id = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            "PK of the RadarrInstance/SonarrInstance this row came from; "
+            "unused for plex/jellyfin"
+        ),
+    )
     quality_label = models.CharField(max_length=80, blank=True, default="")
     last_source_updated_at = models.DateTimeField(null=True, blank=True)
     last_synced_at = models.DateTimeField(auto_now=True)
@@ -753,7 +803,13 @@ class CollectionSourceState(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["user", "item", "source"],
+                condition=models.Q(source_instance_id__isnull=True),
                 name="integrations_collectionsourcestate_unique_user_item_source",
+            ),
+            models.UniqueConstraint(
+                fields=["user", "item", "source", "source_instance_id"],
+                condition=models.Q(source_instance_id__isnull=False),
+                name="integrations_collectionsourcestate_unique_user_item_source_instance",
             ),
         ]
         indexes = [

@@ -138,10 +138,12 @@ def import_media(
     return format_import_message(imported_counts, warnings)
 
 
-def _run_arr_import(service_name, importer_func, user_id, mode):
+def _run_arr_import(service_name, importer_func, user_id, mode, instance_id=None):
     """Run ARR imports without surfacing expected connection failures as task tracebacks."""
     try:
-        return import_media(importer_func, None, user_id, mode)
+        return import_media(
+            importer_func, None, user_id, mode, instance_id=instance_id
+        )
     except helpers.MediaImportError as exc:
         logger.warning("%s import failed for user %s: %s", service_name, user_id, exc)
         return f"{service_name} import failed: {exc}"
@@ -356,27 +358,45 @@ def import_jellyfin_playback_reporting(file, user_id, mode="new"):
 
 
 @shared_task(name="Import from Radarr")
-def import_radarr(user_id, mode="new", username=None):
+def import_radarr(user_id, mode="new", username=None, instance_id=None):
     """Celery task for importing movie collection data from Radarr."""
-    return _run_arr_import("Radarr", radarr.importer, user_id, mode)
+    return _run_arr_import(
+        "Radarr", radarr.importer, user_id, mode, instance_id=instance_id
+    )
 
 
 @shared_task(name="Import from Radarr (Recurring)")
-def import_radarr_recurring(user_id):
-    """Recurring import task for Radarr."""
-    return _run_arr_import("Radarr", radarr.importer, user_id, "new")
+def import_radarr_recurring(instance_id):
+    """Recurring import task for one Radarr instance."""
+    from integrations.models import RadarrInstance
+
+    user_id = RadarrInstance.objects.values_list("user_id", flat=True).get(
+        pk=instance_id
+    )
+    return _run_arr_import(
+        "Radarr", radarr.importer, user_id, "new", instance_id=instance_id
+    )
 
 
 @shared_task(name="Import from Sonarr")
-def import_sonarr(user_id, mode="new", username=None):
+def import_sonarr(user_id, mode="new", username=None, instance_id=None):
     """Celery task for importing TV collection data from Sonarr."""
-    return _run_arr_import("Sonarr", sonarr.importer, user_id, mode)
+    return _run_arr_import(
+        "Sonarr", sonarr.importer, user_id, mode, instance_id=instance_id
+    )
 
 
 @shared_task(name="Import from Sonarr (Recurring)")
-def import_sonarr_recurring(user_id):
-    """Recurring import task for Sonarr."""
-    return _run_arr_import("Sonarr", sonarr.importer, user_id, "new")
+def import_sonarr_recurring(instance_id):
+    """Recurring import task for one Sonarr instance."""
+    from integrations.models import SonarrInstance
+
+    user_id = SonarrInstance.objects.values_list("user_id", flat=True).get(
+        pk=instance_id
+    )
+    return _run_arr_import(
+        "Sonarr", sonarr.importer, user_id, "new", instance_id=instance_id
+    )
 
 
 @shared_task(name="Sync Plex Watchlist")
