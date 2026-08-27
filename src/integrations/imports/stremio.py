@@ -213,6 +213,7 @@ class StremioImporter:
         self.existing_media = helpers.get_existing_media(user)
         self.to_delete = defaultdict(lambda: defaultdict(set))
         self.bulk_media = defaultdict(list)
+        self.bulk_season_by_item_id = {}
 
         logger.info(
             "Initialized Stremio importer for user %s with mode %s",
@@ -816,6 +817,21 @@ class StremioImporter:
                         ["status"],
                     )
                 season_instance = existing_season
+            elif season_item.id in self.bulk_season_by_item_id:
+                # Grouped-anime promotion can unify two Stremio entries onto
+                # the same show/season mid-run - reuse the sibling entry's
+                # still-unsaved Season instead of queuing a duplicate that
+                # would collide on (related_tv, item) at bulk insert time.
+                queued_season = self.bulk_season_by_item_id[season_item.id]
+                old_rank = _STATUS_RANK.get(queued_season.status)
+                new_rank = _STATUS_RANK.get(season_status)
+                if (
+                    old_rank is not None
+                    and new_rank is not None
+                    and new_rank > old_rank
+                ):
+                    queued_season.status = season_status
+                season_instance = queued_season
             else:
                 season_instance = app.models.Season(
                     item=season_item,
@@ -825,6 +841,7 @@ class StremioImporter:
                 )
                 season_instance._history_date = history_date
                 self.bulk_media[MediaTypes.SEASON.value].append(season_instance)
+                self.bulk_season_by_item_id[season_item.id] = season_instance
 
             episode_bucket = self._child_bucket(tv_instance.item, MediaTypes.EPISODE.value)
             for episode_number in episode_numbers:

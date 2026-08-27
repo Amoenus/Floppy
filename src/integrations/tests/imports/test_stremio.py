@@ -614,6 +614,109 @@ class ImportStremioTests(TestCase):
             MediaTypes.ANIME.value,
         )
 
+    def test_two_entries_promoted_to_same_grouped_anime_show_do_not_duplicate_season(
+        self,
+    ):
+        """Two Stremio entries unified by grouped-anime promotion share one Season.
+
+        Regression test for #1003: when grouped-anime promotion unifies two
+        distinct Stremio library entries onto the same TMDB show/season
+        (e.g. multiple MAL seasons collapsed into one mapping_group_key),
+        the importer must not queue two Season rows that collide on
+        (related_tv, item) at bulk insert time.
+        """
+        video_ids = ["tt0903747:1:1"]
+        other_video_ids = ["tt9999999:1:1"]
+        library_items = [
+            {
+                "_id": "tt0903747",
+                "type": "series",
+                "name": "Anime Show Part 1",
+                "state": {
+                    "watched": encode_watched_bitfield(video_ids, set(video_ids)),
+                    "lastWatched": "2023-01-02T00:00:00Z",
+                },
+            },
+            {
+                "_id": "tt9999999",
+                "type": "series",
+                "name": "Anime Show Part 2",
+                "state": {
+                    "watched": encode_watched_bitfield(
+                        other_video_ids,
+                        set(other_video_ids),
+                    ),
+                    "lastWatched": "2023-01-03T00:00:00Z",
+                },
+            },
+        ]
+
+        def tmdb_find_same_show(imdb_id, external_source):
+            if imdb_id in {"tt0903747", "tt9999999"}:
+                return {
+                    "tv_results": [
+                        {"id": 1396, "name": "Anime Show", "poster_path": "/bb.jpg"},
+                    ],
+                }
+            return {}
+
+        match = GroupedAnimeMatch(
+            decision="move",
+            reason="exact_external_id_and_animation_genre_multiple_mal_seasons",
+            tmdb_id="1396",
+            tvdb_id="7001",
+            mal_ids=("12345", "67890"),
+        )
+
+        with patch(
+            "app.services.grouped_anime.classify_tv_metadata",
+            return_value=match,
+        ):
+            _, warnings = self._run_import(
+                library_items,
+                cinemeta_videos={
+                    "tt0903747": video_ids,
+                    "tt9999999": other_video_ids,
+                },
+                tmdb_find=tmdb_find_same_show,
+            )
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(
+            TV.objects.filter(item__media_id="1396").count(),
+            1,
+        )
+        self.assertEqual(
+            Season.objects.filter(
+                item__media_id="1396",
+                item__season_number=1,
+            ).count(),
+            1,
+        )
+
+        # A retry against the now-persisted library must stay idempotent.
+        with patch(
+            "app.services.grouped_anime.classify_tv_metadata",
+            return_value=match,
+        ):
+            self._run_import(
+                library_items,
+                cinemeta_videos={
+                    "tt0903747": video_ids,
+                    "tt9999999": other_video_ids,
+                },
+                tmdb_find=tmdb_find_same_show,
+            )
+
+        self.assertEqual(TV.objects.filter(item__media_id="1396").count(), 1)
+        self.assertEqual(
+            Season.objects.filter(
+                item__media_id="1396",
+                item__season_number=1,
+            ).count(),
+            1,
+        )
+
     def test_recurring_sync_advances_series_without_duplicating_episodes(self):
         """A re-sync of an already-tracked show adds new episodes only once.
 

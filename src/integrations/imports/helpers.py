@@ -433,6 +433,32 @@ def _deduplicate_unique_user_item_rows(model, bulk_media):
     return deduplicated
 
 
+def _deduplicate_season_related_tv_item_rows(seasons):
+    """Remove duplicate unsaved seasons that would violate the related_tv/item key.
+
+    Two importer entries can independently queue a Season for what turns out
+    to be the same show/season once update_season_references() repoints both
+    at the same persisted TV row - only visible after that reference fix-up.
+    """
+    deduplicated = []
+    by_related_tv_item = {}
+    for season in seasons:
+        related_tv_pk = season.related_tv.pk if season.related_tv_id else None
+        key = (
+            related_tv_pk if related_tv_pk is not None else f"unsaved:{id(season.related_tv)}",
+            season.item_id,
+        )
+        existing = by_related_tv_item.get(key)
+        if existing is None:
+            by_related_tv_item[key] = season
+            deduplicated.append(season)
+            continue
+
+        _merge_duplicate_media_row(existing, season)
+
+    return deduplicated
+
+
 def bulk_create_media(bulk_media_list, user):
     """Bulk create all media objects.
 
@@ -458,6 +484,7 @@ def bulk_create_media(bulk_media_list, user):
         if media_type == MediaTypes.SEASON.value:
             logger.info("Updating references for season to existing TV shows")
             update_season_references(bulk_media, user)
+            bulk_media = _deduplicate_season_related_tv_item_rows(bulk_media)
         elif media_type == MediaTypes.EPISODE.value:
             logger.info(
                 "Updating references for episodes to existing TV seasons",
