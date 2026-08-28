@@ -17,6 +17,7 @@ from app.models import (
     Tag,
 )
 from events.models import Event
+from lists.models import CustomListItem
 
 from .base import FloppyApiTestCase
 
@@ -358,4 +359,40 @@ class MediaListQueryBudgetTests(FloppyApiTestCase):
             30,
             f"{big_queries} queries for a 10-item page; budget is 30. If "
             "this increase is intentional, update the pin deliberately.",
+        )
+
+    def test_list_membership_lookup_is_batched(self):
+        """build_lists_by_item_id must not issue one query per page item (#1004)."""
+        self._seed_extra_games(10)
+        game_items = list(
+            Item.objects.filter(
+                media_type=MediaTypes.GAME.value,
+                media_id__startswith="query-budget-game-",
+            ).order_by("media_id")[:10],
+        )
+        favorites = self.lists_by_name["favorites"]
+        CustomListItem.objects.bulk_create(
+            [CustomListItem(custom_list=favorites, item=item) for item in game_items],
+        )
+
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(
+                "/api/v1/media/game/",
+                {"limit": 10},
+                **self.auth_headers,
+            )
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(len(response.json()["results"]), 10)
+
+        list_membership_queries = [
+            query
+            for query in ctx.captured_queries
+            if "lists_customlistitem" in query["sql"].lower()
+        ]
+        self.assertEqual(
+            len(list_membership_queries),
+            1,
+            "list-membership lookup should be a single batched query "
+            f"regardless of how many page items belong to a list; got "
+            f"{len(list_membership_queries)}: {list_membership_queries}",
         )

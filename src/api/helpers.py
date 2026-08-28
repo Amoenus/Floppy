@@ -228,25 +228,21 @@ def build_item_id(item):
 # TODO: move to lists/models.py
 def build_lists_by_item_id(user, objects):
     """Build a map of item id to list membership payload for serializer context."""
-    lists_by_item_id = {}
+    if user is None:
+        return {}
 
+    item_ids = []
+    seen_item_ids = set()
     for obj in objects:
         item = obj if isinstance(obj, Item) else getattr(obj, "item", None)
-        if item is None:
+        if item is None or item.id in seen_item_ids:
             continue
+        seen_item_ids.add(item.id)
+        item_ids.append(item.id)
 
-        if item.id in lists_by_item_id:
-            continue
-
-        # FORK: we already hold the exact Item row — query membership directly
-        # instead of re-resolving by media_id (which can cross library buckets).
-        lists_by_item_id[item.id] = (
-            []
-            if user is None
-            else CustomListItem.objects.get_user_item_lists(user, item)
-        )
-
-    return lists_by_item_id
+    # FORK: batched by item id in one query instead of one query per item —
+    # a page of N media entries used to issue N CustomListItem queries.
+    return CustomListItem.objects.get_user_item_lists_map(user, item_ids)
 
 
 def build_parent_id(item):
