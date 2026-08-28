@@ -613,6 +613,88 @@ class CollectionHelpersTest(TestCase):
 
         self.assertIsNone(metadata)
 
+    def test_get_season_collection_stats_survives_duplicate_tv_bucket_items(self):
+        """A stray second TV-media-type Item in another bucket must not crash stats."""
+        Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.SEASON.value,
+            title="Test TV (stray season bucket)",
+            image="http://example.com/tv-stray.jpg",
+        )
+        season_item = Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.SEASON.value,
+            library_media_type=self.tv_item.library_media_type,
+            season_number=1,
+            title="Test TV Season 1",
+            image="http://example.com/season1.jpg",
+        )
+        Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Test TV Episode 1",
+            image="http://example.com/episode1.jpg",
+        )
+        CollectionEntry.objects.create(
+            user=self.user, item=self.tv_item, media_type="digital"
+        )
+
+        stats = get_season_collection_stats(self.user, season_item)
+
+        self.assertEqual(
+            stats,
+            {
+                "collected_episodes": 1,
+                "total_episodes": 1,
+            },
+        )
+
+    def test_get_season_collection_metadata_survives_duplicate_tv_bucket_items(self):
+        """A stray second TV-media-type Item in another bucket must not crash metadata."""
+        Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.SEASON.value,
+            title="Test TV (stray season bucket)",
+            image="http://example.com/tv-stray.jpg",
+        )
+        season_item = Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.SEASON.value,
+            library_media_type=self.tv_item.library_media_type,
+            season_number=1,
+            title="Test TV Season 1",
+            image="http://example.com/season1.jpg",
+        )
+        Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Test TV Episode 1",
+            image="http://example.com/episode1.jpg",
+        )
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=self.tv_item,
+            media_type="digital",
+            resolution="1080p",
+        )
+
+        metadata = get_season_collection_metadata(self.user, season_item)
+
+        self.assertIsNotNone(metadata)
+        self.assertEqual(metadata["resolution"], "1080p")
+
     def test_get_collection_completeness_map_empty_input(self):
         """Passing no shows returns an empty map."""
         self.assertEqual(get_collection_completeness_map(self.user, []), {})
