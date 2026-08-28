@@ -84,6 +84,10 @@ class IntegrationTest(StaticLiveServerTestCase):
             ),
             patch("app.providers.tmdb.get_tvdb_episode_image_map", return_value={}),
             patch(
+                "app.providers.tmdb.metadata_languages",
+                return_value=[("", "Server Default (en)"), ("en", "English")],
+            ),
+            patch(
                 "app.tasks_trakt.populate_trakt_episode_ratings_for_season.delay",
             ),
         ):
