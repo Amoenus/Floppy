@@ -196,11 +196,11 @@
             <div x-data="{ trackOpen: false }" class="w-full sm:w-auto sm:shrink-0">
               {% include "app/components/detail_episode_hero_track_button.html" with episode=episode source=source media_id=media_id season_number=season_number episode_number=episode_number %}
               <div x-show="trackOpen"
+                   @mousedown.self="trackOpen = false"
                    @keydown.escape.window="trackOpen = false"
                    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                 <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
                      style="width: min(96vw, 72rem);"
-                     @click.outside="trackOpen = false"
                      @click.stop>
                   <div id="episode-track-modal-{{ source }}-{{ media_id }}-{{ season_number }}-{{ episode_number }}"></div>
                 </div>
