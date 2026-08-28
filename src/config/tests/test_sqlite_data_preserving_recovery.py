@@ -2,14 +2,26 @@ import io
 import json
 import os
 import sqlite3
+import sys
 import tempfile
 from pathlib import Path
-from unittest import mock
+from unittest import mock, skipUnless
 
 from django.test import SimpleTestCase
 
 from config import sqlite_recovery_server
 from config.sqlite_recovery_policy import check_database_for_startup
+
+# The quarantine/auto-repair path backs up via sqlite_integrity's
+# _create_verified_backup(), which reopens a dir_fd-created staging file
+# through /proc/self/fd/<fd>/<name> to avoid a TOCTOU race - a Linux-only
+# mechanism (see config/tests/test_sqlite_integrity.py's matching guard).
+# Production only runs in the Linux container and CI runs on ubuntu-latest,
+# so skip here rather than report an unrelated failure on macOS/BSD.
+requires_proc_fd_backup = skipUnless(
+    sys.platform.startswith("linux"),
+    "verified-backup path requires /proc/self/fd (Linux-only)",
+)
 
 
 class SqliteDataPreservingRecoveryTests(SimpleTestCase):
@@ -84,6 +96,7 @@ class SqliteDataPreservingRecoveryTests(SimpleTestCase):
         finally:
             conn.close()
 
+    @requires_proc_fd_backup
     def test_mixed_music_damage_preserves_tracking_until_explicit_repair(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self._create_mixed_music_incident(tmp_dir)

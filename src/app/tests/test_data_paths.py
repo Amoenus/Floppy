@@ -446,7 +446,11 @@ fi
 
     def test_paths_with_spaces_and_leading_dash_remain_single_arguments(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
+            # entrypoint.sh resolves every path it logs/chowns via Python's
+            # Path.resolve(). On macOS the system temp dir sits behind a
+            # /var -> /private/var symlink, so resolving here too keeps
+            # every derived path below matching what entrypoint.sh reports.
+            root = Path(temp_dir).resolve()
             data_dir = root / "-managed data"
             database_parent = root / "external data"
             database_path = database_parent / "-db.sqlite3"
@@ -492,18 +496,23 @@ fi
 
     def test_system_root_and_symlink_paths_are_rejected(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
+            root = Path(temp_dir).resolve()
             root_link = root / "root-link"
             root_link.symlink_to("/")
             system_link = root / "system-link"
-            system_link.symlink_to("/etc")
+            # /usr, unlike /etc, isn't itself a symlink on macOS (where /etc
+            # resolves to /private/etc and would fail to match the literal
+            # system-directory list below); any listed directory works to
+            # exercise the rejection, so pick one that resolves identically
+            # on both platforms.
+            system_link.symlink_to("/usr")
             safe_data = root / "data"
             safe_data.mkdir()
 
             cases = (
                 ({"FLOPPY_DATA_DIR": "/"}, "FLOPPY_DATA_DIR"),
                 ({"FLOPPY_DATA_DIR": str(root_link)}, "FLOPPY_DATA_DIR"),
-                ({"FLOPPY_DATA_DIR": "/etc"}, "FLOPPY_DATA_DIR"),
+                ({"FLOPPY_DATA_DIR": "/usr"}, "FLOPPY_DATA_DIR"),
                 ({"LOG_DIR": "/"}, "LOG_DIR"),
                 ({"LOG_DIR": str(root_link)}, "LOG_DIR"),
                 ({"LOG_DIR": str(system_link)}, "LOG_DIR"),
@@ -517,7 +526,7 @@ fi
                 (
                     {
                         "FLOPPY_DATA_DIR": str(safe_data),
-                        "FLOPPY_DB_PATH": "/etc/db.sqlite3",
+                        "FLOPPY_DB_PATH": "/usr/db.sqlite3",
                     },
                     "FLOPPY_DB_PATH",
                 ),
@@ -544,7 +553,10 @@ fi
 
     def test_external_database_parent_ownership_failure_stops_startup(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
+            # Resolve up front so FAIL_CHOWN_PATH matches the resolved
+            # $DB_PARENT entrypoint.sh actually passes to chown (see the
+            # comment in test_paths_with_spaces_and_leading_dash_... above).
+            root = Path(temp_dir).resolve()
             data_dir = root / "data"
             database_parent = root / "database"
             database_path = database_parent / "db.sqlite3"
