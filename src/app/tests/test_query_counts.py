@@ -73,6 +73,11 @@ ANIME_LIST_GROUPED_MAX_QUERIES = (
 MANGA_LIST_DEFAULT_SORT_MAX_QUERIES = 14
 MANGA_LIST_NO_STATUS_MAX_QUERIES = 18
 GAME_LIST_DEFAULT_SORT_MAX_QUERIES = 18
+GAME_LIST_START_DATE_SORT_LIBRARY_SIZE = 150
+GAME_LIST_START_DATE_SORT_MAX_QUERIES = (
+    15  # pinned after the SQL pushdown fast path (#1004) — was scanning the
+    # entire status-filtered library before slicing to the page
+)
 HOME_ROW_FRAGMENT_MAX_QUERIES = 122  # +2 from the Tags column Prefetch (#457)
 CUSTOM_LIST_DETAIL_MAX_QUERIES = 33  # +3 from prefilled release-year metadata
 SEASON_PAGE_FIRST_VIEW_EPISODE_COUNT = 18
@@ -438,6 +443,46 @@ class QueryCountTests(TestCase):
             "/medialist/game",
             GAME_LIST_DEFAULT_SORT_MAX_QUERIES,
             "game list default sort",
+        )
+
+    def test_api_game_list_start_date_sort_query_budget(self):
+        """Pin the reporter's exact repro from issue #1004.
+
+        `GET /api/v1/media/game/?status=1&limit=10&sort=start_date&direction=asc`
+        took 778ms/75 queries in production against ~2,500 games in one
+        status — the SQL fast path (app.media_list_pagination) must keep
+        this flat regardless of library size, not scan every matching row
+        to serve a 10-item page.
+        """
+        for index in range(GAME_LIST_START_DATE_SORT_LIBRARY_SIZE):
+            item = Item.objects.create(
+                media_id=f"qc_game_start_date_{index}",
+                source=Sources.IGDB.value,
+                media_type=MediaTypes.GAME.value,
+                title=f"Query Count Start Date Game {index}",
+            )
+            Game.objects.create(item=item, user=self.user, status=Status.IN_PROGRESS.value)
+
+        with CaptureQueriesContext(connection) as context:
+            response = self.client.get(
+                "/api/v1/media/game/",
+                {"status": "1", "limit": 10, "sort": "start_date", "direction": "asc"},
+                HTTP_X_API_KEY=self.user.token,
+            )
+        self.assertEqual(response.status_code, 200)
+        # >= not ==: setUpTestData's seed_game_library also seeds
+        # IN_PROGRESS games shared by every test in this class.
+        self.assertGreaterEqual(
+            response.json()["pagination"]["total"], GAME_LIST_START_DATE_SORT_LIBRARY_SIZE,
+        )
+        count = len(context.captured_queries)
+        self.assertLessEqual(
+            count,
+            GAME_LIST_START_DATE_SORT_MAX_QUERIES,
+            f"game list API start_date sort issued {count} queries against "
+            f"{GAME_LIST_START_DATE_SORT_LIBRARY_SIZE} games, budget is "
+            f"{GAME_LIST_START_DATE_SORT_MAX_QUERIES}. If this increase is "
+            "intentional, update the pin deliberately.",
         )
 
     def test_custom_list_detail_query_budget(self):
