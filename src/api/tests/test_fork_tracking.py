@@ -1,6 +1,7 @@
 # FORK: tests for the tracking parity endpoints — episode watch/drop,
 # tag management, and the history timeline.
 import datetime
+from decimal import Decimal
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
 
@@ -102,6 +103,55 @@ class EpisodeWatchTests(FloppyApiTestCase):
         """POST watch with a bad end_date returns 400."""
         response = self._watch(1, payload={"end_date": "not-a-date"})
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+
+    @patch(
+        "app.models.providers.services.get_media_metadata",
+        side_effect=_season_metadata_side_effect,
+    )
+    def test_watch_with_score_sets_episode_score(self, _mock):
+        """POST watch with a score sets it on all plays of the episode."""
+        response = self._watch(1, payload={"score": "8.3"})
+        self.assertEqual(response.status_code, HTTP.CREATED)
+        self.assertEqual(response.json()["score"], 8.3)
+        scores = set(
+            Episode.objects.filter(
+                related_season=self.season_medias[0],
+                item__episode_number=1,
+            ).values_list("score", flat=True),
+        )
+        self.assertEqual(scores, {Decimal("8.3")})
+
+    @patch(
+        "app.models.providers.services.get_media_metadata",
+        side_effect=_season_metadata_side_effect,
+    )
+    def test_watch_without_score_leaves_score_unset(self, _mock):
+        """POST watch without a score field doesn't touch the score."""
+        response = self._watch(1)
+        self.assertEqual(response.status_code, HTTP.CREATED)
+        self.assertIsNone(response.json()["score"])
+
+    @patch(
+        "app.models.providers.services.get_media_metadata",
+        side_effect=_season_metadata_side_effect,
+    )
+    def test_watch_invalid_score_rejected(self, _mock):
+        """POST watch with an out-of-range score 400s and creates no play."""
+        play_count_before = Episode.objects.filter(
+            related_season=self.season_medias[0],
+            item__episode_number=1,
+        ).count()
+
+        response = self._watch(1, payload={"score": "11"})
+
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+        self.assertEqual(
+            Episode.objects.filter(
+                related_season=self.season_medias[0],
+                item__episode_number=1,
+            ).count(),
+            play_count_before,
+        )
 
     @patch(
         "app.models.providers.services.get_media_metadata",
@@ -561,6 +611,45 @@ class HistoryTimelineTests(FloppyApiTestCase):
         self.assertTrue(
             any(entry["media_type"] == "movie" for entry in all_entries),
         )
+
+    def test_history_day_entries_are_capped(self):
+        """A day with many plays doesn't blow up the response body (#1004).
+
+        `limit`/`offset` on this endpoint paginate over DAYS, not entries, so
+        a single busy day (imports, binge sessions, frequent podcast
+        scrobbles) must still be bounded — mirrors the web history page's
+        existing per-day cap (HISTORY_ENTRIES_PER_DAY_PAGE).
+        """
+        entry_count = history_cache.HISTORY_ENTRIES_PER_DAY_PAGE + 5
+        same_day = datetime.datetime(2024, 6, 1, tzinfo=datetime.UTC)
+        for index in range(entry_count):
+            item = Item.objects.create(
+                media_id=f"history-cap-movie-{index}",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title=f"History Cap Movie {index}",
+            )
+            Movie.objects.create(
+                item=item,
+                user=self.user1,
+                end_date=same_day,
+            )
+        cache.clear()
+
+        response = self.call_api(
+            "get",
+            "api_history",
+            params={"media_type": "movie", "limit": 1},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        days = response.json()["results"]
+        self.assertEqual(len(days), 1)
+        day = days[0]
+        self.assertLessEqual(len(day["entries"]), history_cache.HISTORY_ENTRIES_PER_DAY_PAGE)
+        self.assertEqual(day["entry_count"], entry_count)
+        self.assertTrue(day["entries_truncated"])
 
     def test_history_flat_returns_paginated_entry_list(self):
         """?flat=1 returns a flat, card-oriented entry list, not day buckets."""

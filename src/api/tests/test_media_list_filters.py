@@ -1,8 +1,21 @@
 from http import HTTPStatus as HTTP  # noqa: N814
 
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
-from app.models import TV, CollectionEntry, Item, ItemTag, Season, Status, Tag
+from app.models import (
+    TV,
+    CollectionEntry,
+    Game,
+    Item,
+    ItemTag,
+    MediaTypes,
+    Season,
+    Sources,
+    Status,
+    Tag,
+)
 from events.models import Event
 
 from .base import FloppyApiTestCase
@@ -290,3 +303,59 @@ class MediaListFilterParityTests(FloppyApiTestCase):
         ):
             response = self._get_tv(**params)
             self.assertEqual(response.status_code, HTTP.BAD_REQUEST, params)
+
+
+class MediaListQueryBudgetTests(FloppyApiTestCase):
+    """Pin the query count for a paginated media-list page (#1004).
+
+    Serializing a page must not scale with the size of the user's whole
+    library — regression test for a per-page-item N+1 caused by Item fields
+    that `get_media_list` defers for the list scan but `ItemSerializer`
+    (via `MediaSerializer`) reads in full.
+    """
+
+    def _seed_extra_games(self, count, *, start=0):
+        for index in range(start, start + count):
+            item = Item.objects.create(
+                media_id=f"query-budget-game-{index}",
+                source=Sources.IGDB.value,
+                media_type=MediaTypes.GAME.value,
+                title=f"Query Budget Game {index}",
+            )
+            Game.objects.create(item=item, user=self.user1)
+
+    def test_query_count_does_not_scale_with_library_size(self):
+        self._seed_extra_games(5)
+        with CaptureQueriesContext(connection) as small_ctx:
+            response = self.client.get(
+                "/api/v1/media/game/",
+                {"limit": 10},
+                **self.auth_headers,
+            )
+        self.assertEqual(response.status_code, HTTP.OK)
+        small_queries = len(small_ctx.captured_queries)
+
+        self._seed_extra_games(120, start=5)
+        with CaptureQueriesContext(connection) as big_ctx:
+            response = self.client.get(
+                "/api/v1/media/game/",
+                {"limit": 10},
+                **self.auth_headers,
+            )
+        self.assertEqual(response.status_code, HTTP.OK)
+        big_queries = len(big_ctx.captured_queries)
+
+        self.assertEqual(len(response.json()["results"]), 10)
+        self.assertLessEqual(
+            big_queries,
+            small_queries + 2,
+            f"query count grew from {small_queries} to {big_queries} as the "
+            "library grew — page serialization is scaling with library size "
+            "again, not just the requested page.",
+        )
+        self.assertLessEqual(
+            big_queries,
+            30,
+            f"{big_queries} queries for a 10-item page; budget is 30. If "
+            "this increase is intentional, update the pin deliberately.",
+        )

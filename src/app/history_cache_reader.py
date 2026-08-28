@@ -33,6 +33,7 @@ from app.history_cache_utils import (
     HISTORY_COVERAGE_REPAIR_BATCH_SIZE,
     HISTORY_DAY_CACHE_TIMEOUT,
     HISTORY_DAYS_PER_PAGE,
+    HISTORY_ENTRIES_PER_DAY_PAGE,
     HISTORY_STALE_AFTER,
     HISTORY_WARM_DAYS,
     _cache_key,
@@ -376,8 +377,25 @@ def get_cached_history_window(
             )
 
     history_days.sort(key=lambda day: day.get("date") or date.min, reverse=True)
+
+    # A day's entry count is unbounded (imports, binge sessions, frequent
+    # podcast scrobbles can put hundreds of entries on one day), while
+    # `limit`/`offset` here only bound the number of DAYS returned. Without
+    # this cap a single busy day can blow up the response to megabytes even
+    # for `limit=1` — mirrors the web history page's existing per-day
+    # entry cap (HISTORY_ENTRIES_PER_DAY_PAGE, see history_views.py).
+    total_entries = 0
+    for day_payload in history_days:
+        entries = day_payload.get("entries", [])
+        entry_count = len(entries)
+        total_entries += entry_count
+        if entry_count > HISTORY_ENTRIES_PER_DAY_PAGE:
+            day_payload["entries"] = entries[:HISTORY_ENTRIES_PER_DAY_PAGE]
+        day_payload["entry_count"] = entry_count
+        day_payload["entries_truncated"] = entry_count > HISTORY_ENTRIES_PER_DAY_PAGE
+
     logger.info(
-        "history_cached_window user_id=%s logging_style=%s filters=%s indexed=%s offset=%s limit=%s cached=%s missing=%s returned=%s",
+        "history_cached_window user_id=%s logging_style=%s filters=%s indexed=%s offset=%s limit=%s cached=%s missing=%s returned=%s entries=%s",
         user.id,
         logging_style,
         filters,
@@ -387,6 +405,7 @@ def get_cached_history_window(
         len(payloads),
         len(missing_day_keys),
         len(history_days),
+        total_entries,
     )
     return history_days, total_days
 

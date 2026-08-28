@@ -153,6 +153,12 @@ cmd_history_api() {
     "history_types|/api/v1/history/?limit=3&types=episodes,movies"
     "history_media_type|/api/v1/history/?limit=3&media_type=episode,movie"
     "history_all|/api/v1/history/?limit=3"
+    # issue #1004: podcast/game weren't covered by the #576/#948 optimization
+    # pass. bytes column shows the day-entry-cap fix; media_game exercises
+    # the media-list N+1 fix (add PERF_LOG_SLOW_REQUEST_MS=1 to the server
+    # env and grep gunicorn output for queries= to see the query count too).
+    "history_podcast|/api/v1/history/?limit=10&types=podcast"
+    "media_game|/api/v1/media/game/?status=1&limit=10"
   )
   echo -e "case\tendpoint\tstatus\tmedian_s\tp90_s\tmin_s\tmax_s\tbytes\tn" >"$out"
   local entry name path code t bytes stats mode

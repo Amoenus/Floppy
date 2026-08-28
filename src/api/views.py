@@ -825,6 +825,30 @@ class ListItemView(drf_views.APIView):
         )
 
 
+def _rehydrate_deferred_items(page_entries):
+    """Refetch full Item rows for one page of entries.
+
+    `get_media_list`/`get_media_list_entries` defer several rarely-used Item
+    fields (trakt/provider metadata) to keep the whole-library scan cheap.
+    `ItemSerializer` (via `MediaSerializer`/`UntrackedMediaSerializer`) reads
+    every Item field, so each deferred field on a paginated instance would
+    otherwise trigger its own single-row query — a full-page-sized N+1. One
+    bulk, undeferred fetch of just the page's items avoids that without
+    touching the list-scan's defer optimization.
+    """
+    item_ids = {entry.item.id for entry in page_entries if entry.item is not None}
+    if not item_ids:
+        return
+    fresh_items_by_id = {item.pk: item for item in Item.objects.filter(pk__in=item_ids)}
+    for entry in page_entries:
+        fresh_item = fresh_items_by_id.get(entry.item.id if entry.item else None)
+        if fresh_item is None:
+            continue
+        entry.item = fresh_item
+        if entry.media is not None:
+            entry.media.item = fresh_item
+
+
 # /api/v1/media/
 def _media_list_response(request, media_type=None):
     """Build a filtered and serialized media-list response."""
@@ -849,6 +873,7 @@ def _media_list_response(request, media_type=None):
 
     paginated_data = paginate_data(request, entries, limit, offset)
     page_entries = paginated_data["results"]
+    _rehydrate_deferred_items(page_entries)
     lists_by_item_id = build_lists_by_item_id(request.user, page_entries)
     next_episode_by_item_id = get_next_episode_map(page_entries)
     serializer_context = {
