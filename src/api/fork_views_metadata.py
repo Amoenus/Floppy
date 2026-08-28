@@ -1,7 +1,6 @@
 # FORK: metadata-management and score endpoints mirroring web-only actions
 # (metadata_sync_views, score_views). URL wiring lives in fork_urls.py.
 import logging
-from decimal import Decimal, InvalidOperation
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.apps import apps
@@ -9,20 +8,24 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
-from app import custom_metadata, history_cache
+from app import custom_metadata
 from app import metadata_sync_views as web_metadata_views
 from app.models import (
-    Episode,
     Item,
     MediaTypes,
     MetadataProviderPreference,
-    Season,
     Sources,
 )
 from app.services import metadata_resolution
 
 from .contract_serializers import DetailErrorSerializer
-from .helpers import check_valid_type, resolve_episode_coordinate_for_request
+from .helpers import (
+    apply_episode_score,
+    check_valid_type,
+    get_tracked_season,
+    resolve_episode_coordinate_for_request,
+    validate_episode_score,
+)
 from .schema import MEDIA_TYPE_PARAM, MEDIA_TYPE_TV_ONLY_PARAM
 
 logger = logging.getLogger(__name__)
@@ -255,17 +258,7 @@ class MediaEpisodeScoreView(drf_views.APIView):
         if coordinate_error:
             return coordinate_error
 
-        season = (
-            Season.objects.filter(
-                item__media_id=media_id,
-                item__source=source,
-                item__season_number=season_number,
-                item__episode_number=None,
-                user=request.user,
-            )
-            .order_by("id")
-            .first()
-        )
+        season = get_tracked_season(request.user, media_id, source, season_number)
         if season is None:
             return Response(
                 {"detail": "Season not found or not tracked."},
@@ -277,47 +270,14 @@ class MediaEpisodeScoreView(drf_views.APIView):
                 {"detail": "'score' is required (number or null)."},
                 status=HTTP.BAD_REQUEST,
             )
-        raw_score = request.data.get("score")
-        score = None
-        if raw_score is not None:
-            try:
-                score = Decimal(str(raw_score))
-            except (InvalidOperation, TypeError, ValueError):
-                return Response(
-                    {"detail": "Invalid score."},
-                    status=HTTP.BAD_REQUEST,
-                )
-            if not (Decimal(0) <= score <= Decimal(10)):
-                return Response(
-                    {"detail": "Score must be between 0 and 10."},
-                    status=HTTP.BAD_REQUEST,
-                )
+        score, error = validate_episode_score(request.data.get("score"))
+        if error:
+            return error
 
-        episodes = Episode.objects.filter(
-            related_season=season,
-            item__episode_number=int(episode_number),
-        )
-        if not episodes.exists():
+        if not apply_episode_score(season, episode_number, score):
             return Response(
                 {"detail": "Episode not tracked."},
                 status=HTTP.NOT_FOUND,
-            )
-
-        episodes.update(score=score)
-
-        # episodes.update() runs raw SQL and skips post_save, so invalidate
-        # the affected history days like the web view does.
-        day_keys = [
-            history_cache.history_day_key(end_date)
-            for end_date in episodes.values_list("end_date", flat=True)
-        ]
-        day_keys = [day_key for day_key in day_keys if day_key]
-        if day_keys:
-            history_cache.invalidate_history_days(
-                request.user.id,
-                day_keys=day_keys,
-                logging_styles=("sessions", "repeats"),
-                reason="episode_score_change",
             )
 
         return Response(

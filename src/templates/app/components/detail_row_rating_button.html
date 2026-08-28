@@ -51,5 +51,22 @@
         {% endfor %}
       {% endwith %}
     </div>
+    {% if rating_kind == "episode" %}
+      <div class="mt-2 flex items-center justify-center gap-2 border-t border-gray-700 pt-2">
+        <input type="number"
+               name="score"
+               step="0.1"
+               min="0"
+               :max="ratingScaleMax"
+               x-model.number="rating"
+               @change="showRatingPopup = false; isHovering = false"
+               hx-post="{% url 'update_episode_score' episode_score_target_id episode.episode_number %}"
+               hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+               hx-trigger="change"
+               hx-swap="none"
+               class="w-16 rounded border border-gray-600 bg-[var(--color-surface)] px-2 py-1 text-center text-xs text-[var(--color-text-primary)] focus:outline-none focus:ring-1 focus:ring-amber-400">
+        <span class="text-xs text-[var(--color-text-muted)]">exact rating</span>
+      </div>
+    {% endif %}
   </div>
 </div>

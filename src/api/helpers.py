@@ -1,6 +1,7 @@
 import logging
 from calendar import monthrange
 from datetime import date
+from decimal import Decimal, InvalidOperation
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.db.models import Count, OuterRef, Subquery
@@ -8,6 +9,7 @@ from django.utils.dateparse import parse_date
 from django.utils.timezone import localdate
 from rest_framework.response import Response
 
+from app import history_cache
 from app.helpers import parse_completion_datetime
 from app.models import (
     TV,
@@ -843,3 +845,69 @@ def build_game_lengths_summary(payload):
     if "hltb_summary" not in summary and "igdb_summary" not in summary:
         return None
     return summary
+
+
+def get_tracked_season(user, media_id, source, season_number):
+    """Return the user's tracked Season row for a show/season, or None."""
+    return (
+        Season.objects.filter(
+            item__media_id=media_id,
+            item__source=source,
+            item__season_number=season_number,
+            item__episode_number=None,
+            user=user,
+        )
+        .order_by("id")
+        .first()
+    )
+
+
+def validate_episode_score(raw_score):
+    """Parse and range-check a 0-10 episode score.
+
+    Returns (score, None) on success, where score is a Decimal or None
+    (explicit clear); returns (None, error_response) on failure.
+    """
+    if raw_score is None:
+        return None, None
+    try:
+        score = Decimal(str(raw_score))
+    except (InvalidOperation, TypeError, ValueError):
+        return None, Response({"detail": "Invalid score."}, status=HTTP.BAD_REQUEST)
+    if not (Decimal(0) <= score <= Decimal(10)):
+        return None, Response(
+            {"detail": "Score must be between 0 and 10."},
+            status=HTTP.BAD_REQUEST,
+        )
+    return score, None
+
+
+def apply_episode_score(season, episode_number, score):
+    """Set `score` on all plays of a tracked episode within `season`.
+
+    Returns True if the episode was found and updated, False otherwise.
+    Uses queryset.update(), which skips post_save, so the affected
+    history-cache days are invalidated explicitly like the web view does.
+    """
+    episodes = Episode.objects.filter(
+        related_season=season,
+        item__episode_number=int(episode_number),
+    )
+    if not episodes.exists():
+        return False
+
+    episodes.update(score=score)
+
+    day_keys = [
+        history_cache.history_day_key(end_date)
+        for end_date in episodes.values_list("end_date", flat=True)
+    ]
+    day_keys = [day_key for day_key in day_keys if day_key]
+    if day_keys:
+        history_cache.invalidate_history_days(
+            season.user_id,
+            day_keys=day_keys,
+            logging_styles=("sessions", "repeats"),
+            reason="episode_score_change",
+        )
+    return True

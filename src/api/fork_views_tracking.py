@@ -15,7 +15,7 @@ from app import fork_services_history, history_cache_reader
 from app.fork_services_episode import drop_episode, resolve_or_create_season
 from app.fork_services_movie import resolve_or_create_movie
 from app.history_cache_utils import normalize_history_media_type_tokens
-from app.models import Episode, ItemTag, MediaTypes, Movie, Season, Tag
+from app.models import Episode, ItemTag, MediaTypes, Movie, Tag
 from app.services import metadata_resolution
 from app.tasks import bulk_episode_plays_task
 from app.templatetags.app_tags import media_url
@@ -23,13 +23,16 @@ from app.templatetags.app_tags import media_url
 from .contract_serializers import DetailErrorSerializer
 from .helpers import (
     MEDIA_TYPE_MODEL_MAP,
+    apply_episode_score,
     check_source_type,
     check_valid_type,
+    get_tracked_season,
     paginate_data,
     parse_limit_offset,
     resolve_episode_coordinate_for_request,
     resolve_item_queryset,
     try_parse_datetime_input,
+    validate_episode_score,
 )
 from .schema import MEDIA_TYPE_PARAM, MEDIA_TYPE_TV_ONLY_PARAM
 from .serializers import HistorySerializer, serialize_data
@@ -50,21 +53,6 @@ def _tv_route_error(media_type, source):
             status=HTTP.BAD_REQUEST,
         )
     return None
-
-
-def _get_tracked_season(user, media_id, source, season_number):
-    """Return the user's tracked Season row or None."""
-    return (
-        Season.objects.filter(
-            item__media_id=media_id,
-            item__source=source,
-            item__season_number=season_number,
-            item__episode_number=None,
-            user=user,
-        )
-        .order_by("id")
-        .first()
-    )
 
 
 # /api/v1/media/tv/[source]/[media_id]/[season_number]/episodes/[episode_number]/watch/
@@ -89,10 +77,20 @@ class MediaEpisodeWatchView(drf_views.APIView):
         season_number,
         episode_number,
     ):
-        """Record a watch for the episode."""
+        """Record a watch for the episode.
+
+        Optional body field `score` (0-10, or null to clear) sets the
+        episode's rating in the same call, mirroring
+        MediaEpisodeScoreView.patch.
+        """
         error = _tv_route_error(media_type, source)
         if error:
             return error
+
+        score_provided = "score" in request.data
+        score, score_error = validate_episode_score(request.data.get("score"))
+        if score_error:
+            return score_error
 
         raw_end_date = request.data.get("end_date")
         if raw_end_date in (None, ""):
@@ -140,6 +138,8 @@ class MediaEpisodeWatchView(drf_views.APIView):
             )
 
         related_season.watch(int(episode_number), end_date)
+        if score_provided:
+            apply_episode_score(related_season, episode_number, score)
         episode = (
             Episode.objects.filter(
                 related_season=related_season,
@@ -194,7 +194,7 @@ class MediaEpisodeWatchView(drf_views.APIView):
         if coordinate_error:
             return coordinate_error
 
-        related_season = _get_tracked_season(
+        related_season = get_tracked_season(
             request.user,
             media_id,
             source,

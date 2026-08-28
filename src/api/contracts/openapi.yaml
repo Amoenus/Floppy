@@ -1560,7 +1560,12 @@ paths:
   /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/episodes/{episode_number}/watch/:
     post:
       operationId: api_v1_media_episodes_watch_create
-      description: Record a watch for the episode.
+      description: |-
+        Record a watch for the episode.
+
+        Optional body field `score` (0-10, or null to clear) sets the
+        episode's rating in the same call, mirroring
+        MediaEpisodeScoreView.patch.
       parameters:
       - in: path
         name: episode_number

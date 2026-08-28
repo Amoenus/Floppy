@@ -17,7 +17,12 @@ from integrations.models import IntegrationToken
 from integrations.webhooks.generic_scrobble import GenericScrobbleProcessor, is_played
 
 from . import fork_views_playback
-from .helpers import try_parse_datetime_input
+from .helpers import (
+    apply_episode_score,
+    get_tracked_season,
+    try_parse_datetime_input,
+    validate_episode_score,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +80,11 @@ def _scrobble_request_error(data):
                 {"detail": "Invalid played_at format."},
                 status=HTTP.BAD_REQUEST,
             )
+
+    if "score" in data:
+        _, score_error = validate_episode_score(data.get("score"))
+        if score_error:
+            return score_error
 
     return None
 
@@ -183,6 +193,13 @@ class ScrobbleView(drf_views.APIView):
                         "nullable": True,
                         "description": "Only used by 'stop'. Defaults to now.",
                     },
+                    "score": {
+                        "type": "number",
+                        "nullable": True,
+                        "description": "Only used by 'stop', for media_type "
+                        "'episode'. Sets the user's rating (0-10) on the "
+                        "episode.",
+                    },
                 },
             },
         },
@@ -256,6 +273,9 @@ class ScrobbleView(drf_views.APIView):
                 completed=is_played(payload),
             )
 
+            if "score" in request.data and media_type == MediaTypes.EPISODE.value:
+                self._apply_episode_score(request.user, payload, request.data["score"])
+
             return Response({"detail": "accepted"}, status=HTTP.OK)
 
         if client_event_id:
@@ -270,6 +290,31 @@ class ScrobbleView(drf_views.APIView):
 
         return _execute()
 
+
+    def _apply_episode_score(self, user, payload, raw_score):
+        """Set the episode's rating; failures are logged, never raised.
+
+        Validity was already checked in `_scrobble_request_error`; this just
+        resolves the already-persisted episode and applies it.
+        """
+        score, _ = validate_episode_score(raw_score)
+        try:
+            item = fork_views_playback.resolve_video_item(
+                user,
+                payload["media_type"],
+                payload["ids"],
+                payload.get("season_number"),
+                payload.get("episode_number"),
+                create=False,
+            )
+            if item is None:
+                return
+            season = get_tracked_season(user, item.media_id, item.source, item.season_number)
+            if season is None:
+                return
+            apply_episode_score(season, item.episode_number, score)
+        except Exception:
+            logger.warning("Scrobble episode-score update failed", exc_info=True)
 
     def _store_playback_progress(self, user, payload, *, completed):
         """Persist the durable resume position; failures are never raised.

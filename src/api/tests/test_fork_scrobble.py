@@ -1,6 +1,8 @@
 # FORK: tests for the generic scrobble endpoint used by third-party
 # playback clients (non Plex/Jellyfin/Emby).
+from decimal import Decimal
 from http import HTTPStatus as HTTP  # noqa: N814
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.test import tag
@@ -190,6 +192,133 @@ class ScrobbleStopTests(FloppyApiTestCase):
             ).count(),
             1,
         )
+
+    def _stop_episode_payload(self, **overrides):
+        payload = {
+            "action": "stop",
+            "media_type": "episode",
+            "ids": {"tmdb": "1001"},
+            "series_title": "TV Show 1",
+            "season_number": 1,
+            "episode_number": 1,
+            "completed": True,
+        }
+        payload.update(overrides)
+        return payload
+
+    def _resolved_episode_item(self):
+        """A stand-in for the Item resolve_video_item would return."""
+        return SimpleNamespace(
+            media_id="1001",
+            source="tmdb",
+            season_number=1,
+            episode_number=1,
+        )
+
+    @patch(
+        "api.fork_views_scrobble.fork_views_playback.resolve_video_item",
+    )
+    @patch(
+        "api.fork_views_scrobble.GenericScrobbleProcessor.process_payload",
+        return_value=None,
+    )
+    def test_stop_with_score_sets_episode_score(
+        self,
+        _mock_process,
+        mock_resolve_item,
+    ):
+        """A stop event carrying a score sets it on all plays of the episode."""
+        mock_resolve_item.return_value = self._resolved_episode_item()
+
+        response = self.call_api(
+            "post",
+            "api_scrobble",
+            payload=self._stop_episode_payload(score="8.3"),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        scores = set(
+            Episode.objects.filter(
+                related_season=self.season_medias[0],
+                item__episode_number=1,
+            ).values_list("score", flat=True),
+        )
+        self.assertEqual(scores, {Decimal("8.3")})
+
+    @patch(
+        "api.fork_views_scrobble.GenericScrobbleProcessor.process_payload",
+        return_value=None,
+    )
+    def test_stop_with_invalid_score_rejected_before_processing(
+        self,
+        mock_process,
+    ):
+        """An out-of-range score 400s without touching the processor."""
+        response = self.call_api(
+            "post",
+            "api_scrobble",
+            payload=self._stop_episode_payload(score="11"),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+        mock_process.assert_not_called()
+
+    @patch(
+        "api.fork_views_scrobble.fork_views_playback.resolve_video_item",
+    )
+    @patch(
+        "api.fork_views_scrobble.GenericScrobbleProcessor.process_payload",
+        return_value=None,
+    )
+    def test_stop_score_ignored_for_movie(self, _mock_process, mock_resolve_item):
+        """A score sent alongside a movie stop event is a no-op."""
+        response = self.call_api(
+            "post",
+            "api_scrobble",
+            payload={
+                "action": "stop",
+                "media_type": "movie",
+                "ids": {"tmdb": "603"},
+                "title": "The Matrix",
+                "completed": True,
+                "score": "8.3",
+            },
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        mock_resolve_item.assert_not_called()
+
+    @patch(
+        "api.fork_views_scrobble.apply_episode_score",
+        side_effect=RuntimeError("db down"),
+    )
+    @patch(
+        "api.fork_views_scrobble.fork_views_playback.resolve_video_item",
+    )
+    @patch(
+        "api.fork_views_scrobble.GenericScrobbleProcessor.process_payload",
+        return_value=None,
+    )
+    def test_stop_score_failure_does_not_fail_request(
+        self,
+        _mock_process,
+        mock_resolve_item,
+        _mock_apply_score,
+    ):
+        """A best-effort score-write failure never surfaces as a request error."""
+        mock_resolve_item.return_value = self._resolved_episode_item()
+
+        response = self.call_api(
+            "post",
+            "api_scrobble",
+            payload=self._stop_episode_payload(score="8.3"),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK)
 
     def test_stop_resolution_failure_returns_404(self):
         """A provider failure while resolving media returns 404."""
