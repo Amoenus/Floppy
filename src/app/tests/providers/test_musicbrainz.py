@@ -319,6 +319,36 @@ class MusicBrainzReleaseTests(SimpleTestCase):
         )
         self.assertTrue(mock_cache_set.called)
 
+    def test_get_release_for_group_prefers_release_with_most_tracks(self):
+        with (
+            patch("app.providers.musicbrainz.cache.get", return_value=None),
+            patch("app.providers.musicbrainz.cache.set") as mock_cache_set,
+            patch("app.providers.musicbrainz._mb_request") as mock_mb_request,
+        ):
+            mock_mb_request.return_value = {
+                "releases": [
+                    {
+                        "id": "vinyl-reissue",
+                        "status": "official",
+                        "media": [{"format": "Vinyl", "track-count": 12}],
+                    },
+                    {
+                        "id": "digital-original",
+                        "status": "official",
+                        "media": [{"format": "Digital Media", "track-count": 24}],
+                    },
+                ],
+            }
+
+            release_id = musicbrainz.get_release_for_group("group-mbid")
+
+        self.assertEqual(release_id, "digital-original")
+        mock_cache_set.assert_called_once_with(
+            "musicbrainz_release_for_group_group-mbid",
+            "digital-original",
+            60 * 60 * 24 * 7,
+        )
+
 
 class MusicBrainzCombinedSearchTests(SimpleTestCase):
     """Test combined music search result formatting."""

@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
@@ -8,6 +9,7 @@ from app.models import (
     Album,
     Artist,
     MusicReleasePreference,
+    Track,
 )
 
 
@@ -305,3 +307,75 @@ class MusicReleaseViewTests(TestCase):
         self.album.refresh_from_db()
         self.assertEqual(self.album.musicbrainz_release_id, "representative-release")
         self.assertEqual(self.album.image, "https://example.com/default.jpg")
+
+
+class MusicAlbumSyncViewTests(TestCase):
+    """Coverage for resync re-deriving a previously wrong release pick."""
+
+    def setUp(self):
+        self.credentials = {"username": "sync-user", "password": "12345"}
+        get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+        self.artist = Artist.objects.create(name="Test Artist")
+        self.album = Album.objects.create(
+            title="Test Album",
+            artist=self.artist,
+            musicbrainz_release_id="vinyl-reissue",
+            musicbrainz_release_group_id="release-group",
+            tracks_populated=True,
+            image="https://example.com/default.jpg",
+        )
+        Track.objects.create(
+            album=self.album,
+            disc_number=1,
+            track_number=1,
+            title="Stale Track From Wrong Release",
+        )
+        cache.set("musicbrainz_release_for_group_release-group", "vinyl-reissue")
+
+    @patch("app.music_album_views.musicbrainz.get_release")
+    @patch("app.music_album_views.ensure_album_has_release_id")
+    def test_resync_clears_stale_release_group_cache_and_rebuilds_tracks(
+        self,
+        mock_ensure_release_id,
+        mock_get_release,
+    ):
+        def fake_ensure_release_id(album):
+            # The view must clear the previous release_id before calling
+            # this, otherwise a bad pick can never be re-derived.
+            self.assertFalse(album.musicbrainz_release_id)
+            album.musicbrainz_release_id = "digital-original"
+            album.save(update_fields=["musicbrainz_release_id"])
+            return True
+
+        mock_ensure_release_id.side_effect = fake_ensure_release_id
+        mock_get_release.return_value = {
+            "release_group_id": "release-group",
+            "genres": [],
+            "tracks": [
+                {
+                    "disc_number": 1,
+                    "track_number": track_number,
+                    "title": f"Track {track_number}",
+                    "recording_id": f"rec-{track_number}",
+                    "duration_ms": 1000,
+                }
+                for track_number in range(1, 25)
+            ],
+        }
+
+        response = self.client.post(
+            reverse("sync_album_metadata", kwargs={"album_id": self.album.id}),
+        )
+
+        self.assertEqual(response.status_code, 204)
+        self.album.refresh_from_db()
+        self.assertEqual(self.album.musicbrainz_release_id, "digital-original")
+        self.assertIsNone(
+            cache.get("musicbrainz_release_for_group_release-group"),
+        )
+        tracks = Track.objects.filter(album=self.album)
+        self.assertEqual(tracks.count(), 24)
+        self.assertFalse(
+            tracks.filter(title="Stale Track From Wrong Release").exists(),
+        )
