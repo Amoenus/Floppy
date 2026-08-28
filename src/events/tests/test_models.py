@@ -303,6 +303,71 @@ class EventManagerTests(TestCase):
             limited_events,
         )  # Past event, but filtered by active status
 
+    def test_get_user_events_hides_dropped_season_and_later(self):
+        """A dropped/paused season hides itself and every later season (regression for #1005 perf rewrite)."""
+        dropped_tv_item = Item.objects.create(
+            media_id="9999",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Dropped Partway Show",
+        )
+        TV.objects.create(
+            user=self.user,
+            item=dropped_tv_item,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        season1_item = Item.objects.create(
+            media_id="9999",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Dropped Partway Show",
+            season_number=1,
+        )
+        season2_item = Item.objects.create(
+            media_id="9999",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Dropped Partway Show",
+            season_number=2,
+        )
+        season3_item = Item.objects.create(
+            media_id="9999",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Dropped Partway Show",
+            season_number=3,
+        )
+        Season.objects.create(
+            user=self.user,
+            item=season2_item,
+            status=Status.DROPPED.value,
+        )
+
+        season1_event = Event.objects.create(
+            item=season1_item,
+            content_number=1,
+            datetime=self.tomorrow,
+        )
+        season2_event = Event.objects.create(
+            item=season2_item,
+            content_number=1,
+            datetime=self.tomorrow,
+        )
+        season3_event = Event.objects.create(
+            item=season3_item,
+            content_number=1,
+            datetime=self.tomorrow,
+        )
+
+        today = self.base_date.date()
+        next_week = today + datetime.timedelta(days=7)
+        events = Event.objects.get_user_events(self.user, today, next_week)
+
+        self.assertIn(season1_event, events)
+        self.assertNotIn(season2_event, events)
+        self.assertNotIn(season3_event, events)
+
 
 class EventManagerCrossProviderDedupTests(TestCase):
     """The calendar must not show the same real episode twice (#639)."""

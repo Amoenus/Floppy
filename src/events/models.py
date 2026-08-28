@@ -3,11 +3,10 @@ from datetime import UTC, datetime
 from django.db import models
 from django.db.models import (
     Case,
+    Exists,
     IntegerField,
-    Min,
     OuterRef,
     Q,
-    Subquery,
     UniqueConstraint,
     Value,
     When,
@@ -225,46 +224,25 @@ class EventManager(models.Manager):
         if not active_tv_shows:
             return Q()
 
-        # Subquery to find the first season with inactive status for each TV show
-        first_dropped_seasons = (
+        # A dropped/paused season hides itself and every later season of the
+        # same show. Checking "does an inactive season at or before this
+        # season's number exist" via a correlated Exists avoids compiling one
+        # OR clause per active show with a dropped season.
+        dropped_season_exists = Exists(
             Season.objects.filter(
                 user=user,
-                item__media_id=OuterRef("media_id"),
+                item__media_id=OuterRef("item__media_id"),
                 status__in=INACTIVE_TRACKING_STATUSES,
-            )
-            .values("item__media_id")
-            .annotate(min_season=Min("item__season_number"))
-            .values("min_season")
+                item__season_number__lte=OuterRef("item__season_number"),
+            ),
         )
-
-        # Get all media_ids and their first dropped season numbers
-        dropped_seasons = (
-            Item.objects.filter(
-                media_id__in=active_tv_shows,
-                media_type=MediaTypes.SEASON.value,
-            )
-            .annotate(
-                first_dropped_season=Subquery(first_dropped_seasons),
-            )
-            .filter(first_dropped_season__isnull=False)
-            .values_list("media_id", "first_dropped_season")
-        )
-
-        # Build exclusion query
-        exclude_query = Q()
-        for media_id, first_dropped_season in dropped_seasons:
-            exclude_query |= Q(
-                item__media_type=MediaTypes.SEASON.value,
-                item__media_id=media_id,
-                item__season_number__gte=first_dropped_season,
-            )
 
         return (
             Q(
                 item__media_type=MediaTypes.SEASON.value,
                 item__media_id__in=active_tv_shows,
             )
-            & ~exclude_query
+            & ~Q(dropped_season_exists)
         )
 
     def sort_with_sentinel_last(self, queryset):
