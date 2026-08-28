@@ -644,9 +644,26 @@ html.light .theme-toggle-icon-moon {
 }
 
 @media (min-width: 768px) {
+  /* Default to the pre-carousel arrangement -- poster beside the
+     title/chips/synopsis column, carousel pane hidden -- so a page whose
+     carousel hasn't resolved yet (or never will) never shows the carousel's
+     dead second column. Only once #detail-carousel-wrap is confirmed to
+     hold a trailer/photos does the :has() rule below expand into the
+     carousel's own two-row layout. */
   .detail-carousel-grid {
     column-gap: 2.5rem;
     grid-template-columns: 250px minmax(0, 1fr);
+    grid-template-areas: "poster header" "poster chips" "poster synopsis";
+  }
+
+  .detail-carousel-grid__header {
+    margin-top: 0;
+  }
+
+  /* Carousel confirmed non-empty: expand to the carousel's own two-row
+     layout (title/actions spanning full width, carousel next to the
+     poster) instead of the pre-carousel column arrangement above. */
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) {
     grid-template-areas:
       "poster carousel"
       "header header"
@@ -654,28 +671,12 @@ html.light .theme-toggle-icon-moon {
       "synopsis synopsis";
   }
 
-  .detail-carousel-grid__carousel {
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-carousel-grid__carousel {
     display: block;
   }
 
-  .detail-carousel-grid__header {
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-carousel-grid__header {
     margin-top: 1.5rem;
-  }
-
-  /* No trailer/photos to show (fragment swapped in empty): fall back to the
-     pre-carousel arrangement, poster beside the title/chips/synopsis column
-     instead of a carousel next to it, rather than stacking full-width rows
-     below the poster and leaving its column dead. */
-  .detail-carousel-grid:has(#detail-carousel-wrap:empty) {
-    grid-template-areas: "poster header" "poster chips" "poster synopsis";
-  }
-
-  .detail-carousel-grid:has(#detail-carousel-wrap:empty) .detail-carousel-grid__carousel {
-    display: none;
-  }
-
-  .detail-carousel-grid:has(#detail-carousel-wrap:empty) .detail-carousel-grid__header {
-    margin-top: 0;
   }
 }
 
