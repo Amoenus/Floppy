@@ -794,6 +794,19 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "if (selectMode) { $event.preventDefault(); toggleItemSelected(")
 
+    def test_table_layout_shows_notes_on_main_media_list(self):
+        """Notes must render in Table View on the main media list (issue #1010)."""
+        movie = Movie.objects.get(item__title="Test Movie 1", user=self.user)
+        movie.notes = "My private note"
+        movie.save(update_fields=["notes"])
+
+        response = self.client.get(
+            reverse("medialist", args=[MediaTypes.MOVIE.value]) + "?layout=table",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "My private note")
+
     def test_movie_grid_counts_completed_plays_when_progress_is_zero(self):
         """Completed movie duplicates should count as plays even when progress is zero."""
         item = Item.objects.get(
