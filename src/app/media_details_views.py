@@ -863,7 +863,9 @@ def media_details(
                     media_type,
                     media_id,
                     source,
-                    language=metadata_resolution.metadata_language_default(request.user),
+                    language=metadata_resolution.metadata_language_default(
+                        request.user, detail_item
+                    ),
                     user=request.user,
                     **metadata_kwargs,
                 )
@@ -931,7 +933,9 @@ def media_details(
             media_type,
             media_id,
             source,
-            language=metadata_resolution.metadata_language_default(request.user),
+            language=metadata_resolution.metadata_language_default(
+                request.user, detail_item
+            ),
             user=request.user,
         )
         if isinstance(media_metadata, dict):
@@ -951,7 +955,9 @@ def media_details(
             media_type,
             media_id,
             source,
-            language=metadata_resolution.metadata_language_default(request.user),
+            language=metadata_resolution.metadata_language_default(
+                request.user, detail_item
+            ),
             user=request.user,
         )
         if isinstance(media_metadata, dict):
@@ -1400,7 +1406,7 @@ def media_details(
                     source,
                     [0],
                     language=metadata_resolution.metadata_language_default(
-                        request.user
+                        request.user, detail_item
                     ),
                 )
                 if isinstance(specials_metadata, dict) and specials_metadata.get(
@@ -1438,7 +1444,7 @@ def media_details(
                         source,
                         season_numbers,
                         language=metadata_resolution.metadata_language_default(
-                            request.user
+                            request.user, detail_item
                         ),
                     )
                 except services.ProviderAPIError:
@@ -1898,7 +1904,7 @@ def media_details(
                         tmdb_media_id,
                         Sources.TMDB.value,
                         language=metadata_resolution.metadata_language_default(
-                            request.user
+                            request.user, detail_item
                         ),
                     )
                 except services.ProviderAPIError:

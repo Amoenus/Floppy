@@ -194,6 +194,7 @@ from app.metadata_sync_views import (
     sync_metadata,
     update_item_image,
     update_manual_item_metadata,
+    update_metadata_language_preference,
     update_metadata_provider_preference,
 )
 from app.models import (
@@ -2312,6 +2313,7 @@ __all__ = [
     "update_item_image",
     "update_manual_item_metadata",
     "update_media_score",
+    "update_metadata_language_preference",
     "update_metadata_provider_preference",
     "update_statistics_compare_mode",
     "update_statistics_preferences",

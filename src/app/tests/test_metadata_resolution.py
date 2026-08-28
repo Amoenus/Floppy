@@ -2,6 +2,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
 from django.db.utils import OperationalError
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -28,6 +29,63 @@ class MetadataResolutionTests(TestCase):
             username="resolver",
             password="pw12345",
         )
+
+    def test_metadata_language_default_falls_back_to_global_without_item(self):
+        """No item should mean the user's global language preference applies."""
+        self.user.metadata_language = "fr"
+
+        language = metadata_resolution.metadata_language_default(self.user)
+
+        self.assertEqual(language, "fr")
+
+    def test_metadata_language_default_falls_back_to_global_without_preference(self):
+        """An item with no stored language preference should use the global default."""
+        self.user.metadata_language = "fr"
+        item = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+        )
+
+        language = metadata_resolution.metadata_language_default(self.user, item)
+
+        self.assertEqual(language, "fr")
+
+    def test_metadata_language_default_uses_item_override(self):
+        """A per-item language preference should win over the global default."""
+        self.user.metadata_language = "fr"
+        item = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+        )
+        MetadataProviderPreference.objects.create(
+            user=self.user,
+            item=item,
+            language="ja",
+        )
+
+        language = metadata_resolution.metadata_language_default(self.user, item)
+
+        self.assertEqual(language, "ja")
+
+    def test_metadata_language_default_ignores_item_for_unauthenticated_user(self):
+        """An unauthenticated user should never trigger a preference lookup."""
+        item = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+        )
+
+        language = metadata_resolution.metadata_language_default(
+            AnonymousUser(),
+            item,
+        )
+
+        self.assertEqual(language, metadata_resolution.settings.TMDB_LANG)
 
     def test_metadata_default_source_falls_back_when_tvdb_is_disabled(self):
         """TV defaults should fall back to TMDB when TVDB is unavailable."""

@@ -256,7 +256,9 @@ def season_details(
             media_id,
             source,
             [season_number],
-            language=metadata_resolution.metadata_language_default(request.user),
+            language=metadata_resolution.metadata_language_default(
+                request.user, show_item
+            ),
         )
         season_metadata = tv_with_seasons_metadata.get(season_key)
         season_metadata_missing = season_metadata is None
