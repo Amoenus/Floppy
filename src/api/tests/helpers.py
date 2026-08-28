@@ -243,6 +243,7 @@ def check_media_structure(test_case, item):
     test_case.assertIn("notes", item)
     test_case.assertIn("lists", item)
     test_case.assertIn("next_episode", item)
+    test_case.assertIn("show", item)
     for lst in item["lists"]:
         check_minimized_lists_structure(test_case, lst)
 

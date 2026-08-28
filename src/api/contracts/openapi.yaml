@@ -3282,6 +3282,28 @@ components:
       - media_type
       - source
       - title
+    Show:
+      type: object
+      description: The parent show/podcast for an episode-like tracked media entry.
+      properties:
+        id:
+          type: integer
+          nullable: true
+        title:
+          type: string
+        slug:
+          type: string
+        podcast_uuid:
+          type: string
+          nullable: true
+        image:
+          type: string
+      required:
+      - id
+      - image
+      - podcast_uuid
+      - slug
+      - title
     StateEnum:
       enum:
       - ready
@@ -3425,6 +3447,10 @@ components:
           allOf:
           - $ref: '#/components/schemas/NextEpisode'
           nullable: true
+        show:
+          allOf:
+          - $ref: '#/components/schemas/Show'
+          nullable: true
       required:
       - consumption_id
       - created_at
@@ -3441,6 +3467,7 @@ components:
       - progress_unit
       - progressed_at
       - score
+      - show
       - start_date
       - status
       - tracked

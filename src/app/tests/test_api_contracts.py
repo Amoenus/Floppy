@@ -415,11 +415,16 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 "notes",
                 "lists",
                 "next_episode",
+                "show",
             },
         )
         self.assertEqual(
             set(schemas["NextEpisode"]["properties"]),
             {"season_number", "episode_number", "air_date"},
+        )
+        self.assertEqual(
+            set(schemas["Show"]["properties"]),
+            {"id", "title", "slug", "podcast_uuid", "image"},
         )
         self.assertEqual(
             set(schemas["ConsumptionResponse"]["properties"]),

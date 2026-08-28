@@ -79,6 +79,7 @@ class MediaCoreTests(FloppyApiTestCase):
                     "notes",
                     "lists",
                     "next_episode",
+                    "show",
                 },
             )
 

@@ -151,6 +151,16 @@ class NextEpisodeSerializer(serializers.Serializer):
     air_date = serializers.DateTimeField(allow_null=True)
 
 
+class ShowSerializer(serializers.Serializer):
+    """The parent show/podcast for an episode-like tracked media entry."""
+
+    id = serializers.IntegerField(allow_null=True)
+    title = serializers.CharField(allow_blank=True)
+    slug = serializers.CharField(allow_blank=True)
+    podcast_uuid = serializers.CharField(allow_null=True)
+    image = serializers.CharField(allow_blank=True)
+
+
 class TrackedMediaResponseSerializer(serializers.Serializer):
     """Exact MediaSerializer representation returned after tracking."""
 
@@ -172,6 +182,7 @@ class TrackedMediaResponseSerializer(serializers.Serializer):
     notes = serializers.CharField(allow_blank=True, allow_null=True)
     lists = serializers.ListField(child=serializers.DictField())
     next_episode = NextEpisodeSerializer(allow_null=True)
+    show = ShowSerializer(allow_null=True)
 
 
 class TrackedMediaEnvelopeSerializer(serializers.Serializer):

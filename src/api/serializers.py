@@ -5,6 +5,7 @@ from rest_framework import serializers
 from app import helpers as app_helpers
 from app.backdrops import resolve_backdrop  # FORK: horizontal artwork
 from app.helpers import build_provider_ids
+from app.history_entry_builders import _serialize_show
 from app.models import (
     TV,
     Anime,
@@ -458,6 +459,7 @@ class EpisodeSerializer(serializers.ModelSerializer):
                 "notes": instance.notes,
                 "lists": lists_by_item_id.get(item.id, []),
                 "next_episode": None,
+                "show": None,
             }
 
         media_id = instance.get("show_id")
@@ -540,6 +542,7 @@ class EpisodeSerializer(serializers.ModelSerializer):
             "notes": None,
             "lists": lists,
             "next_episode": None,
+            "show": None,
         }
 
 
@@ -774,6 +777,14 @@ class MediaSerializer(serializers.ModelSerializer):
                 lists_by_item_id = self.context.get("lists_by_item_id", {})
                 lists = lists_by_item_id.get(item.id, [])
 
+        show = None
+        if isinstance(instance, Podcast):
+            show = (
+                instance.episode.show
+                if instance.episode and instance.episode.show
+                else instance.show
+            )
+
         return {
             "id": item.id if item is not None else None,
             "consumption_id": instance.id,
@@ -815,6 +826,7 @@ class MediaSerializer(serializers.ModelSerializer):
             "notes": instance.notes if hasattr(instance, "notes") else None,
             "lists": lists,
             "next_episode": next_episode,
+            "show": _serialize_show(show),
         }
 
 
@@ -871,6 +883,7 @@ class UntrackedMediaSerializer(serializers.Serializer):
             "notes": None,
             "lists": lists,
             "next_episode": None,
+            "show": None,
         }
 
 
