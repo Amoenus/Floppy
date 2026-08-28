@@ -1,6 +1,7 @@
 import logging
 
 from django.conf import settings
+from django.contrib import messages
 from django.db.models import Q
 from django.shortcuts import render
 from django.views.decorators.http import require_GET
@@ -305,14 +306,28 @@ def media_search(request):
         source = source_options[0].value
 
     search_page = 1 if media_type == MediaTypes.MUSIC.value else page
-    data = services.search(
-        media_type,
-        query,
-        search_page,
-        source,
-        user=request.user,
-        language=metadata_resolution.metadata_language_default(request.user),
-    )
+    try:
+        with services.interactive_request_scope():
+            data = services.search(
+                media_type,
+                query,
+                search_page,
+                source,
+                user=request.user,
+                language=metadata_resolution.metadata_language_default(request.user),
+            )
+    except services.ProviderAPIError as exc:
+        logger.warning(
+            "Search failed for media_type=%s query=%s: %s",
+            media_type,
+            query,
+            exception_summary(exc),
+        )
+        messages.error(
+            request,
+            f"{exc.provider_label} is currently unavailable. Please try again shortly.",
+        )
+        data = {"page": 1, "total_results": 0, "total_pages": 0, "results": []}
 
     if media_type == MediaTypes.MUSIC.value:
         context = {

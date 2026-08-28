@@ -15,6 +15,7 @@ from app.models import (
     Sources,
     Status,
 )
+from app.providers import services
 from users.models import MetadataSourceDefaultChoices
 
 
@@ -231,3 +232,44 @@ class MediaSearchViewTests(TestCase):
             language="en",
             user=self.user,
         )
+
+    @patch("app.providers.services.search")
+    def test_search_uses_interactive_request_scope(self, mock_search):
+        """Rate-limit retries must fail fast, not block the request (#1001)."""
+
+        def assert_interactive(*args, **kwargs):
+            self.assertTrue(services._interactive_request.get())
+            return {
+                "page": 1,
+                "total_results": 0,
+                "total_pages": 0,
+                "results": [],
+            }
+
+        mock_search.side_effect = assert_interactive
+
+        response = self.client.get(
+            reverse("search") + "?media_type=book&q=test",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_search.assert_called_once()
+        self.assertFalse(services._interactive_request.get())
+
+    @patch("app.providers.services.search")
+    def test_search_provider_error_renders_page_with_message(self, mock_search):
+        """A provider failure (e.g. exhausted rate-limit retries) must not 500 (#1001)."""
+        mock_search.side_effect = services.ProviderAPIError(
+            Sources.HARDCOVER.value, Exception("boom")
+        )
+
+        response = self.client.get(
+            reverse("search") + "?media_type=book&q=test",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "app/search.html")
+        messages = list(response.context["messages"])
+        self.assertEqual(len(messages), 1)
+        self.assertIn("Hardcover", str(messages[0]))
+        self.assertIn("unavailable", str(messages[0]))
