@@ -451,16 +451,23 @@ def make_page_url(request, limit, new_offset):
     return request.build_absolute_uri(request.path + "?" + params.urlencode())
 
 
-def paginate_data(request, results, limit, offset, *, total=None):
+def paginate_data(request, results, limit, offset, *, total=None, already_sliced=False):
     """Paginate the results based on the limit and offset.
 
     Returns raw paginated data without serialization.
     Serialization should be handled by the view.
+
+    `already_sliced=True` skips the results[offset:offset+limit] slice —
+    for callers (the media-list SQL fast path, #1004) whose `results` were
+    already paginated at the database layer, where re-slicing by `offset`
+    against an already-page-sized list would wrongly return nothing.
+    `total` must be passed alongside it, since len(results) is no longer
+    the true total in that case.
     """
     total_count = len(results) if total is None else total
     start = offset
     end = offset + limit
-    paginated = results[start:end]
+    paginated = results if already_sliced else results[start:end]
 
     next_url = None
     prev_url = None

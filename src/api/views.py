@@ -864,14 +864,18 @@ def _media_list_response(request, media_type=None):
 
     try:
         filters = parse_media_list_filters(request)
-        entries = get_media_list_entries(request.user, media_type, filters)
+        entries, total = get_media_list_entries(
+            request.user, media_type, filters, limit=limit, offset=offset,
+        )
     except MediaListFilterError as error:
         return Response(
             {"detail": f"Invalid {error.parameter}: {error}"},
             status=HTTP.BAD_REQUEST,
         )
 
-    paginated_data = paginate_data(request, entries, limit, offset)
+    paginated_data = paginate_data(
+        request, entries, limit, offset, total=total, already_sliced=total is not None,
+    )
     page_entries = paginated_data["results"]
     _rehydrate_deferred_items(page_entries)
     lists_by_item_id = build_lists_by_item_id(request.user, page_entries)

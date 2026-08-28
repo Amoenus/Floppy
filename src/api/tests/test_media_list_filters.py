@@ -1,9 +1,14 @@
+from dataclasses import replace
+from decimal import Decimal
 from http import HTTPStatus as HTTP  # noqa: N814
+from unittest import mock
 
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
+from app.media_list_filters import MediaListFilters
+from app.media_list_pagination import can_paginate_in_sql
 from app.models import (
     TV,
     CollectionEntry,
@@ -395,4 +400,370 @@ class MediaListQueryBudgetTests(FloppyApiTestCase):
             "list-membership lookup should be a single batched query "
             f"regardless of how many page items belong to a list; got "
             f"{len(list_membership_queries)}: {list_membership_queries}",
+        )
+
+    def test_collection_context_skipped_without_platform_or_format_filter(self):
+        """No CollectionEntry queries fire unless platform/format filters are set (#1004)."""
+        self._seed_extra_games(10)
+
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(
+                "/api/v1/media/game/",
+                {"limit": 10},
+                **self.auth_headers,
+            )
+        self.assertEqual(response.status_code, HTTP.OK)
+        collection_queries = [
+            query
+            for query in ctx.captured_queries
+            if "app_collectionentry" in query["sql"].lower()
+        ]
+        self.assertEqual(
+            collection_queries,
+            [],
+            "unfiltered list request queried CollectionEntry despite no "
+            "platform/format filter being requested.",
+        )
+
+        with CaptureQueriesContext(connection) as filtered_ctx:
+            response = self.client.get(
+                "/api/v1/media/game/",
+                {"limit": 10, "platform": "PC"},
+                **self.auth_headers,
+            )
+        self.assertEqual(response.status_code, HTTP.OK)
+        filtered_collection_queries = [
+            query
+            for query in filtered_ctx.captured_queries
+            if "app_collectionentry" in query["sql"].lower()
+        ]
+        self.assertGreater(
+            len(filtered_collection_queries),
+            0,
+            "platform-filtered request should still query CollectionEntry.",
+        )
+
+
+class MediaListTagSqlFilterTests(FloppyApiTestCase):
+    """Tag filtering is pushed to SQL for every media-list code path (#1004).
+
+    Covers the bespoke Episode queryset, the primary BasicMedia queryset, and
+    the anime-library "grouped" TV queryset — the three separate places tag
+    filtering must apply now that it's no longer a single Python re-check
+    shared by every entry regardless of which query produced it.
+    """
+
+    def test_episode_type_filters_by_tag(self):
+        """The bespoke Episode queryset (no BasicMedia manager) still tag-filters."""
+        tagged_item = self.episode_medias[0].item
+        untagged_item = self.episode_medias[1].item
+        tag = Tag.objects.create(user=self.user1, name="watch-again")
+        ItemTag.objects.create(tag=tag, item=tagged_item)
+
+        response = self.client.get(
+            "/api/v1/media/episode/",
+            {"tag": "watch-again"},
+            **self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        result_media_ids = {
+            entry["item"]["media_id"] for entry in response.json()["results"]
+        }
+        self.assertIn(tagged_item.media_id, result_media_ids)
+        # Untagged episode shares the same media_id/source (same show) — the
+        # tag filter still narrows to the exact tagged Item row.
+        untagged_ids = {
+            entry["item"].get("id") for entry in response.json()["results"]
+        }
+        self.assertNotIn(untagged_item.id, untagged_ids)
+
+    def test_anime_type_filters_grouped_entries_by_tag(self):
+        """Tag filtering also applies to the anime-library "grouped" TV query."""
+        library_mode_field = "anime_library_mode"
+        self.user1.__class__.objects.filter(pk=self.user1.pk).update(
+            **{library_mode_field: "both"},
+        )
+        tv_anime_item = self.items_by_type[MediaTypes.TV.value][0]
+        tv_anime_item.library_media_type = MediaTypes.ANIME.value
+        tv_anime_item.save(update_fields=["library_media_type"])
+        native_anime_item = self.anime_medias[0].item
+
+        tag = Tag.objects.create(user=self.user1, name="seasonal")
+        ItemTag.objects.create(tag=tag, item=tv_anime_item)
+
+        response = self.client.get(
+            "/api/v1/media/anime/",
+            {"tag": "seasonal"},
+            **self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        result_media_ids = {
+            entry["item"]["media_id"] for entry in response.json()["results"]
+        }
+        self.assertIn(tv_anime_item.media_id, result_media_ids)
+        self.assertNotIn(native_anime_item.media_id, result_media_ids)
+
+
+class MediaListSqlPushdownTests(FloppyApiTestCase):
+    """The SQL fast path for /api/v1/media/<type>/ (#1004).
+
+    The reporter's own repro: ~2,500 games in one status, sorted by
+    start_date, took 778ms and 75 queries because the whole status-filtered
+    set was materialized (dedup window function + prefetch_related + a full
+    Python filter/sort pass) before slicing to `limit`. These tests prove
+    the fast path (a) actually slices in SQL instead of scanning the full
+    set, and (b) produces identical ordering to the untouched Python path
+    for sort keys that read cross-entry aggregates (start_date/end_date/
+    score/progress), where a naive per-status window function would
+    silently disagree with `_aggregate_item_data`'s "across all of the
+    item's entries, any status" semantics.
+    """
+
+    def _seed_games(self, count, *, start=0, status=Status.IN_PROGRESS.value):
+        for index in range(start, start + count):
+            item = Item.objects.create(
+                media_id=f"sql-pushdown-game-{index}",
+                source=Sources.IGDB.value,
+                media_type=MediaTypes.GAME.value,
+                title=f"SQL Pushdown Game {index}",
+            )
+            Game.objects.create(item=item, user=self.user1, status=status)
+
+    def test_fast_path_slices_in_sql_not_in_python(self):
+        """A busy status doesn't get fully materialized to serve one page."""
+        self._seed_games(300)
+
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(
+                "/api/v1/media/game/",
+                {"status": "1", "limit": 10, "sort": "start_date", "direction": "asc"},
+                **self.auth_headers,
+            )
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(len(response.json()["results"]), 10)
+        self.assertEqual(response.json()["pagination"]["total"], 300)
+
+        queries = len(ctx.captured_queries)
+        self.assertLessEqual(
+            queries,
+            20,
+            f"{queries} queries to serve a 10-item page out of a 300-row "
+            "status — budget is 20. If this is intentional, update the pin.",
+        )
+        limited_queries = [
+            query for query in ctx.captured_queries if "LIMIT 10" in query["sql"]
+        ]
+        self.assertTrue(
+            limited_queries,
+            "expected at least one captured query with a SQL LIMIT clause — "
+            "pagination should happen in the database, not in Python after "
+            "fetching every row. Captured SQL: "
+            f"{[q['sql'] for q in ctx.captured_queries]}",
+        )
+
+    def test_fast_path_query_count_does_not_scale_with_library_size(self):
+        """Same scaling proof as MediaListQueryBudgetTests, for an aggregated sort key."""
+        self._seed_games(5)
+        with CaptureQueriesContext(connection) as small_ctx:
+            response = self.client.get(
+                "/api/v1/media/game/",
+                {"status": "1", "limit": 10, "sort": "start_date"},
+                **self.auth_headers,
+            )
+        self.assertEqual(response.status_code, HTTP.OK)
+        small_queries = len(small_ctx.captured_queries)
+
+        self._seed_games(200, start=5)
+        with CaptureQueriesContext(connection) as big_ctx:
+            response = self.client.get(
+                "/api/v1/media/game/",
+                {"status": "1", "limit": 10, "sort": "start_date"},
+                **self.auth_headers,
+            )
+        self.assertEqual(response.status_code, HTTP.OK)
+        big_queries = len(big_ctx.captured_queries)
+
+        self.assertLessEqual(
+            big_queries,
+            small_queries + 2,
+            f"query count grew from {small_queries} to {big_queries} as the "
+            "library grew — the SQL fast path is scaling with library size "
+            "again, not just the requested page.",
+        )
+
+    def _make_item_with_plays(self, media_id, plays):
+        """Create one Item with several Game rows (repeats/rewatches)."""
+        item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title=f"Repeats {media_id}",
+        )
+        for status, start_date, score in plays:
+            Game.objects.create(
+                item=item,
+                user=self.user1,
+                status=status,
+                start_date=start_date,
+                score=score,
+            )
+        return item
+
+    def _ordering_for(self, params):
+        response = self.client.get(
+            "/api/v1/media/game/", params, **self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        return [entry["item"]["media_id"] for entry in response.json()["results"]]
+
+    def test_aggregated_start_date_sort_matches_python_baseline_with_repeats(self):
+        """start_date sort reads the item's earliest entry across ALL statuses.
+
+        Item A's earliest entry is an old DROPPED play; its IN_PROGRESS entry
+        (the one visible under `status=1`) started much later. A naive
+        per-status window function would see only the IN_PROGRESS row and
+        rank Item A after Item B — the fast path must still use Item A's
+        true earliest start_date (from the DROPPED row) to match
+        `_aggregate_item_data`'s cross-status semantics, exactly like the
+        untouched Python fallback path does.
+        """
+        item_a = self._make_item_with_plays(
+            "repeats-a",
+            [
+                (Status.DROPPED.value, timezone.datetime(2020, 1, 1, tzinfo=timezone.get_default_timezone()), None),
+                (Status.IN_PROGRESS.value, timezone.datetime(2023, 1, 1, tzinfo=timezone.get_default_timezone()), None),
+            ],
+        )
+        item_b = self._make_item_with_plays(
+            "repeats-b",
+            [
+                (Status.IN_PROGRESS.value, timezone.datetime(2022, 6, 1, tzinfo=timezone.get_default_timezone()), None),
+            ],
+        )
+
+        params = {
+            "status": "1",
+            "limit": 10,
+            "sort": "start_date",
+            "direction": "asc",
+        }
+        fast_path_order = self._ordering_for(params)
+        with mock.patch(
+            "app.media_list_filters.can_paginate_in_sql", return_value=False,
+        ):
+            fallback_order = self._ordering_for(params)
+
+        self.assertEqual(fast_path_order, fallback_order)
+        self.assertEqual(
+            [item_a.media_id, item_b.media_id],
+            fast_path_order,
+            "Item A's aggregated start_date (2020, from its dropped play) "
+            "should sort before Item B's (2022) even though only Item A's "
+            "*visible* IN_PROGRESS row (2023) is later than Item B's.",
+        )
+
+    def test_aggregated_score_sort_matches_python_baseline(self):
+        """Score sort uses the most-recently-active entry's score, any status."""
+        item_a = self._make_item_with_plays(
+            "repeats-score-a",
+            [
+                (
+                    Status.DROPPED.value,
+                    timezone.datetime(2020, 1, 1, tzinfo=timezone.get_default_timezone()),
+                    Decimal("3.0"),
+                ),
+                (
+                    Status.IN_PROGRESS.value,
+                    timezone.datetime(2024, 1, 1, tzinfo=timezone.get_default_timezone()),
+                    None,
+                ),
+            ],
+        )
+        item_b = self._make_item_with_plays(
+            "repeats-score-b",
+            [
+                (
+                    Status.IN_PROGRESS.value,
+                    timezone.datetime(2022, 6, 1, tzinfo=timezone.get_default_timezone()),
+                    Decimal("8.0"),
+                ),
+            ],
+        )
+
+        params = {"status": "1", "limit": 10, "sort": "score", "direction": "desc"}
+        fast_path_order = self._ordering_for(params)
+        with mock.patch(
+            "app.media_list_filters.can_paginate_in_sql", return_value=False,
+        ):
+            fallback_order = self._ordering_for(params)
+
+        self.assertEqual(fast_path_order, fallback_order)
+        # Item A's aggregated score falls back to its dropped play's score
+        # (3.0) since its visible in_progress row has no score of its own —
+        # still below Item B's 8.0.
+        self.assertEqual([item_b.media_id, item_a.media_id], fast_path_order)
+
+    def test_fallback_path_still_used_for_python_only_filters(self):
+        """Rating/collection/author/tags-with-format filters keep routing to fallback."""
+        self._seed_games(3)
+        for params in (
+            {"status": "1", "rating": "rated"},
+            {"status": "1", "collection": "collected"},
+            {"status": "1", "sort": "author"},
+        ):
+            response = self.client.get(
+                "/api/v1/media/game/", params, **self.auth_headers,
+            )
+            self.assertEqual(response.status_code, HTTP.OK, params)
+
+    def test_can_paginate_in_sql_eligibility(self):
+        """Direct coverage of the routing decision itself (app.media_list_pagination)."""
+        base = MediaListFilters()
+        self.assertTrue(can_paginate_in_sql(base, MediaTypes.GAME.value, "start_date"))
+        self.assertTrue(can_paginate_in_sql(base, MediaTypes.GAME.value, ""))
+        self.assertTrue(can_paginate_in_sql(base, MediaTypes.GAME.value, "title"))
+
+        self.assertFalse(can_paginate_in_sql(base, None, "title"))
+        self.assertFalse(can_paginate_in_sql(base, MediaTypes.TV.value, "title"))
+        self.assertFalse(can_paginate_in_sql(base, MediaTypes.ANIME.value, "title"))
+        self.assertFalse(can_paginate_in_sql(base, MediaTypes.EPISODE.value, "title"))
+        self.assertFalse(can_paginate_in_sql(base, MediaTypes.GAME.value, "author"))
+        self.assertFalse(can_paginate_in_sql(base, MediaTypes.GAME.value, "runtime"))
+
+        self.assertFalse(
+            can_paginate_in_sql(
+                replace(base, include_no_status=True), MediaTypes.GAME.value, "title",
+            ),
+        )
+        self.assertFalse(
+            can_paginate_in_sql(
+                replace(base, rating="rated"), MediaTypes.GAME.value, "title",
+            ),
+        )
+        self.assertFalse(
+            can_paginate_in_sql(
+                replace(base, collection="collected"), MediaTypes.GAME.value, "title",
+            ),
+        )
+        self.assertFalse(
+            can_paginate_in_sql(
+                replace(base, format="digital"), MediaTypes.GAME.value, "title",
+            ),
+        )
+        # Game platforms are SQL-filterable; other types' aren't.
+        self.assertTrue(
+            can_paginate_in_sql(
+                replace(base, platforms=("PC",)), MediaTypes.GAME.value, "title",
+            ),
+        )
+        self.assertFalse(
+            can_paginate_in_sql(
+                replace(base, platforms=("PC",)), MediaTypes.MOVIE.value, "title",
+            ),
+        )
+        # Tags are SQL-safe unconditionally now (#1004) — do not force fallback.
+        self.assertTrue(
+            can_paginate_in_sql(
+                replace(base, tags=("favorite",)), MediaTypes.GAME.value, "title",
+            ),
         )
