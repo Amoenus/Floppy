@@ -3135,6 +3135,39 @@ def import_storygraph(request):
     return _integration_redirect(request, connected_slug="storygraph")
 
 
+@require_POST
+def import_tvtime(request):
+    """View for importing watch history from TV Time's GDPR export CSVs."""
+    shows_file = request.FILES.get("tvtime_shows_csv")
+    movies_file = request.FILES.get("tvtime_movies_csv")
+
+    if not shows_file and not movies_file:
+        messages.error(
+            request,
+            "Select at least one TV Time CSV file (shows and/or movies).",
+        )
+        return _integration_redirect(request)
+
+    mode = request.POST["mode"]
+    if shows_file:
+        tasks.import_tvtime_shows.delay(
+            user_id=request.user.id,
+            file=_read_uploaded_file(shows_file),
+            mode=mode,
+        )
+    if movies_file:
+        tasks.import_tvtime_movies.delay(
+            user_id=request.user.id,
+            file=_read_uploaded_file(movies_file),
+            mode=mode,
+        )
+    messages.info(
+        request,
+        "The task to import media from TV Time CSV file(s) has been queued.",
+    )
+    return _integration_redirect(request, connected_slug="tvtime")
+
+
 @require_GET
 def import_template_csv(request):
     """View for downloading a sample CSV demonstrating the import format."""

@@ -74,6 +74,7 @@ urlpatterns = [
     path("import/goodreads", views.import_goodreads, name="import_goodreads"),
     path("import/hardcover", views.import_hardcover, name="import_hardcover"),
     path("import/storygraph", views.import_storygraph, name="import_storygraph"),
+    path("import/tvtime", views.import_tvtime, name="import_tvtime"),
     path(
         "import/audiobookshelf/connect",
         views.audiobookshelf_connect,

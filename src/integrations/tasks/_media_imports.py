@@ -35,6 +35,7 @@ from integrations.imports import (
     trakt,
     trakt_collection,
     trakt_export,
+    tvtime,
     xbox,
     yamtrack,
 )
@@ -338,6 +339,18 @@ def import_hardcover(file, user_id, mode):
 def import_storygraph(file, user_id, mode):
     """Celery task for importing media data from StoryGraph."""
     return import_media(storygraph.importer, _coerce_uploaded_file(file), user_id, mode)
+
+
+@shared_task(name="Import from TV Time (shows)")
+def import_tvtime_shows(file, user_id, mode):
+    """Celery task for importing episode watch history from a TV Time CSV."""
+    return import_media(tvtime.importer_shows, _coerce_uploaded_file(file), user_id, mode)
+
+
+@shared_task(name="Import from TV Time (movies)")
+def import_tvtime_movies(file, user_id, mode):
+    """Celery task for importing movie watch activity from a TV Time CSV."""
+    return import_media(tvtime.importer_movies, _coerce_uploaded_file(file), user_id, mode)
 
 
 @shared_task(name="Import from Plex")
