@@ -325,6 +325,32 @@ class DedupeCrossProviderItemsTests(TestCase):
 
         self.assertEqual(result, [tvdb_season])
 
+    def test_dedupes_across_differing_library_media_type(self):
+        tmdb_show = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type="",
+            title="Re:Zero",
+            image="",
+            provider_external_ids={"tvdb_id": "305074"},
+        )
+        tvdb_show = Item.objects.create(
+            media_id="305074",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Re:Zero",
+            image="",
+        )
+
+        result = item_merge.dedupe_cross_provider_items(
+            [tmdb_show, tvdb_show],
+            Sources.TVDB.value,
+        )
+
+        self.assertEqual(result, [tvdb_show])
+
 
 class FindCrossProviderDuplicateTests(TestCase):
     """Verified-identity lookup only - never title matching."""

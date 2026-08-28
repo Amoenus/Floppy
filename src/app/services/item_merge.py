@@ -262,7 +262,6 @@ def dedupe_cross_provider_items(items: list[Item], preferred_source: str) -> lis
             item.media_id,
             item.media_type,
             item.season_number,
-            item.library_media_type,
         ): item
         for item in items
         if item.source == Sources.TVDB.value
@@ -310,7 +309,6 @@ def dedupe_cross_provider_items(items: list[Item], preferred_source: str) -> lis
                 str(tvdb_id),
                 item.media_type,
                 item.season_number,
-                item.library_media_type,
             ),
         )
         if counterpart is None:

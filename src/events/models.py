@@ -99,17 +99,23 @@ class EventManager(models.Manager):
         )
 
     def _active_tv_show_media_ids(self, user):
-        """Return media_ids of the user's actively-tracked TV shows."""
-        return (
-            TV.objects.filter(
-                user=user,
-                item__media_type=MediaTypes.TV.value,
-            )
-            .exclude(
-                status__in=INACTIVE_TRACKING_STATUSES,
-            )
-            .values_list("item__media_id", flat=True)
+        """Return media_ids of the user's actively-tracked TV shows, deduped across providers."""
+        items = list(
+            Item.objects.filter(
+                tv__user=user,
+                media_type=MediaTypes.TV.value,
+            ).exclude(tv__status__in=INACTIVE_TRACKING_STATUSES),
         )
+        if not items:
+            return []
+
+        preferred_source = getattr(
+            user,
+            "tv_metadata_source_default",
+            Sources.TMDB.value,
+        )
+        deduped = dedupe_cross_provider_items(items, preferred_source)
+        return [item.media_id for item in deduped]
 
     def _cross_provider_hidden_season_item_ids(self, user, enabled_types):
         """Return Season `Item` ids to hide because a preferred counterpart exists.
