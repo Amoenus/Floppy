@@ -12,7 +12,8 @@
      })"
      x-init="init"
      {% if suggestion_date_expr %}x-effect="suggestionDate = ({{ suggestion_date_expr }}) || ''"{% endif %}
-     @keydown.escape.window="open && closePicker()">
+     @keydown.escape.window="open && closePicker()"
+     @mousedown.outside="open && !isMobile && closePicker()">
 
   <div class="flex-1 flex items-stretch border border-gray-600 rounded-md bg-[var(--color-surface-strong)] focus-within:ring-2 focus-within:ring-[var(--color-accent)]">
     {% if mobile_label %}
@@ -56,7 +57,6 @@
        :aria-modal="isMobile ? 'true' : 'false'"
        aria-label="{{ field_label|default:'Date' }} picker"
        @keydown.tab="trapFocus($event)"
-       @click.outside="!isMobile && !$refs.trigger.contains($event.target) && closePicker()"
        :style="popoverStyle"
        class="date-picker-popover fixed inset-x-0 bottom-0 rounded-t-xl max-h-[85dvh] overflow-y-auto overscroll-contain bg-[var(--color-surface)] border-t border-[var(--color-border)] shadow-2xl p-4 sm:inset-x-auto sm:bottom-auto sm:w-[22rem] sm:rounded-lg sm:border"
        x-transition:enter="transition ease-out duration-150"
