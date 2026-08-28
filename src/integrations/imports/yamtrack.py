@@ -354,7 +354,9 @@ class YamtrackImporter:
         if form.is_valid():
             progressed_at = row.get("progressed_at") or row.get("end_date")
             if progressed_at:
-                form.instance._history_date = parse_datetime(progressed_at)
+                parsed_date = parse_datetime(progressed_at)
+                if parsed_date:
+                    form.instance._history_date = parsed_date
             if media_type in (MediaTypes.TV.value, MediaTypes.SEASON.value):
                 status_value = row.get("status")
                 if status_value:

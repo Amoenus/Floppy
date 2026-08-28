@@ -246,6 +246,23 @@ class ImportYamtrackEpisodeHistoryDate(TestCase):
             datetime(2025, 11, 19, 19, 0, 5, tzinfo=UTC),
         )
 
+    def test_unparseable_progressed_at_falls_back_to_import_time(self):
+        """An unparseable progressed_at/end_date doesn't crash the import.
+
+        Regression test for #1011: parse_datetime() returning None used to
+        get assigned straight to _history_date, which bypassed simple_history's
+        default_date fallback and raised a NOT NULL IntegrityError.
+        """
+        csv_data = """media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,progressed_at
+1234,igdb,game,Some Game,https://image.url,,,,60,Completed,,,,not-a-date
+"""
+
+        counts, warnings = yamtrack.importer(BytesIO(csv_data.encode()), self.user, "new")
+
+        self.assertEqual(warnings, "")
+        game = Game.objects.get(user=self.user)
+        self.assertIsNotNone(game.history.get().history_date)
+
 
 @tag("network")
 class ImportYamtrackPartials(TestCase):
