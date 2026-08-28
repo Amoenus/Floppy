@@ -88,6 +88,10 @@ class IntegrationTest(StaticLiveServerTestCase):
                 return_value=[("", "Server Default (en)"), ("en", "English")],
             ),
             patch(
+                "app.providers.tmdb.carousel_media",
+                return_value={"video": None, "photos": []},
+            ),
+            patch(
                 "app.tasks_trakt.populate_trakt_episode_ratings_for_season.delay",
             ),
         ):
