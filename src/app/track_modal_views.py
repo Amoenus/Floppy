@@ -356,11 +356,12 @@ def _render_standard_track_modal(
                     max_progress = media.item.number_of_pages
                 else:
                     try:
-                        metadata = services.get_media_metadata(
-                            media.item.media_type,
-                            media.item.media_id,
-                            media.item.source,
-                        )
+                        with services.interactive_request_scope():
+                            metadata = services.get_media_metadata(
+                                media.item.media_type,
+                                media.item.media_id,
+                                media.item.source,
+                            )
                         number_of_pages = metadata.get("max_progress") or metadata.get(
                             "details",
                             {},
@@ -385,14 +386,15 @@ def _render_standard_track_modal(
                 percentage = round((media.progress / max_progress) * 100, 1)
                 initial_data["progress"] = percentage
     else:
-        metadata = services.get_media_metadata(
-            media_type,
-            media_id,
-            source,
-            [season_number],
-            episode_number=episode_number,
-            language=metadata_resolution.metadata_language_default(request.user),
-        )
+        with services.interactive_request_scope():
+            metadata = services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                [season_number],
+                episode_number=episode_number,
+                language=metadata_resolution.metadata_language_default(request.user),
+            )
         base_metadata = metadata
         title = metadata["title"]
         route_identity_media_type = metadata.get("identity_media_type")

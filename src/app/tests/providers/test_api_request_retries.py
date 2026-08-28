@@ -14,9 +14,12 @@ from app.providers import services
 from app.providers.services import (
     RATE_LIMIT_DEFAULT_WAIT_SECONDS,
     RATE_LIMIT_MAX_RETRIES,
+    RATE_LIMIT_MAX_RETRIES_INTERACTIVE,
     RATE_LIMIT_MAX_WAIT_SECONDS,
+    RATE_LIMIT_MAX_WAIT_SECONDS_INTERACTIVE,
     _rate_limit_wait_seconds,
     api_request,
+    interactive_request_scope,
 )
 
 
@@ -117,3 +120,48 @@ class RateLimitRetryTests(SimpleTestCase):
 
         self.assertEqual(result, {"ok": True})
         self.assertEqual(get.call_count, 2)
+
+
+class InteractiveRequestScopeTests(SimpleTestCase):
+    """Request-serving callers must fail fast instead of blocking (#1008)."""
+
+    def test_interactive_scope_caps_retries_and_wait(self):
+        """A book detail page must not block for the background retry budget."""
+        get = Mock(return_value=rate_limited_response(retry_after="3600"))
+        with (
+            patch.object(services.session, "get", get),
+            patch.object(services.time, "sleep") as sleep,
+            self.assertRaises(requests.exceptions.HTTPError),
+            interactive_request_scope(),
+        ):
+            api_request("hardcover", "GET", "https://example.test/x")
+
+        self.assertEqual(get.call_count, RATE_LIMIT_MAX_RETRIES_INTERACTIVE + 1)
+        self.assertEqual(sleep.call_count, RATE_LIMIT_MAX_RETRIES_INTERACTIVE)
+        total = sum(call.args[0] for call in sleep.call_args_list)
+        self.assertLessEqual(
+            total,
+            RATE_LIMIT_MAX_RETRIES_INTERACTIVE * RATE_LIMIT_MAX_WAIT_SECONDS_INTERACTIVE,
+        )
+
+    def test_scope_is_reset_after_use(self):
+        """The context manager must not leak into calls made outside it."""
+        get = Mock(return_value=rate_limited_response())
+        with (
+            patch.object(services.session, "get", get),
+            patch.object(services.time, "sleep"),
+            self.assertRaises(requests.exceptions.HTTPError),
+            interactive_request_scope(),
+        ):
+            api_request("hardcover", "GET", "https://example.test/x")
+
+        get.reset_mock()
+        with (
+            patch.object(services.session, "get", get),
+            patch.object(services.time, "sleep") as sleep,
+            self.assertRaises(requests.exceptions.HTTPError),
+        ):
+            api_request("mal", "GET", "https://example.test/x")
+
+        self.assertEqual(get.call_count, RATE_LIMIT_MAX_RETRIES + 1)
+        self.assertEqual(sleep.call_count, RATE_LIMIT_MAX_RETRIES)

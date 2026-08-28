@@ -858,14 +858,15 @@ def media_details(
         media_metadata = stored_metadata_fallback(detail_item)
     else:
         try:
-            media_metadata = services.get_media_metadata(
-                media_type,
-                media_id,
-                source,
-                language=metadata_resolution.metadata_language_default(request.user),
-                user=request.user,
-                **metadata_kwargs,
-            )
+            with services.interactive_request_scope():
+                media_metadata = services.get_media_metadata(
+                    media_type,
+                    media_id,
+                    source,
+                    language=metadata_resolution.metadata_language_default(request.user),
+                    user=request.user,
+                    **metadata_kwargs,
+                )
         except services.ProviderAPIError:
             if detail_item is None:
                 raise

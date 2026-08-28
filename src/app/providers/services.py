@@ -1,8 +1,10 @@
+import contextvars
 import logging
 import os
 import re
 import sys
 import time
+from contextlib import contextmanager
 from difflib import SequenceMatcher
 from http import HTTPStatus
 from pathlib import Path
@@ -51,6 +53,30 @@ RATE_LIMIT_MAX_RETRIES = 3
 # concurrency 1, so the whole queue stalls for that long.
 RATE_LIMIT_MAX_WAIT_SECONDS = 60
 RATE_LIMIT_DEFAULT_WAIT_SECONDS = 5
+# Callers serving an interactive request (detail page, add-to-tracker modal)
+# already have a fast stored-metadata fallback for ProviderAPIError, so they
+# don't need the patient background-job retry budget above — sleeping up to
+# 3x60s in a gunicorn worker just makes the page look like it never loads,
+# and can exceed the worker timeout entirely (#1008).
+RATE_LIMIT_MAX_RETRIES_INTERACTIVE = 1
+RATE_LIMIT_MAX_WAIT_SECONDS_INTERACTIVE = 5
+
+_interactive_request = contextvars.ContextVar("_interactive_request", default=False)
+
+
+@contextmanager
+def interactive_request_scope():
+    """Cap rate-limit retry waits for a synchronous, request-serving call.
+
+    Wrap a get_media_metadata()/api_request() call made while a user is
+    waiting on the HTTP response so a 429 fails fast into the caller's
+    existing fallback instead of blocking the request thread for minutes.
+    """
+    token = _interactive_request.set(True)
+    try:
+        yield
+    finally:
+        _interactive_request.reset(token)
 
 # MusicBrainz MBIDs are UUIDs (36 chars); shorter values are not valid
 # recording IDs and should be treated as not found.
@@ -497,17 +523,20 @@ def api_request(
         status_code = error_resp.status_code
 
         # handle rate limiting
-        if (
-            status_code == requests.codes.too_many_requests
-            and _retry_attempt < RATE_LIMIT_MAX_RETRIES
-        ):
+        interactive = _interactive_request.get()
+        max_retries = (
+            RATE_LIMIT_MAX_RETRIES_INTERACTIVE if interactive else RATE_LIMIT_MAX_RETRIES
+        )
+        if status_code == requests.codes.too_many_requests and _retry_attempt < max_retries:
             seconds_to_wait = _rate_limit_wait_seconds(error_resp)
+            if interactive:
+                seconds_to_wait = min(seconds_to_wait, RATE_LIMIT_MAX_WAIT_SECONDS_INTERACTIVE)
             logger.warning(
                 "%s rate limited, waiting %s seconds (attempt %s/%s)",
                 provider,
                 seconds_to_wait,
                 _retry_attempt + 1,
-                RATE_LIMIT_MAX_RETRIES,
+                max_retries,
             )
             time.sleep(seconds_to_wait)
             return api_request(
