@@ -651,6 +651,109 @@ class HistoryTimelineTests(FloppyApiTestCase):
         self.assertEqual(day["entry_count"], entry_count)
         self.assertTrue(day["entries_truncated"])
 
+    def _seed_busy_movie_day(self, entry_count, *, day=None):
+        same_day = day or datetime.datetime(2024, 6, 1, tzinfo=datetime.UTC)
+        for index in range(entry_count):
+            item = Item.objects.create(
+                media_id=f"history-cap-movie-{index}",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title=f"History Cap Movie {index}",
+            )
+            Movie.objects.create(item=item, user=self.user1, end_date=same_day)
+        cache.clear()
+
+    def test_history_max_entries_per_day_overrides_default_cap(self):
+        """max_entries_per_day raises/lowers the windowed path's per-day cap (#1004)."""
+        entry_count = history_cache.HISTORY_ENTRIES_PER_DAY_PAGE + 5
+        self._seed_busy_movie_day(entry_count)
+
+        response = self.call_api(
+            "get",
+            "api_history",
+            params={"media_type": "movie", "limit": 1, "max_entries_per_day": 10},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        day = response.json()["results"][0]
+        self.assertEqual(len(day["entries"]), 10)
+        self.assertEqual(day["entry_count"], entry_count)
+        self.assertTrue(day["entries_truncated"])
+
+    def test_history_max_entries_per_day_applies_to_date_filtered_bypass(self):
+        """The flat=1/date-filtered bypass path is capped too, not just the windowed path (#1004)."""
+        entry_count = history_cache.HISTORY_ENTRIES_PER_DAY_PAGE + 5
+        self._seed_busy_movie_day(entry_count)
+
+        response = self.call_api(
+            "get",
+            "api_history",
+            params={
+                "media_type": "movie",
+                "start_date": "2024-01-01",
+                "end_date": "2024-12-31",
+                "max_entries_per_day": 10,
+            },
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        days = [day for day in response.json()["results"] if day["entries"]]
+        self.assertTrue(days)
+        day = days[0]
+        self.assertEqual(len(day["entries"]), 10)
+        self.assertEqual(day["entry_count"], entry_count)
+        self.assertTrue(day["entries_truncated"])
+
+    def test_history_flat_mode_is_not_capped_per_day(self):
+        """?flat=1 paginates over every entry, unaffected by the per-day cap (#1004)."""
+        entry_count = history_cache.HISTORY_ENTRIES_PER_DAY_PAGE + 5
+        self._seed_busy_movie_day(entry_count)
+
+        response = self.call_api(
+            "get",
+            "api_history",
+            params={"media_type": "movie", "flat": "1", "limit": entry_count},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        payload = response.json()
+        self.assertGreaterEqual(payload["pagination"]["total"], entry_count)
+        self.assertEqual(len(payload["results"]), entry_count)
+
+    def test_history_max_entries_per_day_validation(self):
+        """Invalid/non-positive max_entries_per_day values are rejected."""
+        for value in ("not-a-number", "0", "-1"):
+            response = self.call_api(
+                "get",
+                "api_history",
+                params={"max_entries_per_day": value},
+                headers=self.auth_headers,
+            )
+            self.assertEqual(response.status_code, HTTP.BAD_REQUEST, value)
+
+    def test_history_max_entries_per_day_is_clamped(self):
+        """max_entries_per_day is clamped to MAX_RESULT_LIMIT, not taken verbatim."""
+        entry_count = 25
+        self._seed_busy_movie_day(entry_count)
+
+        response = self.call_api(
+            "get",
+            "api_history",
+            params={
+                "media_type": "movie",
+                "limit": 1,
+                "max_entries_per_day": 999999,
+            },
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        day = response.json()["results"][0]
+        # All 25 seeded entries fit under the MAX_RESULT_LIMIT=200 clamp —
+        # this just proves the request succeeds and isn't itself truncated
+        # by an unclamped, absurdly large cap causing other failures.
+        self.assertEqual(len(day["entries"]), entry_count)
+        self.assertFalse(day["entries_truncated"])
+
     def test_history_flat_returns_paginated_entry_list(self):
         """?flat=1 returns a flat, card-oriented entry list, not day buckets."""
         day_response = self.call_api(

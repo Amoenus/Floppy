@@ -70,6 +70,26 @@ HISTORY_COVERAGE_REPAIR_LOCK_TTL = getattr(
 DAY_KEY_LENGTH = 8  # length of a YYYYMMDD day key string
 
 
+def apply_history_entry_cap(history_days, cap):
+    """Truncate each day's entries to `cap`, annotating entry_count/entries_truncated.
+
+    A day's raw entry count is unbounded (imports, binge sessions, frequent
+    podcast scrobbles), so every history read path that returns per-day
+    entries must cap them before serialization — shared here so the windowed
+    API path and the flat/date-filtered bypass path stay in sync (#1004).
+    """
+    total_entries = 0
+    for day_payload in history_days:
+        entries = day_payload.get("entries", [])
+        entry_count = len(entries)
+        total_entries += entry_count
+        if entry_count > cap:
+            day_payload["entries"] = entries[:cap]
+        day_payload["entry_count"] = entry_count
+        day_payload["entries_truncated"] = entry_count > cap
+    return total_entries
+
+
 _HISTORY_MEDIA_TYPE_ALIASES = {
     "show": MediaTypes.TV.value,
     "shows": MediaTypes.TV.value,

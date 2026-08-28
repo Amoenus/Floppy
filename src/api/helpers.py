@@ -541,6 +541,32 @@ def parse_limit_offset(request):
     return limit, offset, None
 
 
+def parse_max_entries_per_day(request):
+    """Parse and validate the optional /history max_entries_per_day override.
+
+    Returns `(value, error_response)`; `value` is None (caller falls back to
+    the HISTORY_ENTRIES_PER_DAY_PAGE default) when the param is absent.
+    Clamped to MAX_RESULT_LIMIT — the same ceiling `parse_limit_offset` uses
+    — so this can't reintroduce the unbounded per-day response #1004 fixed.
+    """
+    raw_value = request.GET.get("max_entries_per_day")
+    if raw_value in (None, ""):
+        return None, None
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        return None, Response(
+            {"detail": "Invalid max_entries_per_day parameter"},
+            status=HTTP.BAD_REQUEST,
+        )
+    if value <= 0:
+        return None, Response(
+            {"detail": "max_entries_per_day must be >0"},
+            status=HTTP.BAD_REQUEST,
+        )
+    return min(value, MAX_RESULT_LIMIT), None
+
+
 def parse_status_param(status):
     """Parse and validate status parameter."""
     if not status:

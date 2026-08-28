@@ -43,8 +43,132 @@ paths:
           description: ''
   /api/v1/history/:
     get:
-      operationId: api_v1_history_retrieve
+      operationId: listHistory
       description: Return the user's history grouped by day, newest first.
+      parameters:
+      - in: query
+        name: album
+        schema:
+          type: integer
+        description: Restrict music entries to one album id.
+      - in: query
+        name: artist
+        schema:
+          type: integer
+        description: Restrict music entries to one artist's album id.
+      - in: query
+        name: end_date
+        schema:
+          type: string
+        description: ISO date; restricts results to entries on/before this date.
+      - in: query
+        name: flat
+        schema:
+          type: string
+        description: '`1` or `true` returns a flat, per-entry list (paginated by `limit`/`offset`
+          over entries) instead of day-grouped buckets.'
+      - in: query
+        name: genre
+        schema:
+          type: string
+        description: Filter by genre name.
+      - in: query
+        name: implied_genre
+        schema:
+          type: string
+        description: Filter music entries by an implied (derived) genre name.
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Maximum days (or entries, when `flat=1`); maximum 200, defaults
+          to 20.
+      - in: query
+        name: logging_style
+        schema:
+          type: string
+          enum:
+          - repeats
+          - sessions
+        description: Overrides the user's saved game history logging style for this
+          request.
+      - in: query
+        name: max_entries_per_day
+        schema:
+          type: integer
+        description: Override the per-day entry cap (default and max 200) applied
+          to day-grouped results. Ignored when `flat=1`, which paginates over individual
+          entries instead of days and is never capped per day.
+      - in: query
+        name: media_id
+        schema:
+          type: string
+        description: Restrict to entries for one item's media_id (requires `source`).
+      - in: query
+        name: media_type
+        schema:
+          type: array
+          items:
+            type: string
+        description: Media type filter; repeated and comma-separated syntax are accepted.
+          Alias of `types`.
+      - in: query
+        name: offset
+        schema:
+          type: integer
+        description: Zero-based offset over days (or entries, when `flat=1`); defaults
+          to 0.
+      - in: query
+        name: person_id
+        schema:
+          type: string
+        description: Restrict to entries credited to a person, by provider person
+          id (requires `person_source`).
+      - in: query
+        name: person_source
+        schema:
+          type: string
+        description: Restrict to entries credited to a person, by provider source
+          (requires `person_id`).
+      - in: query
+        name: podcast_show
+        schema:
+          type: integer
+        description: Restrict podcast entries to one show id.
+      - in: query
+        name: season
+        schema:
+          type: integer
+        description: Restrict episode entries to one season id.
+      - in: query
+        name: season_number
+        schema:
+          type: integer
+        description: Restrict episode entries to a season number (requires `media_id`/`source`).
+      - in: query
+        name: source
+        schema:
+          type: string
+        description: Restrict to entries for one item's provider source (requires
+          `media_id`).
+      - in: query
+        name: start_date
+        schema:
+          type: string
+        description: ISO date; restricts results to entries on/after this date.
+      - in: query
+        name: tv
+        schema:
+          type: integer
+        description: Restrict episode entries to one TV show id.
+      - in: query
+        name: types
+        schema:
+          type: array
+          items:
+            type: string
+        description: Media type filter; repeated and comma-separated syntax are accepted.
+          Alias of `media_type`.
       tags:
       - api
       security:

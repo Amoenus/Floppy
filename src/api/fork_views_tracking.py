@@ -29,12 +29,13 @@ from .helpers import (
     get_tracked_season,
     paginate_data,
     parse_limit_offset,
+    parse_max_entries_per_day,
     resolve_episode_coordinate_for_request,
     resolve_item_queryset,
     try_parse_datetime_input,
     validate_episode_score,
 )
-from .schema import MEDIA_TYPE_PARAM, MEDIA_TYPE_TV_ONLY_PARAM
+from .schema import HISTORY_LIST_PARAMS, MEDIA_TYPE_PARAM, MEDIA_TYPE_TV_ONLY_PARAM
 from .serializers import HistorySerializer, serialize_data
 
 logger = logging.getLogger(__name__)
@@ -562,9 +563,16 @@ class HistoryView(drf_views.APIView):
     and paginates over days with limit/offset.
     """
 
+    @extend_schema(
+        parameters=HISTORY_LIST_PARAMS,
+        operation_id="listHistory",
+    )
     def get(self, request):
         """Return the user's history grouped by day, newest first."""
         limit, offset, err = parse_limit_offset(request)
+        if err:
+            return err
+        max_entries_per_day, err = parse_max_entries_per_day(request)
         if err:
             return err
 
@@ -617,6 +625,7 @@ class HistoryView(drf_views.APIView):
                 filters=filters or None,
                 date_filters=date_filters or None,
                 logging_style_override=logging_style or None,
+                cap_entries_per_day=False,
             )
             flat_entries = [
                 {**entry, "url": _entry_url(entry)}
@@ -636,6 +645,7 @@ class HistoryView(drf_views.APIView):
                 offset=offset,
                 filters=filters or None,
                 logging_style_override=logging_style or None,
+                max_entries_per_day=max_entries_per_day,
             )
         else:
             history_days = history_cache_reader.get_history_days(
@@ -643,6 +653,7 @@ class HistoryView(drf_views.APIView):
                 filters=filters or None,
                 date_filters=date_filters or None,
                 logging_style_override=logging_style or None,
+                max_entries_per_day=max_entries_per_day,
             )
             total_days = None
         if type_only_request:
