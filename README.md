@@ -212,6 +212,21 @@ If `SECRET` and `SECRET_FILE` are not set, the container stores its generated
 `secret_key` in `FLOPPY_DATA_DIR`. Floppy stores logs and backups in `LOG_DIR`
 and `BACKUP_DIR`. `FLOPPY_DATA_DIR` does not change those settings.
 
+`BACKUP_DIR` defaults to `/floppy/backups` inside the container. The
+Settings → Export page shows this path, but it is a container path, not a
+host path — mount it to a host directory or the scheduled CSVs disappear
+whenever the container is recreated:
+
+```yaml
+services:
+  floppy:
+    image: ghcr.io/dannyvfilms/floppy:latest
+    volumes:
+      - ./backups:/floppy/backups
+```
+
+The default `docker-compose.yml` in this repo already includes this mount.
+
 This example stores the SQLite file and the generated key in one mounted
 directory:
 

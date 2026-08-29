@@ -19,6 +19,8 @@
       <p class="text-[var(--color-text-muted)] mb-5 text-sm">
         Export a CSV in Floppy's own backup format now, or create a recurring export schedule and download the initial CSV immediately.
         Scheduled exports are saved to: <code class="text-[var(--color-text-secondary)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">{{ backup_dir }}</code>
+        &mdash; this is a path inside the Floppy container. If you're running Floppy in Docker, mount a host
+        directory to this path (e.g. <code class="text-[var(--color-text-secondary)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">./backups:/floppy/backups</code>) or the files won't be reachable from the host.
       </p>
 
       <form method="post" action="{% url 'create_export_schedule' %}" id="exportForm" x-ref="exportForm">
