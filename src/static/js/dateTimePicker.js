@@ -15,11 +15,13 @@ if (!window.__floppyDateTimePickerBound) {
     open: false,
     isMobile: false,
     popoverStyle: "",
+    pickerView: "days", // "days" | "months" | "years"
     viewYear: 0,
     viewMonth: 0,
     focusYear: 0,
     focusMonth: 0,
     focusDay: 1,
+    yearInput: "",
     hour24: 0,
     minute: 0,
     second: 0,
@@ -344,6 +346,63 @@ if (!window.__floppyDateTimePickerBound) {
       }
     },
 
+    showMonthsView() {
+      this.pickerView = "months";
+    },
+
+    showYearsView() {
+      this.yearInput = String(this.viewYear);
+      this.pickerView = "years";
+    },
+
+    showDaysView() {
+      this.pickerView = "days";
+    },
+
+    gotoMonth(monthIndex) {
+      this.viewMonth = monthIndex;
+      this.pickerView = "days";
+    },
+
+    gotoPrevYear() {
+      this.viewYear -= 1;
+      this.yearInput = String(this.viewYear);
+    },
+
+    gotoNextYear() {
+      this.viewYear += 1;
+      this.yearInput = String(this.viewYear);
+    },
+
+    onYearInput(event) {
+      const digits = event.target.value.replace(/\D/g, "").slice(0, 4);
+      this.yearInput = digits;
+      if (digits.length === 4) {
+        this.viewYear = Number(digits);
+      }
+    },
+
+    applyYearInput() {
+      const year = Number(this.yearInput);
+      if (Number.isInteger(year) && year >= 1000 && year <= 9999) {
+        this.viewYear = year;
+      } else {
+        this.yearInput = String(this.viewYear);
+      }
+      this.pickerView = "months";
+    },
+
+    monthShortLabel(monthIndex) {
+      return new Date(this.viewYear, monthIndex, 1).toLocaleDateString(undefined, {
+        month: "short",
+      });
+    },
+
+    yearRange() {
+      const start = Math.floor(this.viewYear / 20) * 20;
+      return Array.from({ length: 20 }, (_, i) => start + i);
+    },
+
     selectDay(cell) {
       if (!cell) {
         return;
@@ -564,6 +623,7 @@ if (!window.__floppyDateTimePickerBound) {
 
     openPicker() {
       this.open = true;
+      this.pickerView = "days";
       this.positionPopover();
       this.$nextTick(() => {
         this.positionPopover();
