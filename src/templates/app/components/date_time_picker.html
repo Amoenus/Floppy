@@ -228,7 +228,13 @@
           </button>
         </template>
         {% if copy_from %}
-        <button type="button" @click="copyFromOther()" class="date-picker-common-time-button">
+        {# Disabled rather than removed when the other field is empty, so the #}
+        {# affordance stays put and explains itself instead of doing nothing. #}
+        <button type="button"
+                @click="copyFromOther()"
+                :disabled="!copyAvailable"
+                :title="copyAvailable ? '' : '{{ copy_from_label|default:copy_from|escapejs }} is empty'"
+                class="date-picker-common-time-button">
           {% include "app/icons/copy.svg" with classes="w-3.5 h-3.5" %}
           Copy from {{ copy_from_label|default:copy_from }}
         </button>
