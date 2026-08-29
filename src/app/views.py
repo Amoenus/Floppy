@@ -823,12 +823,18 @@ def episode_details(
         current_season_instance = None
         episodes_in_db = []
     else:
+        season_library_media_type = (
+            MediaTypes.ANIME.value
+            if parent_media_type == MediaTypes.ANIME.value
+            else None
+        )
         user_seasons = BasicMedia.objects.filter_media_prefetch(
             request.user,
             media_id,
             MediaTypes.SEASON.value,
             source,
             season_number=season_number,
+            library_media_type=season_library_media_type,
         )
         current_season_instance = user_seasons[0] if user_seasons else None
         episodes_in_db = (
