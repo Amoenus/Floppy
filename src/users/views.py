@@ -1,7 +1,6 @@
 import base64
 import json
 import logging
-import os
 import re
 import uuid
 from io import BytesIO
@@ -1603,14 +1602,21 @@ def _backup_dir_status(user):
 
     Matches the path integrations.exports.write_backup() actually writes to.
     Creates the directory if missing so it's browsable even before any export
-    has run. os.path.ismount() detects a mounted host volume; without one,
-    /floppy/backups is just ephemeral container storage.
+    has run.
+
+    os.path.ismount(BACKUP_DIR) only catches BACKUP_DIR being the mount point
+    itself; a custom BACKUP_DIR nested under a mounted parent (e.g. under
+    FLOPPY_DATA_DIR) would wrongly read as ephemeral. Comparing st_dev against
+    the container root instead catches a mount anywhere in the directory's
+    ancestry, not just at that exact path.
     """
     backup_dir = Path(settings.BACKUP_DIR) / str(user.username)
     backup_dir.mkdir(parents=True, exist_ok=True)
     file_count = sum(1 for entry in backup_dir.iterdir() if entry.is_file())
     in_container = Path("/.dockerenv").exists()
-    host_reachable = (not in_container) or os.path.ismount(settings.BACKUP_DIR)
+    host_reachable = (not in_container) or (
+        backup_dir.stat().st_dev != Path("/").stat().st_dev
+    )
     return {
         "path": str(backup_dir),
         "file_count": file_count,
