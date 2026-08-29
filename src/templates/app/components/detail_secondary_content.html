@@ -327,9 +327,11 @@
 
     {# Related Media #}
     {% if media_type != MediaTypes.PODCAST.value %}
-      {% if notes_entry or media.related or media.cast or media.crew or media_type == MediaTypes.GAME.value or media.episodes %}
+      {% if show_notes|default:False or media.related or media.cast or media.crew or media_type == MediaTypes.GAME.value or media.episodes %}
         <div class="w-full md:w-3/4">
-        {% if show_notes|default:False and notes_entry %}
+        {# Rendered even with no notes yet: the empty section is the anchor the #}
+        {# post-save OOB swap replaces, so it must pre-exist in the DOM. #}
+        {% if show_notes|default:False %}
           {% include "app/components/detail_notes_section.html" %}
         {% endif %}
         {% if media.related %}
