@@ -7,6 +7,7 @@
        suggestionLabel: '{{ suggestion_label|default:""|escapejs }}',
        suggestionDate: '{{ suggestion_date|default:""|escapejs }}',
        suggestionRuntimeMinutes: '{{ suggestion_runtime_minutes|default:""|escapejs }}',
+       copyFrom: '{{ copy_from|default:""|escapejs }}',
        weekStart: '{{ week_start|default:"monday" }}',
        use12Hour: {{ use_12_hour|yesno:'true,false' }}
      })"
@@ -226,6 +227,12 @@
             <span x-text="resolvedSuggestionLabel()"></span>
           </button>
         </template>
+        {% if copy_from %}
+        <button type="button" @click="copyFromOther()" class="date-picker-common-time-button">
+          {% include "app/icons/copy.svg" with classes="w-3.5 h-3.5" %}
+          Copy from {{ copy_from_label|default:copy_from }}
+        </button>
+        {% endif %}
       </div>
     </div>
     </div>
