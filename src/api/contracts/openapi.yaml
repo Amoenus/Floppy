@@ -3422,12 +3422,15 @@ components:
           nullable: true
         image:
           type: string
+        website_url:
+          type: string
       required:
       - id
       - image
       - podcast_uuid
       - slug
       - title
+      - website_url
     StateEnum:
       enum:
       - ready

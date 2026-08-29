@@ -31,7 +31,7 @@ def resolve_show_metadata(itunes_data: dict, rss_feed_url: str) -> dict:
     from integrations import podcast_rss
 
     resolved = dict(itunes_data)
-    if resolved.get("description"):
+    if resolved.get("description") and resolved.get("website_url"):
         return resolved
     try:
         rss_metadata = podcast_rss.fetch_show_metadata_from_rss(rss_feed_url)
@@ -42,7 +42,7 @@ def resolve_show_metadata(itunes_data: dict, rss_feed_url: str) -> dict:
         )
         return resolved
 
-    for field in ("description", "author", "language"):
+    for field in ("description", "author", "language", "website_url"):
         if not resolved.get(field) and rss_metadata.get(field):
             resolved[field] = rss_metadata[field]
     return resolved
@@ -106,6 +106,7 @@ def import_show_from_itunes_id(itunes_id: str) -> PodcastShow:
         genres=metadata.get("genres", []),
         language=metadata.get("language", ""),
         rss_feed_url=rss_feed_url,
+        website_url=metadata.get("website_url", ""),
     )
 
     try:
@@ -158,6 +159,7 @@ def _import_episodes_from_rss(show: PodcastShow, rss_feed_url: str) -> None:
                     published=episode_data.get("published"),
                     duration=episode_data.get("duration"),
                     audio_url=episode_data.get("audio_url", ""),
+                    website_url=episode_data.get("website_url", ""),
                     episode_number=episode_data.get("episode_number"),
                     season_number=episode_data.get("season_number"),
                 )

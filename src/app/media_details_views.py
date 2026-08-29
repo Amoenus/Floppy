@@ -381,6 +381,7 @@ def media_details(
                                     published=episode_data.get("published"),
                                     duration=episode_data.get("duration"),
                                     audio_url=episode_data.get("audio_url", ""),
+                                    website_url=episode_data.get("website_url", ""),
                                     episode_number=episode_data.get("episode_number"),
                                     season_number=episode_data.get("season_number"),
                                 )

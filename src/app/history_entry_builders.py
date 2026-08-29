@@ -99,6 +99,7 @@ def _serialize_show(show):
         "slug": getattr(show, "slug", "") or "",
         "podcast_uuid": getattr(show, "podcast_uuid", None),
         "image": getattr(show, "image", "") or "",
+        "website_url": getattr(show, "website_url", "") or "",
     }
 
 
