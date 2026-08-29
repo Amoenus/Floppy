@@ -62,6 +62,17 @@
         <p class="text-[var(--color-text-muted)] mb-4 text-center md:text-start">by {{ show.author }}</p>
       {% endif %}
 
+      {% if show.website_url %}
+        <p class="mb-4 text-center md:text-start">
+          <a href="{{ show.website_url }}"
+             target="_blank"
+             rel="noopener noreferrer"
+             class="text-[var(--color-text-secondary)] hover:text-indigo-500 transition-colors duration-200 text-sm">
+            Visit show website
+          </a>
+        </p>
+      {% endif %}
+
       {# Stats cards #}
       <div class="flex flex-wrap gap-4 mb-6">
         <div class="bg-[var(--color-surface)] p-3 rounded-lg">
@@ -106,6 +117,14 @@
                 {% endif %}
                 {% if episode.duration %}
                   <p class="text-sm text-[var(--color-text-muted)]">{{ episode.duration_formatted }}</p>
+                {% endif %}
+                {% if episode.website_url %}
+                  <a href="{{ episode.website_url }}"
+                     target="_blank"
+                     rel="noopener noreferrer"
+                     class="text-sm text-[var(--color-text-secondary)] hover:text-indigo-500 transition-colors duration-200">
+                    Episode website
+                  </a>
                 {% endif %}
               </div>
               {% for user_podcast in user_podcasts %}

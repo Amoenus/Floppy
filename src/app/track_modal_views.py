@@ -28,7 +28,7 @@ from app.models import (
     Sources,
     Status,
 )
-from app.providers import hardcover, services
+from app.providers import hardcover, services, tmdb
 from app.services import bulk_episode_tracking, library_migration, metadata_resolution
 from app.services.metadata_fallback import stored_metadata_fallback
 
@@ -529,7 +529,7 @@ def _render_standard_track_modal(
                     source,
                     [season_number],
                     language=metadata_resolution.metadata_language_default(
-                        request.user,
+                        request.user, metadata_item,
                     ),
                 )
             except services.ProviderAPIError:
@@ -594,6 +594,27 @@ def _render_standard_track_modal(
         metadata_item is not None and metadata_provider_options
     )
 
+    can_update_metadata_language = bool(
+        metadata_item is not None
+        and identity_provider in {Sources.TMDB.value, Sources.TVDB.value}
+    )
+    metadata_language_options = []
+    selected_metadata_language = ""
+    if can_update_metadata_language:
+        try:
+            metadata_language_options = tmdb.metadata_languages()
+        except Exception as exc:  # pragma: no cover - defensive provider fallback
+            logger.warning("Could not load TMDB metadata languages: %s", exc)
+            metadata_language_options = [
+                ("", f"Server Default ({settings.TMDB_LANG})"),
+            ]
+        language_preference = MetadataProviderPreference.objects.filter(
+            user=request.user,
+            item=metadata_item,
+        ).first()
+        if language_preference:
+            selected_metadata_language = language_preference.language
+
     can_manage_hardcover_edition = bool(
         media_type == MediaTypes.BOOK.value and source == Sources.HARDCOVER.value
     )
@@ -636,6 +657,7 @@ def _render_standard_track_modal(
     metadata_tab_available = bool(
         metadata_fields
         or can_update_metadata_provider
+        or can_update_metadata_language
         or can_migrate_grouped_anime
         or library_move_context
         or manual_metadata_form
@@ -725,6 +747,9 @@ def _render_standard_track_modal(
         "metadata_provider_mapping_status": metadata_provider_mapping_status,
         "metadata_provider_options": metadata_provider_options,
         "can_update_metadata_provider": can_update_metadata_provider,
+        "can_update_metadata_language": can_update_metadata_language,
+        "metadata_language_options": metadata_language_options,
+        "selected_metadata_language": selected_metadata_language,
         "can_manage_hardcover_edition": can_manage_hardcover_edition,
         "hardcover_edition_media_id": media_id if can_manage_hardcover_edition else None,
         "hardcover_selected_edition": hardcover_selected_edition,

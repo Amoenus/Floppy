@@ -159,6 +159,11 @@ cmd_history_api() {
     # env and grep gunicorn output for queries= to see the query count too).
     "history_podcast|/api/v1/history/?limit=10&types=podcast"
     "media_game|/api/v1/media/game/?status=1&limit=10"
+    # #1004 follow-up: the reporter's exact repro (778ms/75 queries in
+    # production) — the SQL pushdown fast path (app.media_list_pagination)
+    # should keep this flat regardless of library size, not scan the whole
+    # status-filtered set before slicing to the page.
+    "media_game_sorted|/api/v1/media/game/?status=1&limit=10&sort=start_date&direction=asc"
   )
   echo -e "case\tendpoint\tstatus\tmedian_s\tp90_s\tmin_s\tmax_s\tbytes\tn" >"$out"
   local entry name path code t bytes stats mode

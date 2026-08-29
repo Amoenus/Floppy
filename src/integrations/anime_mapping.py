@@ -36,6 +36,7 @@ SNAPSHOT_CACHE_PREFIX = "anime_mapping_snapshot_v2"
 LAST_GOOD_CACHE_KEY = f"{SNAPSHOT_CACHE_PREFIX}:last-good"
 SNAPSHOT_CACHE_TIMEOUT = 86400
 SNAPSHOT_BUILD_COUNT = 0
+_IN_MEMORY_SNAPSHOT: tuple[str, AnimeMappingSnapshot] | None = None
 MAX_MAPPING_BYTES = 8 * 1024 * 1024
 MAX_MAPPING_ENTRIES = 50_000
 SUPPORTED_ID_FIELDS = (
@@ -385,6 +386,8 @@ def load_mapping_snapshot(
     mapping_data: dict[str, Any] | None = None,
 ) -> AnimeMappingSnapshot:
     """Return one compiled mapping snapshot, building it only on cache miss."""
+    global _IN_MEMORY_SNAPSHOT  # noqa: PLW0603 - process-local memo of the active snapshot
+
     if mapping_data is not None:
         digest = _canonical_digest(mapping_data)
         return _build_snapshot(mapping_data, revision="inline", digest=digest)
@@ -396,16 +399,26 @@ def load_mapping_snapshot(
         revision, digest = APPROVED_REVISION, APPROVED_DIGEST
 
     cache_key = _snapshot_cache_key(revision, digest)
+
+    # A calendar/dedup pass calls this once per item; the snapshot for a given
+    # revision/digest never changes, so skip the Redis round-trip and the
+    # recursive _freeze() of the (multi-MB) payload after the first load.
+    if _IN_MEMORY_SNAPSHOT is not None and _IN_MEMORY_SNAPSHOT[0] == cache_key:
+        return _IN_MEMORY_SNAPSHOT[1]
+
     cached = cache.get(cache_key)
     if isinstance(cached, dict):
         try:
-            return _snapshot_from_cache(cached)
+            snapshot = _snapshot_from_cache(cached)
         except (KeyError, TypeError, ValueError):
             logger.warning(
                 "anime_mapping_snapshot_cache_invalid revision=%s digest=%s",
                 revision,
                 digest,
             )
+        else:
+            _IN_MEMORY_SNAPSHOT = (cache_key, snapshot)
+            return snapshot
 
     try:
         if source_data is None:
@@ -443,6 +456,7 @@ def load_mapping_snapshot(
     # The payload is immutable/versioned and the pointer is a single cache
     # write, so a refresh can never expose a half-built index.
     cache.set(LAST_GOOD_CACHE_KEY, payload, timeout=SNAPSHOT_CACHE_TIMEOUT)
+    _IN_MEMORY_SNAPSHOT = (cache_key, snapshot)
     return snapshot
 
 

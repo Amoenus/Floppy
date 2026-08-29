@@ -4828,6 +4828,116 @@ class MediaDetailsViewTests(TestCase):
         preference = MetadataProviderPreference.objects.get(user=self.user, item=item)
         self.assertEqual(preference.provider, Sources.MANUAL.value)
 
+    @patch("app.views.tmdb.metadata_languages")
+    def test_update_metadata_language_preference_saves_override(
+        self,
+        mock_metadata_languages,
+    ):
+        """Saving a metadata language override should persist a user preference."""
+        mock_metadata_languages.return_value = [
+            ("", "Server Default (en-US)"),
+            ("fr", "French"),
+        ]
+        item = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+            image="https://example.com/breaking-bad.jpg",
+        )
+
+        response = self.client.post(
+            reverse(
+                "update_metadata_language_preference",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": "1396",
+                },
+            ),
+            {"language": "fr"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        preference = MetadataProviderPreference.objects.get(user=self.user, item=item)
+        self.assertEqual(preference.language, "fr")
+        self.assertEqual(preference.provider, "")
+
+    @patch("app.views.tmdb.metadata_languages")
+    def test_update_metadata_language_preference_does_not_clobber_provider(
+        self,
+        mock_metadata_languages,
+    ):
+        """Saving a language override should preserve an existing provider override."""
+        mock_metadata_languages.return_value = [
+            ("", "Server Default (en-US)"),
+            ("fr", "French"),
+        ]
+        item = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+            image="https://example.com/breaking-bad.jpg",
+        )
+        MetadataProviderPreference.objects.create(
+            user=self.user,
+            item=item,
+            provider=Sources.TVDB.value,
+        )
+
+        response = self.client.post(
+            reverse(
+                "update_metadata_language_preference",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": "1396",
+                },
+            ),
+            {"language": "fr"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        preference = MetadataProviderPreference.objects.get(user=self.user, item=item)
+        self.assertEqual(preference.language, "fr")
+        self.assertEqual(preference.provider, Sources.TVDB.value)
+
+    @patch("app.views.tmdb.metadata_languages")
+    def test_update_metadata_language_preference_rejects_invalid_language(
+        self,
+        mock_metadata_languages,
+    ):
+        """An unrecognized language code should not be persisted."""
+        mock_metadata_languages.return_value = [
+            ("", "Server Default (en-US)"),
+            ("fr", "French"),
+        ]
+        item = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+            image="https://example.com/breaking-bad.jpg",
+        )
+
+        response = self.client.post(
+            reverse(
+                "update_metadata_language_preference",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": "1396",
+                },
+            ),
+            {"language": "not-a-real-code"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(
+            MetadataProviderPreference.objects.filter(user=self.user, item=item).exists(),
+        )
+
     @patch("app.views.metadata_resolution.resolve_detail_metadata")
     @patch("app.providers.services.get_media_metadata")
     def test_migrated_flat_anime_shows_grouped_banner(

@@ -424,7 +424,7 @@ class OpenAPIArtifactTests(SimpleTestCase):
         )
         self.assertEqual(
             set(schemas["Show"]["properties"]),
-            {"id", "title", "slug", "podcast_uuid", "image"},
+            {"id", "title", "slug", "podcast_uuid", "image", "website_url"},
         )
         self.assertEqual(
             set(schemas["ConsumptionResponse"]["properties"]),

@@ -153,8 +153,16 @@ def metadata_default_source(user, media_type: str) -> str:
     return available[0].value if available else provider
 
 
-def metadata_language_default(user) -> str:
-    """Return the effective preferred metadata language for a user."""
+def metadata_language_default(user, item: Item | None = None) -> str:
+    """Return the effective preferred metadata language for a user/item."""
+    if item is not None and user and getattr(user, "is_authenticated", False):
+        preference = MetadataProviderPreference.objects.filter(
+            user=user,
+            item=item,
+        ).only("language").first()
+        if preference and preference.language:
+            return preference.language
+
     language = None
     if user and getattr(user, "is_authenticated", False):
         language = getattr(user, "metadata_language", None) or None
@@ -1089,7 +1097,7 @@ def resolve_detail_metadata(
                 provider_route_media_type(route_media_type, provider),
                 provider_media_id,
                 provider,
-                language=metadata_language_default(user),
+                language=metadata_language_default(user, item),
             )
             header_metadata = _overlay_header_metadata(
                 base_metadata,
@@ -1113,7 +1121,7 @@ def resolve_detail_metadata(
                         for season in related_seasons
                         if season.get("season_number") is not None
                     ],
-                    language=metadata_language_default(user),
+                    language=metadata_language_default(user, item),
                 )
                 grouped_preview = _enrich_grouped_preview(grouped_preview)
                 grouped_preview_target = _grouped_preview_target(

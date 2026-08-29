@@ -55,6 +55,7 @@ def _serialize_show(show, tracker=None):
         "genres": show.genres,
         "language": show.language,
         "rss_feed_url": show.rss_feed_url,
+        "website_url": show.website_url,
         "tracker": tracker_payload,
     }
 
@@ -205,6 +206,7 @@ class PodcastLookupView(drf_views.APIView):
                 "duration_seconds": episode.get("duration"),
                 "episode_number": episode.get("episode_number"),
                 "season_number": episode.get("season_number"),
+                "website_url": episode.get("website_url", ""),
             }
             for episode in episodes
         ]
@@ -251,6 +253,7 @@ class PodcastLookupView(drf_views.APIView):
                 "genres": metadata.get("genres", []),
                 "language": metadata.get("language", ""),
                 "rss_feed_url": rss_feed_url,
+                "website_url": metadata.get("website_url", ""),
                 "show_id": existing_show.id if existing_show else None,
                 "episodes": paginate_data(request, episodes, limit, offset),
             },

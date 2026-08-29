@@ -12,6 +12,7 @@ class AnimeMappingSnapshotTests(SimpleTestCase):
 
     def setUp(self):
         cache.clear()
+        anime_mapping._IN_MEMORY_SNAPSHOT = None
 
     def test_same_revision_reuses_compiled_snapshot(self):
         """A cache hit avoids rebuilding the reverse indexes."""

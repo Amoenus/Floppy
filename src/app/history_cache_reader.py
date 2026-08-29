@@ -44,6 +44,7 @@ from app.history_cache_utils import (
     _normalize_logging_style,
     _refresh_lock_key,
     _typed_history_index_key,
+    apply_history_entry_cap,
     expand_history_media_types,
 )
 
@@ -217,9 +218,26 @@ def get_cached_history_day(user, day_key, logging_style_override=None):
 
 
 def get_history_days(
-    user, filters=None, date_filters=None, logging_style_override=None
+    user,
+    filters=None,
+    date_filters=None,
+    logging_style_override=None,
+    *,
+    cap_entries_per_day=True,
+    max_entries_per_day=None,
 ):
-    """Build history days directly (used for filtered requests)."""
+    """Build history days directly (used for filtered requests).
+
+    `cap_entries_per_day` must be False for callers that flatten the result
+    into a per-entry list (`flat=1`), which paginate over individual entries
+    via their own `limit`/`offset` — capping entries per day here would
+    silently make entries beyond the cap unreachable no matter how far such
+    a caller paginates, defeating flat mode's per-entry pagination model.
+    Day-grouped callers should leave it True (the default) — a single busy
+    day could otherwise blow up the response/page render (#1004); pass
+    `max_entries_per_day` to override the `HISTORY_ENTRIES_PER_DAY_PAGE`
+    default cap.
+    """
     start = time.perf_counter()
     logger.info(
         "history_cache_bypass user_id=%s filters=%s date_filters=%s logging_style_override=%s",
@@ -237,6 +255,13 @@ def get_history_days(
         date_filters=date_filters,
         logging_style_override=logging_style_override,
     )
+    if cap_entries_per_day:
+        entry_cap = (
+            max_entries_per_day
+            if max_entries_per_day is not None
+            else HISTORY_ENTRIES_PER_DAY_PAGE
+        )
+        apply_history_entry_cap(history_days, entry_cap)
     logger.info(
         "history_cache_bypass_done user_id=%s days=%s elapsed_ms=%.2f",
         user.id,
@@ -274,9 +299,15 @@ def get_cached_history_window(
     offset,
     filters=None,
     logging_style_override=None,
+    max_entries_per_day=None,
 ):
     """Read one API page from indexed/day-cached history payloads."""
     filters = filters or {}
+    entry_cap = (
+        max_entries_per_day
+        if max_entries_per_day is not None
+        else HISTORY_ENTRIES_PER_DAY_PAGE
+    )
     unsupported_filters = set(filters) - {"media_type"}
     if unsupported_filters:
         raise ValueError(
@@ -378,21 +409,10 @@ def get_cached_history_window(
 
     history_days.sort(key=lambda day: day.get("date") or date.min, reverse=True)
 
-    # A day's entry count is unbounded (imports, binge sessions, frequent
-    # podcast scrobbles can put hundreds of entries on one day), while
-    # `limit`/`offset` here only bound the number of DAYS returned. Without
-    # this cap a single busy day can blow up the response to megabytes even
-    # for `limit=1` — mirrors the web history page's existing per-day
-    # entry cap (HISTORY_ENTRIES_PER_DAY_PAGE, see history_views.py).
-    total_entries = 0
-    for day_payload in history_days:
-        entries = day_payload.get("entries", [])
-        entry_count = len(entries)
-        total_entries += entry_count
-        if entry_count > HISTORY_ENTRIES_PER_DAY_PAGE:
-            day_payload["entries"] = entries[:HISTORY_ENTRIES_PER_DAY_PAGE]
-        day_payload["entry_count"] = entry_count
-        day_payload["entries_truncated"] = entry_count > HISTORY_ENTRIES_PER_DAY_PAGE
+    # `limit`/`offset` here only bound the number of DAYS returned, not the
+    # entries within a day — cap those separately or a single busy day could
+    # blow up the response to megabytes even for `limit=1`.
+    total_entries = apply_history_entry_cap(history_days, entry_cap)
 
     logger.info(
         "history_cached_window user_id=%s logging_style=%s filters=%s indexed=%s offset=%s limit=%s cached=%s missing=%s returned=%s entries=%s",

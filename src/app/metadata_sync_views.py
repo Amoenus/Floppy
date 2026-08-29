@@ -137,6 +137,49 @@ def update_metadata_provider_preference(request, source, media_type, media_id):
 
 
 @login_required
+@require_POST
+def update_metadata_language_preference(request, source, media_type, media_id):
+    """Persist a per-item metadata display-language override."""
+    language = (request.POST.get("language") or "").strip()
+    return_url = helpers.normalize_navigation_url(request.POST.get("return_url"))
+
+    item = _lookup_item_for_metadata_route(media_type, source, media_id)
+    try:
+        language_choices = tmdb.metadata_languages()
+    except Exception as exc:  # pragma: no cover - defensive provider fallback
+        logger.warning("Could not load TMDB metadata languages: %s", exc)
+        language_choices = [("", f"Server Default ({settings.TMDB_LANG})")]
+    valid_codes = {choice[0] for choice in language_choices}
+    if language and language not in valid_codes:
+        messages.error(request, "That metadata language is not available.")
+    else:
+        MetadataProviderPreference.objects.update_or_create(
+            user=request.user,
+            item=item,
+            defaults={"language": language},
+        )
+        messages.success(request, "Metadata language updated.")
+
+    if return_url and (
+        return_url.startswith("/")
+        or url_has_allowed_host_and_scheme(
+            return_url,
+            allowed_hosts={request.get_host()},
+            require_https=request.is_secure(),
+        )
+    ):
+        return redirect(return_url)
+
+    return redirect(
+        "media_details",
+        source=source,
+        media_type=media_type,
+        media_id=media_id,
+        title=title if (title := item.get_display_title(request.user)) else "item",
+    )
+
+
+@login_required
 @require_GET
 def search_remap_candidates(request, source, media_type, media_id):
     """Search a target provider for a manual remap candidate."""
@@ -195,7 +238,7 @@ def search_library_move_candidates(request, item_id):
                 source=move_context["target_source"],
                 user=request.user,
                 language=metadata_resolution.metadata_language_default(
-                    request.user,
+                    request.user, item,
                 ),
             )
             results = (response or {}).get("results") or []
@@ -548,7 +591,7 @@ def _resolve_current_display_metadata_payload(
         media_type,
         media_id,
         source,
-        language=metadata_resolution.metadata_language_default(user),
+        language=metadata_resolution.metadata_language_default(user, item),
     )
     current_provider = metadata_resolution.get_preferred_provider(
         user,
@@ -576,7 +619,7 @@ def _resolve_current_display_metadata_payload(
         ),
         provider_media_id,
         current_provider,
-        language=metadata_resolution.metadata_language_default(user),
+        language=metadata_resolution.metadata_language_default(user, item),
     )
 
 

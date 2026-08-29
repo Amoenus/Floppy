@@ -159,6 +159,7 @@ class ShowSerializer(serializers.Serializer):
     slug = serializers.CharField(allow_blank=True)
     podcast_uuid = serializers.CharField(allow_null=True)
     image = serializers.CharField(allow_blank=True)
+    website_url = serializers.CharField(allow_blank=True)
 
 
 class TrackedMediaResponseSerializer(serializers.Serializer):

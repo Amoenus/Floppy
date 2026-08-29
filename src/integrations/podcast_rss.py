@@ -38,6 +38,7 @@ def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
         - language: Show language (optional)
         - author: Show author (optional)
         - image: Show artwork URL (optional)
+        - website_url: Show homepage URL (optional)
     """
     try:
         response = requests.get(
@@ -102,6 +103,21 @@ def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
                 if image_url_elem is not None and image_url_elem.text:
                     metadata["image"] = image_url_elem.text.strip()
 
+            # Website, preferring the plain RSS <link> text content, falling
+            # back to an Atom <link rel="alternate"> element's href.
+            link_elem = channel.find("link")
+            if link_elem is not None and link_elem.text:
+                metadata["website_url"] = link_elem.text.strip()
+            else:
+                for candidate in channel.findall(
+                    "{http://www.w3.org/2005/Atom}link"
+                ):
+                    rel = candidate.get("rel")
+                    href = candidate.get("href")
+                    if rel in (None, "alternate") and href:
+                        metadata["website_url"] = href.strip()
+                        break
+
     except requests.RequestException as e:
         logger.exception(
             "Failed to fetch RSS feed %s: %s",
@@ -137,6 +153,7 @@ def fetch_episodes_from_rss(rss_feed_url: str, limit: int | None = None) -> list
         - episode_number: Episode number (optional)
         - season_number: Season number (optional)
         - description: Episode description (optional)
+        - website_url: Episode webpage URL (optional)
     """
     try:
         response = requests.get(
@@ -230,6 +247,11 @@ def _parse_rss_feed(root: Element, limit: int | None) -> list[dict]:
             if audio_url:
                 episode["audio_url"] = audio_url
 
+        # Website (shownotes) URL
+        link_elem = item.find("link")
+        if link_elem is not None and link_elem.text:
+            episode["website_url"] = link_elem.text.strip()
+
         # Episode number (iTunes)
         episode_elem = item.find("itunes:episode", namespaces)
         if episode_elem is not None and episode_elem.text:
@@ -314,6 +336,14 @@ def _parse_atom_feed(root: Element, limit: int | None) -> list[dict]:
                 if audio_url:
                     episode["audio_url"] = audio_url
                     break
+
+        # Website (shownotes) URL
+        for link in links:
+            rel = link.get("rel")
+            href = link.get("href")
+            if rel in (None, "alternate") and href:
+                episode["website_url"] = href
+                break
 
         # Episode number (iTunes)
         episode_elem = entry.find("itunes:episode", namespaces)

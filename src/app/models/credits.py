@@ -82,7 +82,13 @@ class MetadataProviderPreference(models.Model):
         on_delete=models.CASCADE,
         related_name="metadata_provider_preferences",
     )
-    provider = models.CharField(max_length=20, choices=Sources.choices)
+    provider = models.CharField(
+        max_length=20,
+        choices=Sources.choices,
+        blank=True,
+        default="",
+    )
+    language = models.CharField(max_length=10, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -101,8 +107,8 @@ class MetadataProviderPreference(models.Model):
         ]
 
     def __str__(self):
-        """Return the display-provider preference label."""
-        return f"{self.user_id}:{self.item_id}->{self.provider}"
+        """Return the display-provider/language preference label."""
+        return f"{self.user_id}:{self.item_id}->{self.provider}/{self.language}"
 
 
 class HardcoverEditionPreference(models.Model):

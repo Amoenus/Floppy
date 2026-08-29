@@ -318,6 +318,7 @@ def podcast_episodes_api(request, show_id):
             "duration": duration_str,
             "duration_seconds": episode_obj.duration,
             "episode_number": episode_obj.episode_number,
+            "website_url": episode_obj.website_url,
             "status": status,
             "has_history": enriched and enriched.get("media") is not None,
         }

@@ -41,6 +41,9 @@ class PodcastShow(models.Model):
     rss_feed_url = models.URLField(
         blank=True, default="", help_text="RSS feed URL for fetching full episode list"
     )
+    website_url = models.URLField(
+        blank=True, default="", help_text="Podcast homepage URL from the RSS <link> element"
+    )
 
     class Meta:
         """Meta options for the model."""
@@ -78,6 +81,12 @@ class PodcastEpisode(models.Model):
         help_text="Duration in seconds",
     )
     audio_url = models.URLField(max_length=500, blank=True, default="")
+    website_url = models.URLField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Episode webpage URL from the RSS <link> element",
+    )
     episode_number = models.PositiveIntegerField(null=True, blank=True)
     season_number = models.PositiveIntegerField(null=True, blank=True)
     file_type = models.CharField(max_length=50, blank=True, default="")

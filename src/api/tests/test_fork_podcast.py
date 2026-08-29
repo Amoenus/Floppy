@@ -33,6 +33,7 @@ class PodcastApiTestCase(FloppyApiTestCase):
             description="A test podcast description.",
             genres=["Technology", "News"],
             language="en",
+            website_url="https://example.com/show",
         )
         self.episode1 = PodcastEpisode.objects.create(
             show=self.show,
@@ -67,6 +68,7 @@ class ShowTrackerTests(PodcastApiTestCase):
         self.assertEqual(payload["description"], "A test podcast description.")
         self.assertEqual(payload["genres"], ["Technology", "News"])
         self.assertEqual(payload["language"], "en")
+        self.assertEqual(payload["website_url"], "https://example.com/show")
 
     def test_track_list_patch_delete(self):
         """Full tracker lifecycle."""
@@ -195,6 +197,7 @@ class PodcastLookupTests(PodcastApiTestCase):
         self.assertEqual(payload["description"], "A show nobody's tracked yet.")
         self.assertEqual(payload["genres"], ["Comedy"])
         self.assertEqual(payload["rss_feed_url"], "https://example.com/feed.xml")
+        self.assertEqual(payload["website_url"], "")
         self.assertIsNone(payload["show_id"], "nothing is imported yet")
 
         episodes = payload["episodes"]["results"]
@@ -323,6 +326,7 @@ class PodcastLookupTests(PodcastApiTestCase):
         payload = response.json()
         self.assertEqual(payload["title"], "Unimported Show")
         self.assertEqual(payload["rss_feed_url"], "")
+        self.assertEqual(payload["website_url"], "")
         self.assertEqual(payload["episodes"]["results"], [])
         mock_episodes.assert_not_called()
 

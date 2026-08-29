@@ -242,6 +242,148 @@ MEDIA_LIST_ROOT_PARAMS = [
     *MEDIA_LIST_FILTER_PARAMS,
 ]
 
+HISTORY_LIST_PARAMS = [
+    OpenApiParameter(
+        name="limit",
+        type=int,
+        location=OpenApiParameter.QUERY,
+        description="Maximum days (or entries, when `flat=1`); maximum 200, defaults to 20.",
+    ),
+    OpenApiParameter(
+        name="offset",
+        type=int,
+        location=OpenApiParameter.QUERY,
+        description="Zero-based offset over days (or entries, when `flat=1`); defaults to 0.",
+    ),
+    OpenApiParameter(
+        name="max_entries_per_day",
+        type=int,
+        location=OpenApiParameter.QUERY,
+        description=(
+            "Override the per-day entry cap (default and max 200) applied to "
+            "day-grouped results. Ignored when `flat=1`, which paginates over "
+            "individual entries instead of days and is never capped per day."
+        ),
+    ),
+    OpenApiParameter(
+        name="flat",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="`1` or `true` returns a flat, per-entry list (paginated by "
+        "`limit`/`offset` over entries) instead of day-grouped buckets.",
+    ),
+    OpenApiParameter(
+        name="logging_style",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        enum=["sessions", "repeats"],
+        description="Overrides the user's saved game history logging style for this request.",
+    ),
+    OpenApiParameter(
+        name="types",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        many=True,
+        description="Media type filter; repeated and comma-separated syntax are "
+        "accepted. Alias of `media_type`.",
+    ),
+    OpenApiParameter(
+        name="media_type",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        many=True,
+        description="Media type filter; repeated and comma-separated syntax are "
+        "accepted. Alias of `types`.",
+    ),
+    OpenApiParameter(
+        name="start_date",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="ISO date; restricts results to entries on/after this date.",
+    ),
+    OpenApiParameter(
+        name="end_date",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="ISO date; restricts results to entries on/before this date.",
+    ),
+    OpenApiParameter(
+        name="genre",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="Filter by genre name.",
+    ),
+    OpenApiParameter(
+        name="implied_genre",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="Filter music entries by an implied (derived) genre name.",
+    ),
+    OpenApiParameter(
+        name="media_id",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="Restrict to entries for one item's media_id (requires `source`).",
+    ),
+    OpenApiParameter(
+        name="source",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="Restrict to entries for one item's provider source (requires `media_id`).",
+    ),
+    OpenApiParameter(
+        name="person_source",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="Restrict to entries credited to a person, by provider source "
+        "(requires `person_id`).",
+    ),
+    OpenApiParameter(
+        name="person_id",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="Restrict to entries credited to a person, by provider person "
+        "id (requires `person_source`).",
+    ),
+    OpenApiParameter(
+        name="album",
+        type=int,
+        location=OpenApiParameter.QUERY,
+        description="Restrict music entries to one album id.",
+    ),
+    OpenApiParameter(
+        name="artist",
+        type=int,
+        location=OpenApiParameter.QUERY,
+        description="Restrict music entries to one artist's album id.",
+    ),
+    OpenApiParameter(
+        name="tv",
+        type=int,
+        location=OpenApiParameter.QUERY,
+        description="Restrict episode entries to one TV show id.",
+    ),
+    OpenApiParameter(
+        name="season",
+        type=int,
+        location=OpenApiParameter.QUERY,
+        description="Restrict episode entries to one season id.",
+    ),
+    OpenApiParameter(
+        name="season_number",
+        type=int,
+        location=OpenApiParameter.QUERY,
+        description="Restrict episode entries to a season number (requires "
+        "`media_id`/`source`).",
+    ),
+    OpenApiParameter(
+        name="podcast_show",
+        type=int,
+        location=OpenApiParameter.QUERY,
+        description="Restrict podcast entries to one show id.",
+    ),
+]
+
 
 class BearerAuthenticationScheme(OpenApiAuthenticationExtension):
     """Describe the custom bearer token auth scheme for OpenAPI generation."""
