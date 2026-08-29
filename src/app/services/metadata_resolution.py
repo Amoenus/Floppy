@@ -938,11 +938,17 @@ def _grouped_preview_target(
     ):
         return None
 
+    # Community mapping entries are TVDB-first: most carry a tvdb_id but no
+    # tmdb_*id field at all. Require an exact match when the entry *does*
+    # carry this provider's ID (a real conflict), but don't reject an entry
+    # just because it's silent on this provider - its season/episode-offset
+    # data is still valid, since _provider_season_number/_episode_offset
+    # already fall back to the TVDB fields for TMDB.
     mapping_entries = anime_mapping.find_entries_for_mal_id(media_id)
     matching_entries = [
         entry
         for entry in mapping_entries
-        if _provider_series_id(entry, provider) == str(provider_media_id)
+        if _provider_series_id(entry, provider) in (None, str(provider_media_id))
     ]
     if not matching_entries:
         return None

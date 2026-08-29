@@ -562,6 +562,87 @@ class MetadataResolutionTests(TestCase):
             28,
         )
 
+    @patch("app.services.metadata_resolution.anime_mapping.find_entries_for_mal_id")
+    @patch("app.services.metadata_resolution.services.get_media_metadata")
+    def test_resolve_detail_metadata_grouped_preview_target_falls_back_to_tvdb_mapping_for_tmdb(
+        self,
+        mock_get_media_metadata,
+        mock_find_entries,
+    ):
+        """TMDB display should still get a grouped target from a TVDB-only mapping entry.
+
+        Community mapping data (Kometa Anime-IDs) is TVDB-first: most entries carry
+        a tvdb_id/tvdb_season but no tmdb_*id field at all. Requiring an exact
+        provider-ID match on the entry meant picking TMDB as the display provider
+        could never produce a grouped_preview_target for those titles, so the
+        episode-cards section silently rendered nothing (#reported: "no episode
+        cards" after mapping MAL -> TMDB).
+        """
+        item = Item.objects.create(
+            media_id="31964",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="My Hero Academia",
+            image="https://example.com/mha.jpg",
+            provider_external_ids={"tmdb_id": "65930"},
+        )
+        MetadataProviderPreference.objects.create(
+            user=self.user,
+            item=item,
+            provider=Sources.TMDB.value,
+        )
+        mock_find_entries.return_value = [
+            {"tvdb_id": "305074", "tvdb_season": 1, "tvdb_epoffset": 0},
+        ]
+        base_metadata = {
+            "media_id": "31964",
+            "source": Sources.MAL.value,
+            "media_type": MediaTypes.ANIME.value,
+            "title": "My Hero Academia",
+            "image": "https://example.com/mha.jpg",
+            "details": {"episodes": 13},
+            "related": {},
+        }
+        mock_get_media_metadata.side_effect = [
+            {
+                "media_id": "65930",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.ANIME.value,
+                "title": "My Hero Academia",
+                "related": {"seasons": [{"season_number": 1}]},
+                "external_links": {},
+            },
+            {
+                "media_id": "65930",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.ANIME.value,
+                "title": "My Hero Academia",
+                "related": {
+                    "seasons": [{"season_number": 1, "episode_count": 13}],
+                },
+                "season/1": {
+                    "season_number": 1,
+                    "season_title": "Season 1",
+                    "details": {"episodes": 13},
+                },
+            },
+        ]
+
+        result = metadata_resolution.resolve_detail_metadata(
+            self.user,
+            item=item,
+            route_media_type=MediaTypes.ANIME.value,
+            media_id=item.media_id,
+            source=item.source,
+            base_metadata=base_metadata,
+        )
+
+        self.assertEqual(result.mapping_status, "mapped")
+        self.assertIsNotNone(result.grouped_preview_target)
+        self.assertEqual(result.grouped_preview_target["season_number"], 1)
+        self.assertEqual(result.grouped_preview_target["episode_start"], 1)
+        self.assertEqual(result.grouped_preview_target["episode_end"], 13)
+
     @patch("app.db_retry.time.sleep")
     @patch("app.services.metadata_resolution.ItemProviderLink.objects.update_or_create")
     def test_resolve_detail_metadata_best_effort_keeps_identity_payload_on_lock(
