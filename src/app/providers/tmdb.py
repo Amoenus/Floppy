@@ -868,7 +868,14 @@ def get_tvdb_episode_image_map(tvdb_id, season_number, *, tmdb_media_id=None):
         )
         return {}
     except services.ProviderAPIError as error:
-        logger.warning(
+        # A 404 here just means this TMDB season/episode doesn't exist under
+        # TVDB's own numbering (common for grouped-anime shows) - expected
+        # and already handled below, not worth a warning. Other failures
+        # (auth, 5xx, network) still warrant one.
+        log_method = (
+            logger.info if error.status_code == requests.codes.not_found else logger.warning
+        )
+        log_method(
             "Skipping TMDB episode art fallback due to TVDB API error: %s",
             error,
             extra={
