@@ -1,10 +1,12 @@
 from datetime import UTC, datetime
 from unittest.mock import call, patch
 
+from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 
 from app import tasks_podcast
+from app.interactive_requests import INTERACTIVE_REQUEST_CACHE_KEY
 from app.models import BackfillReconcileState, PodcastEpisode, PodcastShow
 
 
@@ -12,9 +14,17 @@ class ReconcilePodcastWebsiteBackfillTests(TestCase):
     """The one-shot sweep walks every show with a feed, then stops for good."""
 
     def setUp(self):
+        # ensure_* checks interactive_request_active() before the state gate,
+        # and that flag lives in the cache, so a test elsewhere that sets it
+        # and doesn't clear it makes this class fail on ordering alone. Same
+        # guard MetadataBackfillTaskTests uses.
+        cache.delete(INTERACTIVE_REQUEST_CACHE_KEY)
         BackfillReconcileState.objects.filter(
             key=tasks_podcast.RECONCILE_KEY,
         ).delete()
+
+    def tearDown(self):
+        cache.delete(INTERACTIVE_REQUEST_CACHE_KEY)
 
     def _show(self, uuid, *, rss_feed_url="https://example.com/feed.xml"):
         return PodcastShow.objects.create(
