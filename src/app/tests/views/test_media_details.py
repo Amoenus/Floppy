@@ -9100,6 +9100,51 @@ class MediaDetailsViewTests(TestCase):
         self.assertContains(response, "Episode One")
         self.assertNotContains(response, "Mark All Played")
 
+    def test_podcast_media_details_renders_show_and_episode_website_links(self):
+        """Issue #1014: the links have to reach the page users actually open.
+
+        /podcast/show/<id>/ rendered them, but the route the app links to is
+        /details/<source>/podcast/<show_uuid>/<slug>, which builds its own
+        context and carried neither the show's website nor the episodes'.
+        """
+        show = PodcastShow.objects.create(
+            podcast_uuid="itunes:1002937871",
+            title="Voicemail Dump Truck",
+            author="Mary",
+            image="http://example.com/podcast.jpg",
+            rss_feed_url="",
+            website_url="https://www.spreaker.com/show/voicemail-dump-truck",
+        )
+        PodcastEpisode.objects.create(
+            show=show,
+            episode_uuid="vdt-episode-1",
+            title="Dog Sunscreen",
+            duration=3600,
+            website_url="https://www.spreaker.com/episode/dog-sunscreen",
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.POCKETCASTS.value,
+                    "media_type": MediaTypes.PODCAST.value,
+                    "media_id": show.podcast_uuid,
+                    "title": "voicemail-dump-truck",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "https://www.spreaker.com/show/voicemail-dump-truck",
+        )
+        self.assertContains(
+            response,
+            "https://www.spreaker.com/episode/dog-sunscreen",
+        )
+
     def test_podcast_media_details_renders_for_show_without_artwork(self):
         """Podcast details should render when the show has no artwork.
 
