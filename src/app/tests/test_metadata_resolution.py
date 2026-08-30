@@ -126,6 +126,48 @@ class MetadataResolutionTests(TestCase):
             Sources.HARDCOVER.value,
         )
 
+    @override_settings(HARDCOVER_API="")
+    def test_hardcover_is_hidden_without_a_token(self):
+        """Hardcover ships no default token, so it is opt-in (#1025)."""
+        sources = metadata_resolution.available_metadata_sources(MediaTypes.BOOK.value)
+
+        self.assertNotIn(Sources.HARDCOVER, sources)
+        self.assertFalse(metadata_resolution.provider_is_enabled("hardcover"))
+
+    @override_settings(HARDCOVER_API="")
+    def test_books_fall_back_to_open_library_without_a_hardcover_token(self):
+        """The reported bug: an unconfigured default left book search dead."""
+        self.assertEqual(
+            metadata_resolution.metadata_default_source(
+                self.user,
+                MediaTypes.BOOK.value,
+            ),
+            Sources.OPENLIBRARY.value,
+        )
+
+    @override_settings(HARDCOVER_API="")
+    def test_a_personal_token_puts_hardcover_back(self):
+        """A member with their own key is not held back by the instance."""
+        self.user.hardcover_api_key = "encrypted-personal-token"
+
+        self.assertTrue(
+            metadata_resolution.provider_is_enabled("hardcover", self.user),
+        )
+        self.assertIn(
+            Sources.HARDCOVER,
+            metadata_resolution.available_metadata_sources(
+                MediaTypes.BOOK.value,
+                self.user,
+            ),
+        )
+        self.assertEqual(
+            metadata_resolution.metadata_default_source(
+                self.user,
+                MediaTypes.BOOK.value,
+            ),
+            Sources.HARDCOVER.value,
+        )
+
     def test_get_tracking_media_type_keeps_season_and_episode_distinct_from_tv(self):
         """A season/episode route must not collapse to "tv" via identity_media_type.
 

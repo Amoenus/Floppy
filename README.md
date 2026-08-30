@@ -403,7 +403,7 @@ The only universally required variable is `SECRET`. For Docker installs you shou
 - `IGDB_ID` / `IGDB_SECRET` - game metadata from [IGDB](https://www.igdb.com/api)
 - `STEAM_API_KEY` - Steam game imports
 - `BGG_API_TOKEN` - board game metadata from [BoardGameGeek](https://boardgamegeek.com/using_the_xml_api)
-- `HARDCOVER_API` - Hardcover book metadata/imports
+- `HARDCOVER_API` - Hardcover book metadata/imports. **Required to use Hardcover** ([generate a token](https://hardcover.app/account/api)); Hardcover meters its free tier per account (5000 requests/day), so Floppy ships no shared default and book search falls back to Open Library without one. Individual users can also set a personal token in their own settings.
 - `GOOGLE_BOOKS_API_KEY` - optional Google Books book metadata ([Google Books API](https://developers.google.com/books/docs/v1/using)); supports `GOOGLE_BOOKS_API_KEY_FILE` for Docker secrets
 - `COMICVINE_API` - comic metadata
 - `LASTFM_API_KEY` - Last.fm integration and scrobble polling

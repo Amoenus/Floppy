@@ -63,21 +63,29 @@ class MetadataProviderOption:
     label: str
 
 
-def provider_is_enabled(provider: str) -> bool:
-    """Return whether a provider is configured for live use."""
+def provider_is_enabled(provider: str, user=None) -> bool:
+    """Return whether a provider is configured for live use.
+
+    ``user`` opts a provider back in when the credential can be personal rather
+    than instance-wide; callers with no user get the instance-level answer.
+    """
     if provider == Sources.TVDB.value:
         return bool(settings.TVDB_API_KEY)
     if provider == Sources.GOOGLEBOOKS.value:
         return bool(settings.GOOGLE_BOOKS_API_KEY)
+    if provider == Sources.HARDCOVER.value:
+        return bool(settings.HARDCOVER_API) or bool(
+            getattr(user, "hardcover_api_key", None),
+        )
     return True
 
 
-def available_metadata_sources(media_type: str) -> list[Sources]:
+def available_metadata_sources(media_type: str, user=None) -> list[Sources]:
     """Return configured metadata sources for a route media type."""
     candidates = []
     for source in config.get_sources(media_type) or []:
         provider = source.value if isinstance(source, Sources) else str(source)
-        if provider_is_enabled(provider):
+        if provider_is_enabled(provider, user):
             candidates.append(
                 source if isinstance(source, Sources) else Sources(provider),
             )
@@ -146,10 +154,10 @@ def metadata_default_source(user, media_type: str) -> str:
             provider = getattr(user, "anime_metadata_source_default", None)
 
     provider = provider or config.get_default_source_name(media_type).value
-    if provider_is_enabled(provider):
+    if provider_is_enabled(provider, user):
         return provider
 
-    available = available_metadata_sources(media_type)
+    available = available_metadata_sources(media_type, user)
     return available[0].value if available else provider
 
 
