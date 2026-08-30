@@ -375,6 +375,10 @@ session.mount(
     "https://xbl.io/api",
     _build_host_limiter_adapter(per_hour=120),
 )
+session.mount(
+    "https://api.tvmaze.com",
+    _build_host_limiter_adapter(per_second=2),
+)
 
 
 class ProviderAPIError(Exception):
