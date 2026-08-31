@@ -13,7 +13,7 @@ from app.models import (
     Season,
     Sources,
 )
-from app.services import grouped_anime
+from app.services import grouped_anime, metadata_resolution
 
 
 class GroupedAnimeClassifierTests(TestCase):
@@ -264,3 +264,42 @@ class GroupedAnimeClassifierTests(TestCase):
         self.assertEqual(result.mal_ids, ("1", "2"))
         self.assertIn("multiple_mal_seasons", result.reason)
         self.assertIsNotNone(result.mapping_group_key)
+
+
+class AnimeLibraryVisibilityTests(TestCase):
+    """One rule for where grouped anime surfaces, shared by every read path.
+
+    The list view, the filter/statusless path and search each used to decide
+    this independently and disagreed for the "tv" mode, so the same library
+    returned different rows depending on which path served the request.
+    """
+
+    def setUp(self):
+        """Create a user whose anime library mode can be varied."""
+        self.user = get_user_model().objects.create_user(
+            username="anime-visibility-user",
+            password="password",
+        )
+
+    def test_visibility_matches_the_selected_library_mode(self):
+        """Each mode maps to exactly one (anime, tv) visibility pair."""
+        cases = [
+            (MediaTypes.ANIME.value, (True, False)),
+            (MediaTypes.TV.value, (False, True)),
+            ("both", (True, True)),
+        ]
+        for mode, expected in cases:
+            with self.subTest(mode=mode):
+                self.user.anime_library_mode = mode
+                self.user.save(update_fields=["anime_library_mode"])
+                self.assertEqual(
+                    metadata_resolution.anime_library_visibility(self.user),
+                    expected,
+                )
+
+    def test_tv_mode_shows_grouped_anime_in_the_tv_library(self):
+        """"TV Library" means the user wants grouped anime in TV Shows."""
+        self.user.anime_library_mode = MediaTypes.TV.value
+        self.user.save(update_fields=["anime_library_mode"])
+        _, include_in_tv = metadata_resolution.anime_library_visibility(self.user)
+        self.assertTrue(include_in_tv)

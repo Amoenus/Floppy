@@ -224,6 +224,23 @@ def is_grouped_anime_route(
     )
 
 
+def anime_library_visibility(user) -> tuple[bool, bool]:
+    """Return whether grouped anime shows in the Anime and TV libraries.
+
+    Grouped anime is one Item (a TV row in the anime bucket). ``anime_library_mode``
+    decides which library surfaces it, so every list, search and filter path must
+    read it the same way or the same query returns different rows depending on
+    which code path served it.
+
+    Returns ``(include_in_anime, include_in_tv)``.
+    """
+    mode = getattr(user, "anime_library_mode", MediaTypes.ANIME.value)
+    return (
+        mode in {MediaTypes.ANIME.value, "both"},
+        mode in {MediaTypes.TV.value, "both"},
+    )
+
+
 def item_uses_grouped_anime(item: Item | None) -> bool:
     """Return True when an Item is a grouped anime title stored on TV rows."""
     return bool(
