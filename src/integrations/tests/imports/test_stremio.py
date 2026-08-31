@@ -614,8 +614,12 @@ class ImportStremioTests(TestCase):
             MediaTypes.ANIME.value,
         )
 
-    def test_mal_preferring_user_keeps_the_series_in_tv(self):
-        """A TMDB series cannot populate a flat MAL library, so leave it in TV."""
+    def test_mal_preferring_user_skips_the_series_rather_than_importing_to_tv(self):
+        """A TMDB series cannot populate a flat MAL library, so skip it.
+
+        Importing it as TV instead would track the show in both libraries -
+        the duplicate this whole rule exists to prevent.
+        """
         self.user.anime_metadata_source_default = Sources.MAL.value
         self.user.save(update_fields=["anime_metadata_source_default"])
 
@@ -647,14 +651,14 @@ class ImportStremioTests(TestCase):
                 cinemeta_videos={"tt0903747": video_ids},
             )
 
-        self.assertIn("kept in TV", warnings)
-        self.assertNotEqual(
-            Item.objects.get(
+        self.assertIn("skipped", warnings)
+        self.assertFalse(
+            Item.objects.filter(
                 media_id="1396",
                 media_type=MediaTypes.TV.value,
-            ).library_media_type,
-            MediaTypes.ANIME.value,
+            ).exists(),
         )
+        self.assertEqual(TV.objects.filter(user=self.user).count(), 0)
 
     def test_existing_grouped_home_wins_when_the_snapshot_failed_to_load(self):
         """Stickiness must survive a mapping outage, or the show splits in two."""

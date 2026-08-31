@@ -620,13 +620,15 @@ class StremioImporter:
         if anime_router is not None:
             route = anime_router.route_for_show(metadata, tmdb_id=tmdb_id)
             if route == "flat":
-                # This user's Anime library holds flat MAL rows, which a
-                # TMDB-identified Stremio series cannot populate. Leave it in
-                # TV rather than opening a second home for the same show.
+                # This show's home is a flat MAL row, which a TMDB-identified
+                # Stremio series cannot populate. Importing it as TV would
+                # track the same show in both libraries, so skip it and say so.
                 self.warnings.append(
-                    f"{name}: tracked as anime on MyAnimeList; kept in TV",
+                    f"{name}: tracked as anime on {Sources.MAL.label}; skipped "
+                    "so it is not also imported into TV",
                 )
-            elif route == "grouped":
+                return
+            if route == "grouped":
                 grouped_anime_match = grouped_anime.classify(
                     metadata,
                     snapshot=anime_router.snapshot,
