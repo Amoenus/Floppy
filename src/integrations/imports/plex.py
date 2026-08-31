@@ -14,6 +14,7 @@ import app
 from app.log_safety import exception_summary, presence_map
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
+from app.services import grouped_anime
 from app.services.music import prefetch_album_covers
 
 # Suppress InsecureRequestWarning (Plex local connections often use self-signed certs)
@@ -116,6 +117,8 @@ class PlexHistoryImporter:
         # Store ratings from library items to apply during bulk media creation
         self._library_ratings: dict[tuple[str, str], float] = {}
         self._anime_import_keys: set[tuple[str, int]] = set()
+        # One anime router for the whole run; see AnimeRouteResolver.
+        self.anime_router = grouped_anime.AnimeRouteResolver(self.user)
         self._current_section_uri: str = ""
         self._current_section_anime_hint = False
         self._current_server_owned = True
@@ -1375,6 +1378,42 @@ class PlexHistoryImporter:
             return str(response["movie_results"][0]["id"])
         return None
 
+    def _anime_library_bucket(self, record, tv_metadata, tmdb_id=None):
+        """Return ANIME when this show belongs in the Anime library, else None.
+
+        A Plex section named "Anime" is a title substring, not evidence about
+        the title, so it cannot outrank the classifier: a show the classifier
+        positively rejects as non-animation stays in TV even inside such a
+        section. Where the classifier has no verdict at all - an unmapped
+        title, a title with no MAL identity, an ambiguous multi-cour mapping,
+        or an unavailable snapshot - the section name is the only signal
+        available and still routes the show to Anime.
+        """
+        if not getattr(self.user, "anime_enabled", False):
+            return None
+
+        route = self.anime_router.route_for_show(
+            tv_metadata or {},
+            tmdb_id=tmdb_id,
+            tvdb_id=(tv_metadata or {}).get("tvdb_id"),
+        )
+        if route == "grouped":
+            return MediaTypes.ANIME.value
+        if route == "flat":
+            # The flat path owns this show; it is not a grouped TV row.
+            return None
+
+        if not record.get("anime_section"):
+            return None
+
+        verdict = self.anime_router.verdict(tv_metadata or {}, tmdb_id=tmdb_id)
+        if (
+            verdict is not None
+            and verdict.reason == "tmdb_metadata_is_not_tagged_animation"
+        ):
+            return None
+        return MediaTypes.ANIME.value
+
     def _try_import_episode_record_as_anime(
         self,
         record: dict,
@@ -1400,6 +1439,19 @@ class PlexHistoryImporter:
         # The episode-level Guid tvdb id is an episode id, useless for
         # tvdb_show mappings — only use show-level TVDB ids here.
         tvdb_id = record.get("tvdb_show_id") or tv_metadata.get("tvdb_id")
+
+        # A show that belongs in the grouped shape must not be opened as a flat
+        # MAL row: the ordinary TV path buckets it as anime instead. Without
+        # this a TMDB-preferring user still gets flat rows out of Plex.
+        if (
+            self.anime_router.route_for_show(
+                tv_metadata,
+                tmdb_id=tmdb_id,
+                tvdb_id=tvdb_id,
+            )
+            == "grouped"
+        ):
+            return False
 
         anime_section = bool(record.get("anime_section"))
         if not anime_section and self._has_existing_non_anime_tv_tracking(
@@ -1879,13 +1931,10 @@ class PlexHistoryImporter:
                 record["season_number"],
             )
             tv_key = f"{item_source}:{item_media_id}"
-            # Shows from an anime library that lack a MAL mapping still belong
-            # in the anime view; the item classification drives list routing.
-            anime_class = (
-                MediaTypes.ANIME.value
-                if record.get("anime_section")
-                and getattr(self.user, "anime_enabled", False)
-                else None
+            anime_class = self._anime_library_bucket(
+                record,
+                tv_metadata,
+                actual_tmdb_id,
             )
 
             if tv_key in self.media_instances[MediaTypes.TV.value]:

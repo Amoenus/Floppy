@@ -144,6 +144,7 @@ class AnimeRouteResolver:
         self.snapshot = snapshot
         self._routes = {}
         self._mal_routes = {}
+        self._verdicts = {}
 
     def _cache_keys(self, tmdb_id, tvdb_id):
         keys = []
@@ -180,13 +181,20 @@ class AnimeRouteResolver:
         if not metadata_resolution.prefers_grouped_anime(self.user):
             # A MAL-preferring user's anime belongs in flat rows. Importers
             # without a MAL identity treat this as "not mine to create".
-            return "flat" if self.verdict_is_anime(tv_metadata) else None
+            return "flat" if self.verdict_is_anime(tv_metadata, tmdb_id=tmdb_id) else None
 
-        return "grouped" if self.verdict_is_anime(tv_metadata) else None
+        return "grouped" if self.verdict_is_anime(tv_metadata, tmdb_id=tmdb_id) else None
 
-    def verdict_is_anime(self, tv_metadata):
+    def verdict(self, tv_metadata, *, tmdb_id=None):
+        """Return the classifier verdict, computed at most once per show."""
+        key = str(tmdb_id) if tmdb_id else id(tv_metadata)
+        if key not in self._verdicts:
+            self._verdicts[key] = classify(tv_metadata, snapshot=self.snapshot)
+        return self._verdicts[key]
+
+    def verdict_is_anime(self, tv_metadata, *, tmdb_id=None):
         """Return whether the classifier positively identifies this as anime."""
-        match = classify(tv_metadata, snapshot=self.snapshot)
+        match = self.verdict(tv_metadata, tmdb_id=tmdb_id)
         return match is not None and match.is_grouped_anime
 
     def remember(self, route, *, tmdb_id=None, tvdb_id=None, mal_ids=()):
