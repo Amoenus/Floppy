@@ -722,7 +722,10 @@ def release_year(item, media=None):
             return display_year
         release_dt = getattr(media.item, "release_datetime", None)
         if release_dt:
-            return timezone.localtime(release_dt).year
+            try:
+                return timezone.localtime(release_dt).year
+            except (OverflowError, ValueError, OSError):
+                pass
 
     if not item:
         return None
@@ -744,7 +747,10 @@ def release_year(item, media=None):
 
     release_dt = getattr(item, "release_datetime", None)
     if release_dt:
-        return timezone.localtime(release_dt).year
+        try:
+            return timezone.localtime(release_dt).year
+        except (OverflowError, ValueError, OSError):
+            return None
 
     return None
 
