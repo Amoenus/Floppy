@@ -109,6 +109,7 @@ def repair_celery_broker_bindings():
 # dynamic imports) continue to work without any call-site changes.
 # ---------------------------------------------------------------------------
 from app.tasks_anime_library_repair import (  # noqa: E402
+    convert_anime_library_shape_task,
     repair_duplicated_anime_libraries_task,
 )
 from app.tasks_backfill_state import (  # noqa: E402
@@ -1179,6 +1180,7 @@ __all__ = [
     "backfill_podcast_show_websites",
     "bulk_episode_plays_task",
     "bulk_music_plays_task",
+    "convert_anime_library_shape_task",
     "count_igdb_rating_backfill_items",
     "enqueue_due_provider_backfill_retries",
     "enqueue_igdb_rating_backfill_items",

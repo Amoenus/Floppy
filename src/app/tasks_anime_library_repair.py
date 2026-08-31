@@ -196,3 +196,113 @@ def repair_duplicated_anime_libraries_task(batch_size: int = 25):
         "skipped": skipped,
         "unresolved": unresolved,
     }
+
+
+def anime_rows_needing_conversion(user):
+    """Return the user's anime Items that are not in their preferred shape.
+
+    Switching the Anime Provider only decides the shape of newly added shows;
+    existing ones are converted on request, because MAL identity is per cour
+    and TMDB/TVDB identity is per show, so the mapping is N:1 and cannot be
+    re-derived in bulk without losing or guessing at history.
+    """
+    from app.models import TV, Anime, ItemProviderLink, MediaTypes
+    from app.services import metadata_resolution
+
+    target_source = metadata_resolution.metadata_default_source(
+        user,
+        MediaTypes.ANIME.value,
+    )
+
+    if target_source in metadata_resolution.GROUPED_ANIME_PROVIDERS:
+        linked_item_ids = ItemProviderLink.objects.filter(
+            provider=target_source,
+            provider_media_type=MediaTypes.TV.value,
+        ).values("item_id")
+        return [
+            anime.item
+            for anime in Anime.objects.filter(
+                user=user,
+                item_id__in=linked_item_ids,
+            ).select_related("item")
+        ]
+
+    return [
+        tv.item
+        for tv in TV.objects.filter(
+            user=user,
+            item__media_type=MediaTypes.TV.value,
+            item__library_media_type=MediaTypes.ANIME.value,
+        ).select_related("item")
+    ]
+
+
+@shared_task(name="Convert anime library shape")
+def convert_anime_library_shape_task(user_id: int):
+    """Move a user's existing anime into the shape their provider implies.
+
+    Only ever runs when the user explicitly asks for it. Titles that cannot be
+    converted safely are left untouched and named in the result.
+    """
+    from django.contrib.auth import get_user_model
+
+    from app.models import ItemProviderLink, MediaTypes, Sources
+    from app.providers.services import ProviderAPIError
+    from app.services import library_migration, metadata_resolution
+    from app.services.anime_migration import AnimeMigrationError
+    from app.services.library_migration import LibraryMigrationError
+
+    user = get_user_model().objects.filter(pk=user_id).first()
+    if user is None:
+        return {"converted": 0, "skipped": 0, "unresolved": []}
+
+    target_source = metadata_resolution.metadata_default_source(
+        user,
+        MediaTypes.ANIME.value,
+    )
+    wants_grouped = target_source in metadata_resolution.GROUPED_ANIME_PROVIDERS
+    link_provider = target_source if wants_grouped else Sources.MAL.value
+
+    converted = 0
+    skipped = 0
+    unresolved = []
+
+    for item in anime_rows_needing_conversion(user):
+        link = ItemProviderLink.objects.filter(
+            item=item,
+            provider=link_provider,
+            provider_media_type=(
+                MediaTypes.TV.value if wants_grouped else MediaTypes.ANIME.value
+            ),
+        ).first()
+        if link is None:
+            skipped += 1
+            unresolved.append(item.title)
+            continue
+
+        try:
+            library_migration.migrate_library_item(
+                user,
+                item,
+                MediaTypes.ANIME.value,
+                link_provider,
+                link.provider_media_id,
+            )
+        except (
+            AnimeMigrationError,
+            LibraryMigrationError,
+            ProviderAPIError,
+        ) as error:
+            skipped += 1
+            unresolved.append(item.title)
+            logger.warning("Left %r in its current shape: %s", item.title, error)
+            continue
+        except Exception:
+            skipped += 1
+            unresolved.append(item.title)
+            logger.warning("Shape conversion crashed for %r", item.title, exc_info=True)
+            continue
+
+        converted += 1
+
+    return {"converted": converted, "skipped": skipped, "unresolved": unresolved}

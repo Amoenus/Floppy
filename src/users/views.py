@@ -942,6 +942,7 @@ def preferences(request):
             "anime_metadata_source_default"
         )
         anime_library_mode = request.POST.get("anime_library_mode")
+        anime_provider_changed = False
         hide_completed_recommendations_raw = request.POST.get(
             "hide_completed_recommendations"
         )
@@ -1207,6 +1208,7 @@ def preferences(request):
         ):
             request.user.anime_metadata_source_default = anime_metadata_source_default
             fields_to_update.append("anime_metadata_source_default")
+            anime_provider_changed = True
 
         if (
             anime_library_mode
@@ -1249,6 +1251,16 @@ def preferences(request):
                     request.user.id,
                     debounce_seconds=0,
                 )
+        if anime_provider_changed:
+            # Switching provider only decides the shape of newly added shows.
+            # Existing ones are left alone unless the user asks, because the
+            # MAL-to-series mapping is N:1 and cannot be re-derived in bulk.
+            from app.tasks_anime_library_repair import anime_rows_needing_conversion
+
+            convertible = anime_rows_needing_conversion(request.user)
+            if convertible:
+                request.session["anime_shape_prompt_count"] = len(convertible)
+
         success_message = (
             "Settings updated successfully."
             if "media_types_checkboxes" in request.POST
@@ -1272,9 +1284,28 @@ def preferences(request):
         "session_duration_choices": SessionDurationChoices.choices,
         "week_start_day_choices": WeekStartDayChoices.choices,
         "tvdb_enabled": tvdb_enabled,
+        "anime_shape_prompt_count": request.session.pop(
+            "anime_shape_prompt_count",
+            None,
+        ),
     }
 
     return render(request, "users/preferences.html", context)
+
+
+@login_required
+@require_POST
+def convert_anime_library(request):
+    """Convert this user's existing anime into their preferred shape."""
+    from app.tasks_anime_library_repair import convert_anime_library_shape_task
+
+    convert_anime_library_shape_task.delay(request.user.id)
+    messages.success(
+        request,
+        "Converting your existing anime. This runs in the background; titles "
+        "that cannot be converted safely are left as they are.",
+    )
+    return redirect("preferences")
 
 
 @require_GET

@@ -319,3 +319,90 @@ class MultiCourDuplicateTests(TestCase):
 
         self.assertEqual(len(pairs), 1)
         self.assertEqual(pairs[0][1].item.pk, self.plain_tv_item.pk)
+
+
+class AnimeShapeConversionPromptTests(TestCase):
+    """Switching provider offers a conversion instead of performing one."""
+
+    def setUp(self):
+        """Track one flat MAL anime linked to a TMDB series."""
+        self.user = get_user_model().objects.create_user(
+            username="shape-prompt-user",
+            password="password",
+        )
+        self.user.anime_metadata_source_default = Sources.MAL.value
+        self.user.save(update_fields=["anime_metadata_source_default"])
+        self.client.force_login(self.user)
+
+        anime_item = Item.objects.create(
+            media_id="52991",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Frieren: Beyond Journey's End",
+            image="",
+        )
+        ItemProviderLink.objects.create(
+            item=anime_item,
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value,
+            provider_media_id="209867",
+            episode_offset=0,
+        )
+        Anime.objects.create(
+            item=anime_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=12,
+        )
+
+    def test_switching_provider_does_not_convert_anything_on_its_own(self):
+        """The existing library is untouched until the user asks."""
+        from app.tasks_anime_library_repair import anime_rows_needing_conversion
+
+        self.user.anime_metadata_source_default = Sources.TMDB.value
+        self.user.save(update_fields=["anime_metadata_source_default"])
+
+        self.assertEqual(len(anime_rows_needing_conversion(self.user)), 1)
+        self.assertEqual(Anime.objects.filter(user=self.user).count(), 1)
+
+    def test_conversion_endpoint_queues_the_task(self):
+        """The modal's confirm button starts the conversion, nothing sooner."""
+        from django.urls import reverse
+
+        with patch(
+            "app.tasks_anime_library_repair.convert_anime_library_shape_task.delay",
+        ) as mock_delay:
+            response = self.client.post(reverse("convert_anime_library"))
+
+        self.assertEqual(response.status_code, 302)
+        mock_delay.assert_called_once_with(self.user.id)
+
+    def test_prompt_is_rendered_once_after_the_provider_changes(self):
+        """Saving a new provider surfaces the modal, and only on that load."""
+        from django.urls import reverse
+
+        response = self.client.post(
+            reverse("preferences"),
+            {"anime_metadata_source_default": Sources.TMDB.value},
+            follow=True,
+        )
+
+        self.assertContains(response, "Convert your existing anime?")
+        self.assertContains(response, "Keep my library as it is")
+        self.assertContains(response, reverse("convert_anime_library"))
+
+        # A plain reload must not nag again.
+        again = self.client.get(reverse("preferences"))
+        self.assertNotContains(again, "Convert your existing anime?")
+
+    def test_no_prompt_when_the_provider_is_unchanged(self):
+        """Saving other preferences must not offer a conversion."""
+        from django.urls import reverse
+
+        response = self.client.post(
+            reverse("preferences"),
+            {"anime_metadata_source_default": Sources.MAL.value},
+            follow=True,
+        )
+
+        self.assertNotContains(response, "Convert your existing anime?")
