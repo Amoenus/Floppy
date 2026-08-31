@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, tag
@@ -730,4 +731,47 @@ class ImportYamtrackCollectionRoundTrip(TestCase):
         self.assertEqual(
             sorted(movie_entries.values_list("media_type", flat=True)),
             ["4K Blu-ray", "DVD"],
+        )
+
+
+class ImportYamtrackDoesNotReclassify(TestCase):
+    """A Yamtrack CSV import is a restore, not a routing decision.
+
+    The export carries the bucket each row was in, so re-deciding it here would
+    silently change a library the user is trying to put back exactly as it was.
+    """
+
+    def setUp(self):
+        """Create a user whose Anime Provider would otherwise imply grouping."""
+        self.user = get_user_model().objects.create_user(
+            username="yamtrack-restore",
+            password="12345",
+        )
+        self.user.anime_metadata_source_default = Sources.TMDB.value
+        self.user.save()
+
+    def test_csv_bucket_wins_and_the_classifier_never_runs(self):
+        """An explicit exported bucket is restored verbatim."""
+        csv_content = (
+            '"media_id","source","media_type","library_media_type","title",'
+            '"image","season_number","episode_number","score","progress",'
+            '"status","start_date","end_date","notes","progressed_at"\n'
+            '"1396","tmdb","tv","tv","Anime Show","","","","8","1",'
+            '"In progress","","","",""\n'
+        )
+
+        with patch(
+            "app.services.grouped_anime.classify_tv_metadata",
+        ) as mock_classify:
+            yamtrack.importer(
+                BytesIO(csv_content.encode()),
+                self.user,
+                "new",
+            )
+
+        mock_classify.assert_not_called()
+        self.assertFalse(
+            Item.objects.filter(
+                library_media_type=MediaTypes.ANIME.value,
+            ).exists(),
         )
