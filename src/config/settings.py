@@ -1551,6 +1551,14 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 60 * 15,
         "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
+    # Folds shows that the old routing tracked in both Anime and TV Shows back
+    # into one row. Self-limiting: once no duplicates remain each run is a
+    # single cheap query (discussion #967).
+    "repair_duplicated_anime_libraries": {
+        "task": "Repair duplicated anime libraries",
+        "schedule": crontab(hour=5, minute=30),
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
     "reload_calendar": {
         "task": "Reload calendar",
         "schedule": 60 * 60 * 24,  # every 24 hours

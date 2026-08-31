@@ -108,6 +108,9 @@ def repair_celery_broker_bindings():
 # existing callers (import paths, test patches on "app.tasks.*", apps.py
 # dynamic imports) continue to work without any call-site changes.
 # ---------------------------------------------------------------------------
+from app.tasks_anime_library_repair import (  # noqa: E402
+    repair_duplicated_anime_libraries_task,
+)
 from app.tasks_backfill_state import (  # noqa: E402
     GENRE_BACKFILL_VERSION,
     METADATA_BACKFILL_BASE_DELAY_SECONDS,
@@ -1215,6 +1218,7 @@ __all__ = [
     "reconcile_provider_backfill",
     "reconcile_trakt_popularity",
     "refresh_discover_rows",
+    "repair_duplicated_anime_libraries_task",
     "sync_mal_ratings_from_api",
     "warm_discover_api_cache",
     "warm_discover_startup_tabs",
