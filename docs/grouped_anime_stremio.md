@@ -5,6 +5,39 @@ with `media_type="tv"`, while the parent, seasons, and episodes use
 `library_media_type="anime"`. This preserves Floppy's TV season/episode
 history model and keeps the title in the Anime library.
 
+## Which shape the Anime library uses
+
+The Anime library's storage shape follows each user's **Anime Provider**:
+
+- **TMDB or TVDB** (the default) stores anime as grouped anime - a TV-shaped
+  row with a real season and episode tree, exactly like TV Shows.
+- **MyAnimeList** stores flat `Anime` rows, one per cour, with progress but no
+  per-episode history.
+
+The shape is decided once, when a show is first tracked, and then stays put.
+Changing the Anime Provider only affects newly added shows: MAL identity is per
+cour while TMDB/TVDB identity is per show, so the mapping is N:1 and cannot be
+re-derived in bulk without guessing at or dropping history. When the preference
+changes and existing anime is in the other shape, Floppy offers a conversion
+instead of performing one, and leaves anything it cannot convert safely alone.
+
+## Where a scrobble lands
+
+Routing is sticky. Once a show has a home in the Anime library - in either
+shape - every later episode goes there, whether or not the Anime-IDs snapshot
+happens to load on that request and whether or not the per-season mapping
+covers that episode. An episode that no MAL entry can accept is dropped with a
+warning rather than opening a row in TV Shows.
+
+Before this rule existed, a show could land in Anime on one episode and in TV
+Shows on the next and accrue progress in both. The scheduled **Repair
+duplicated anime libraries** task folds any such pairs back into one row; a
+pair it cannot resolve safely is reported and left untouched.
+
+`anime_library_mode` is a display setting on top of this. It decides which
+library surfaces grouped anime - Anime, TV Shows, or both - and never changes
+where a scrobble is stored.
+
 ## Classification policy
 
 The shared classifier is intentionally fail-closed. A title is routed to
