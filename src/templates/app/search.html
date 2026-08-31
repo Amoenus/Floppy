@@ -162,6 +162,7 @@
                   </div>
 
                   <div x-show="trackOpen"
+                       x-cloak
                        @mousedown.self="trackOpen = false"
                        @keydown.escape.window="trackOpen = false"
                        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">

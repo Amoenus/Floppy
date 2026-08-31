@@ -104,6 +104,7 @@
         </button>
 
         <div x-show="trackOpen"
+             x-cloak
              @mousedown.self="trackOpen = false"
              @keydown.escape.window="trackOpen = false"
              class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -208,6 +209,7 @@
           </div>
 
           <div x-show="tagsOpen"
+               x-cloak
                @keydown.escape.window="tagsOpen = false"
                class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
                @mousedown.self="tagsOpen = false">
@@ -227,6 +229,7 @@
                   @click="listsOpen = true">{% include "app/icons/list-add.svg" with classes="w-4 h-4" %}</button>
 
           <div x-show="listsOpen"
+               x-cloak
                @keydown.escape.window="listsOpen = false"
                class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
                @mousedown.self="listsOpen = false">
