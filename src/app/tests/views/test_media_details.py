@@ -9100,6 +9100,44 @@ class MediaDetailsViewTests(TestCase):
         self.assertContains(response, "Episode One")
         self.assertNotContains(response, "Mark All Played")
 
+    def test_detail_action_track_modal_is_cloaked(self):
+        """The detail page's track modal must not flash before Alpine hides it.
+
+        detail_action_buttons.html's overlay is a full-screen
+        `fixed inset-0 bg-black/50` div; without x-cloak it renders visible
+        until Alpine boots and applies x-show="trackOpen".
+        """
+        show = PodcastShow.objects.create(
+            podcast_uuid="itunes:1002937872",
+            title="Cloak Check",
+            image="http://example.com/podcast.jpg",
+            rss_feed_url="",
+        )
+        PodcastEpisode.objects.create(
+            show=show,
+            episode_uuid="cloak-episode-1",
+            title="Episode One",
+            duration=3600,
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.POCKETCASTS.value,
+                    "media_type": MediaTypes.PODCAST.value,
+                    "media_id": show.podcast_uuid,
+                    "title": "cloak-check",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertRegex(
+            response.content.decode(),
+            r'x-show="trackOpen"[^>]*\sx-cloak\b',
+        )
+
     def test_podcast_media_details_renders_show_and_episode_website_links(self):
         """Issue #1014: the links have to reach the page users actually open.
 
