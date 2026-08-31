@@ -572,6 +572,119 @@ class IntegrationTest(StaticLiveServerTestCase):
         edit_modal.locator("button[type='button']").first.click()
         expect(self.page.locator("[data-track-modal-root]:visible")).to_have_count(0)
 
+    @patch("app.providers.services.get_media_metadata")
+    def test_session_history_calendar_and_shared_date_picker_navigation(
+        self,
+        mock_get_metadata,
+    ):
+        """Both calendars expose the shared navigation and activity-day behavior."""
+        mock_get_metadata.return_value = {
+            "media_id": "238",
+            "title": "Test Movie",
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "image": "http://example.com/image.jpg",
+            "max_progress": 1,
+            "details": {"release_date": "2019-11-08"},
+            "related": {},
+        }
+        item = Item.objects.create(
+            media_id="238",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Test Movie",
+            image="http://example.com/image.jpg",
+            runtime_minutes=95,
+        )
+        for end_date in (
+            datetime(2026, 3, 1, 14, 0, tzinfo=UTC),
+            datetime(2026, 3, 12, 14, 0, tzinfo=UTC),
+            datetime(2026, 2, 28, 14, 0, tzinfo=UTC),
+        ):
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+                progress=1,
+                end_date=end_date,
+            )
+
+        self.page.goto(
+            self.live_server_url
+            + reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "238",
+                    "title": "test-movie",
+                },
+            ),
+        )
+        expect(self.page.get_by_role("main")).to_contain_text("Test Movie")
+
+        self.page.get_by_role("button", name="View session history").first.click()
+        session_modal = self.page.locator(
+            '[role="dialog"][aria-label="Activity history"]:visible',
+        )
+        expect(session_modal).to_be_visible()
+        expect(session_modal).to_contain_text("Active days")
+
+        calendar = session_modal.locator("[data-calendar-component]")
+        expect(calendar.locator("[data-calendar-cell]")).to_have_count(42)
+        expect(calendar.locator('[data-calendar-cell="2026-03-01"]')).to_have_count(1)
+        expect(calendar.locator('[data-calendar-cell="2026-03-05"]')).to_have_count(1)
+        expect(calendar.locator('[data-calendar-cell="2026-03-01"]')).not_to_be_disabled()
+        expect(calendar.locator('[data-calendar-cell="2026-03-05"]')).to_be_disabled()
+        expect(calendar.locator("span.absolute.bottom-1")).to_have_count(3)
+
+        active_day = calendar.locator('[data-calendar-cell="2026-03-01"]')
+        active_day.click()
+        self.assertIn(
+            "bg-[var(--color-accent)]",
+            active_day.get_attribute("class") or "",
+        )
+        adjacent_active_day = calendar.locator('[data-calendar-cell="2026-02-28"]')
+        expect(adjacent_active_day).not_to_be_disabled()
+        adjacent_active_day.click()
+        self.assertIn(
+            "bg-[var(--color-accent)]",
+            adjacent_active_day.get_attribute("class") or "",
+        )
+
+        calendar.get_by_role("button", name="Select month").click()
+        calendar.get_by_role("button", name="Select year").click()
+        year_input = calendar.get_by_role("textbox", name="Year")
+        year_input.fill("2024")
+        year_input.press("Enter")
+        calendar.get_by_role("button", name="Mar", exact=True).click()
+        expect(calendar.get_by_role("button", name="Select month")).to_contain_text(
+            "March 2024",
+        )
+        session_modal.get_by_role(
+            "button", name="Close activity history",
+        ).click()
+
+        self.page.get_by_role("button", name="More tracking actions").click()
+        self.page.get_by_role("button", name="Add new entry").click()
+        track_modal = self.page.locator("[data-track-modal-root]:visible").first
+        track_modal.get_by_role("button", name="End date picker").click()
+        date_picker = track_modal.get_by_role("dialog", name="End date picker")
+        date_picker.get_by_role("button", name="Select month").click()
+        date_picker.get_by_role("button", name="Select year").click()
+        date_picker.get_by_role("textbox", name="Year").fill("2024")
+        date_picker.get_by_role("textbox", name="Year").press("Enter")
+        date_picker.get_by_role("button", name="Mar", exact=True).click()
+        expect(
+            date_picker.get_by_role("button", name="Select month"),
+        ).to_contain_text("March 2024")
+        date_picker.locator('[data-calendar-cell="2024-02-29"]').click()
+        self.assertTrue(
+            track_modal.locator('input[name="end_date"]').input_value().startswith(
+                "2024-02-29T",
+            ),
+        )
+
     @patch("app.models.Item.fetch_releases")
     @patch("app.views._should_queue_game_lengths_refresh", return_value=False)
     @patch("app.providers.services.get_media_metadata")

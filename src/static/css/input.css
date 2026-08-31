@@ -573,13 +573,8 @@ html.light .theme-toggle-icon-moon {
   border-color: transparent;
 }
 
-.date-picker-common-time-button:hover:not(:disabled) {
+.date-picker-common-time-button:hover {
   background-color: var(--color-surface-muted);
-}
-
-.date-picker-common-time-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 @media (min-width: 40rem) {

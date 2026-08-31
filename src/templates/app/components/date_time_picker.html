@@ -13,8 +13,7 @@
      })"
      x-init="init"
      {% if suggestion_date_expr %}x-effect="suggestionDate = ({{ suggestion_date_expr }}) || ''"{% endif %}
-     @keydown.escape.window="open && closePicker()"
-     @mousedown.outside="open && !isMobile && closePicker()">
+     @keydown.escape.window="open && closePicker()">
 
   <div class="flex-1 flex items-stretch border border-gray-600 rounded-md bg-[var(--color-surface-strong)] focus-within:ring-2 focus-within:ring-[var(--color-accent)]">
     {% if mobile_label %}
@@ -58,6 +57,7 @@
        :aria-modal="isMobile ? 'true' : 'false'"
        aria-label="{{ field_label|default:'Date' }} picker"
        @keydown.tab="trapFocus($event)"
+       @click.outside="!isMobile && !$refs.trigger.contains($event.target) && closePicker()"
        :style="popoverStyle"
        class="date-picker-popover fixed inset-x-0 bottom-0 rounded-t-xl max-h-[85dvh] overflow-y-auto overscroll-contain bg-[var(--color-surface)] border-t border-[var(--color-border)] shadow-2xl p-4 sm:inset-x-auto sm:bottom-auto sm:w-[22rem] sm:rounded-lg sm:border"
        x-transition:enter="transition ease-out duration-150"
@@ -71,108 +71,7 @@
       </button>
     </div>
 
-    <div class="flex items-center justify-between mb-2">
-      <button type="button" @click="gotoPrevMonth()" aria-label="Previous month" class="p-2 mx-1 rounded-md hover:bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer" x-show="pickerView === 'days'">
-        {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-      </button>
-      <button type="button"
-              @click="showMonthsView()"
-              aria-label="Select month"
-              class="text-sm font-semibold text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] rounded-md px-2 py-1 cursor-pointer"
-              x-text="monthLabel()"></button>
-      <button type="button" @click="gotoNextMonth()" aria-label="Next month" class="p-2 mx-1 rounded-md hover:bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer" x-show="pickerView === 'days'">
-        {% include "app/icons/chevron-right.svg" with classes="w-4 h-4" %}
-      </button>
-    </div>
-
-    {% comment %} Month picker {% endcomment %}
-    <template x-if="pickerView === 'months'">
-      <div>
-        <div class="flex items-center justify-between mb-2">
-          <button type="button" @click="gotoPrevYear()" aria-label="Previous year" class="p-2 mx-1 rounded-md hover:bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
-            {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-          </button>
-          <button type="button"
-                  @click="showYearsView()"
-                  aria-label="Select year"
-                  class="text-sm font-semibold text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] rounded-md px-2 py-1 cursor-pointer"
-                  x-text="viewYear"></button>
-          <button type="button" @click="gotoNextYear()" aria-label="Next year" class="p-2 mx-1 rounded-md hover:bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
-            {% include "app/icons/chevron-right.svg" with classes="w-4 h-4" %}
-          </button>
-        </div>
-        <div class="date-picker-month-grid mb-1">
-          <template x-for="monthIndex in 12" :key="monthIndex">
-            <button type="button"
-                    @click="gotoMonth(monthIndex - 1)"
-                    :class="monthIndex - 1 === viewMonth ? 'bg-[var(--color-accent)] text-white' : 'text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]'"
-                    class="date-picker-month-cell flex items-center justify-center rounded-md text-sm cursor-pointer transition-colors"
-                    x-text="monthShortLabel(monthIndex - 1)"></button>
-          </template>
-        </div>
-        <div class="mt-2 text-right">
-          <button type="button" @click="showDaysView()" class="text-sm text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline cursor-pointer">Back</button>
-        </div>
-      </div>
-    </template>
-
-    {% comment %} Year picker {% endcomment %}
-    <template x-if="pickerView === 'years'">
-      <div>
-        <div class="flex items-center justify-between mb-2">
-          <button type="button" @click="gotoPrevYear()" aria-label="Previous year" class="p-2 mx-1 rounded-md hover:bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
-            {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-          </button>
-          <input type="text"
-                 inputmode="numeric"
-                 x-model="yearInput"
-                 @input="onYearInput($event)"
-                 @keydown.enter.prevent="applyYearInput()"
-                 @keydown.escape.prevent="showDaysView()"
-                 class="date-picker-year-input w-20 text-center text-sm font-semibold text-[var(--color-text)] bg-[var(--color-surface-strong)] border border-gray-600 rounded-md px-2 py-1 outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
-                 aria-label="Year">
-          <button type="button" @click="gotoNextYear()" aria-label="Next year" class="p-2 mx-1 rounded-md hover:bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
-            {% include "app/icons/chevron-right.svg" with classes="w-4 h-4" %}
-          </button>
-        </div>
-        <div class="date-picker-year-grid mb-1">
-          <template x-for="year in yearRange()" :key="year">
-            <button type="button"
-                    @click="viewYear = year; showMonthsView()"
-                    :class="year === viewYear ? 'bg-[var(--color-accent)] text-white' : 'text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]'"
-                    class="date-picker-month-cell flex items-center justify-center rounded-md text-sm cursor-pointer transition-colors"
-                    x-text="year"></button>
-          </template>
-        </div>
-        <div class="mt-2 text-right">
-          <button type="button" @click="showMonthsView()" class="text-sm text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline cursor-pointer">Back</button>
-        </div>
-      </div>
-    </template>
-
-    <template x-if="pickerView === 'days'">
-    <div>
-    <div class="date-picker-calendar-grid mb-1">
-      <template x-for="label in weekdayLabels()" :key="label">
-        <div class="text-center text-xs text-[var(--color-text-muted)] py-1" x-text="label"></div>
-      </template>
-    </div>
-    <template x-for="(week, weekIndex) in calendarWeeks()" :key="weekIndex">
-      <div class="date-picker-calendar-grid mb-1">
-        <template x-for="cell in week" :key="cellKey(cell)">
-          <button type="button"
-                  :data-day-cell="cellKey(cell)"
-                  :tabindex="isFocusedDay(cell) ? 0 : -1"
-                  @click="selectDay(cell)"
-                  @keydown="onDayKeydown($event, cell)"
-                  :aria-selected="isSelectedDay(cell)"
-                  :aria-current="isToday(cell) ? 'date' : null"
-                  class="date-picker-day-cell flex items-center justify-center rounded-md text-sm cursor-pointer transition-colors"
-                  :class="isSelectedDay(cell) ? 'bg-[var(--color-accent)] text-white' : (isToday(cell) ? 'text-[var(--color-accent)] font-semibold hover:bg-[var(--color-surface-muted)]' : (cell.inMonth ? 'text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]' : 'text-[var(--color-text-muted)] opacity-50 hover:bg-[var(--color-surface-muted)]'))"
-                  x-text="cell.day"></button>
-        </template>
-      </div>
-    </template>
+    {% include "app/components/calendar.html" with calendar_mode="date-picker" only %}
 
     {% if track_time %}
       <div class="mt-3 pt-3 border-t border-[var(--color-border)]">
@@ -228,21 +127,13 @@
           </button>
         </template>
         {% if copy_from %}
-        {# Disabled rather than removed when the other field is empty, so the #}
-        {# affordance stays put and explains itself instead of doing nothing. #}
-        <button type="button"
-                @click="copyFromOther()"
-                :disabled="!copyAvailable"
-                :title="copyAvailable ? '' : '{{ copy_from_label|default:copy_from|escapejs }} is empty'"
-                class="date-picker-common-time-button">
+        <button type="button" @click="copyFromOther()" class="date-picker-common-time-button">
           {% include "app/icons/copy.svg" with classes="w-3.5 h-3.5" %}
           Copy from {{ copy_from_label|default:copy_from }}
         </button>
         {% endif %}
       </div>
     </div>
-    </div>
-    </template>
   </div>
 </div>
 {# djlint:on #}

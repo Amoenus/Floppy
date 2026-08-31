@@ -181,7 +181,36 @@ class TrackModalViewTests(TestCase):
         self.assertContains(response, "Currently visible in Discover.")
         self.assertContains(response, 'hx-post="/discover/toggle-hidden"', html=False)
         self.assertContains(response, 'name="action"', html=False)
+        self.assertContains(response, "data-calendar-component", html=False)
+        self.assertContains(response, "showMonthsView", html=False)
+        self.assertContains(response, "showYearsView", html=False)
         self.assertNotContains(response, "Custom Metadata")
+
+    def test_session_history_row_opens_standard_modal_for_instance(self):
+        """Session rows preserve the tracked instance when opening the editor."""
+        request = RequestFactory().get(
+            "/history/sessions?media_type=movie&media_id=238&source=tmdb",
+        )
+        markup = render_to_string(
+            "app/components/session_history_row.html",
+            {
+                "entry": {
+                    "item": self.item,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "display_title": self.item.title,
+                    "title": self.item.title,
+                    "poster": self.item.image,
+                    "entry_key": str(self.movie.id),
+                    "instance_id": self.movie.id,
+                },
+                "user": self.user,
+                "request": request,
+            },
+            request=request,
+        )
+
+        self.assertIn(f'"instance_id": "{self.movie.id}"', markup)
+        self.assertIn('"standard_modal": "1"', markup)
 
     def test_track_modal_keeps_tracked_tmdb_show_deletable_when_provider_returns_404(
         self,
