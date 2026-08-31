@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -303,3 +305,50 @@ class AnimeLibraryVisibilityTests(TestCase):
         self.user.save(update_fields=["anime_library_mode"])
         _, include_in_tv = metadata_resolution.anime_library_visibility(self.user)
         self.assertTrue(include_in_tv)
+
+
+class ClassifyFailClosedTests(TestCase):
+    """`classify` must stay fail-closed when the Anime-IDs snapshot is missing.
+
+    UNSET means "no snapshot supplied, load it lazily"; None means "a load was
+    attempted and failed". Collapsing the two makes an unavailable mapping look
+    like a positive not-anime verdict, which silently leaks anime into TV.
+    """
+
+    def test_failed_snapshot_load_returns_none_without_classifying(self):
+        """None means the load failed - do not fall back to a lazy load."""
+        with patch(
+            "app.services.grouped_anime.classify_tv_metadata",
+        ) as mock_classify:
+            result = grouped_anime.classify({"media_id": "1"}, snapshot=None)
+
+        self.assertIsNone(result)
+        mock_classify.assert_not_called()
+
+    def test_unset_snapshot_classifies_lazily(self):
+        """UNSET defers to the classifier's own snapshot loading."""
+        with patch(
+            "app.services.grouped_anime.classify_tv_metadata",
+            return_value="verdict",
+        ) as mock_classify:
+            result = grouped_anime.classify({"media_id": "1"})
+
+        self.assertEqual(result, "verdict")
+        mock_classify.assert_called_once_with({"media_id": "1"})
+
+    def test_supplied_snapshot_is_passed_through(self):
+        """A loaded snapshot is used directly rather than reloaded."""
+        snapshot = object()
+        with patch(
+            "app.services.grouped_anime.classify_tv_metadata",
+            return_value="verdict",
+        ) as mock_classify:
+            result = grouped_anime.classify({"media_id": "1"}, snapshot=snapshot)
+
+        self.assertEqual(result, "verdict")
+        mock_classify.assert_called_once_with({"media_id": "1"}, snapshot=snapshot)
+
+    def test_unset_is_distinguishable_from_none(self):
+        """The sentinel must not be a falsy value that None can impersonate."""
+        self.assertIsNotNone(grouped_anime.UNSET)
+        self.assertIsNot(grouped_anime.UNSET, None)
