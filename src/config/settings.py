@@ -1628,6 +1628,14 @@ CELERY_BEAT_SCHEDULE = {
         },
         "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
+    # One-shot: goes quiet for good once every show with a feed has been swept
+    # (app/tasks_podcast.py), so this only has to catch the passes after the
+    # first one the startup hook kicks off.
+    "ensure_podcast_website_backfill_reconcile": {
+        "task": "Ensure podcast website backfill reconcile",
+        "schedule": RECONCILE_INTERVAL_SECONDS,
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
     "warm_discover_api_cache": {
         "task": "Warm Discover API Cache",
         "schedule": by_tier(60 * 60 * 6, 60 * 60 * 3, 60 * 60),

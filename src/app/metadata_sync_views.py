@@ -1663,6 +1663,28 @@ def enrich_synced_item(
     return warnings, preferred_provider_synced
 
 
+def _sync_podcast_show_from_rss(media_id, source):
+    """Re-read a podcast show's RSS feed. Returns the show, or None if not one.
+
+    Podcast shows have no upstream metadata provider to sync against -- the
+    feed is the provider -- and they have no Item row of their own, since
+    Items are per-episode. So this runs the feed reconcile and returns before
+    the generic Item create/update path, which would otherwise mint a bogus
+    show-level Item.
+    """
+    from app.fork_services_podcast import refresh_show_from_rss
+    from app.models import PodcastShow
+
+    show = PodcastShow.objects.filter(
+        podcast_uuid=media_id,
+        source=source,
+    ).first()
+    if show is None:
+        return None
+    refresh_show_from_rss(show)
+    return show
+
+
 @require_POST
 def sync_metadata(request, source, media_type, media_id, season_number=None):
     """Refresh the metadata for a media item."""
@@ -1696,6 +1718,25 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
             status=400,
             headers={"HX-Redirect": request.POST.get("next", "/")},
         )
+
+    if media_type == MediaTypes.PODCAST.value:
+        try:
+            synced_show = _sync_podcast_show_from_rss(media_id, source)
+        except Exception as exc:
+            logger.warning(
+                "podcast_show_rss_sync_failed media_id=%s source=%s error=%s",
+                media_id,
+                source,
+                exception_summary(exc),
+            )
+            messages.error(
+                request,
+                "Could not read the podcast's RSS feed right now.",
+            )
+            return _sync_redirect_response()
+        if synced_show is not None:
+            messages.success(request, "Metadata synced successfully.")
+            return _sync_redirect_response()
 
     tracking_media_type = metadata_resolution.get_tracking_media_type(
         media_type,

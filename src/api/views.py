@@ -35,7 +35,7 @@ from app.media_list_filters import (
     get_next_episode_map,
     parse_media_list_filters,
 )
-from app.metadata_sync_views import enrich_synced_item
+from app.metadata_sync_views import _sync_podcast_show_from_rss, enrich_synced_item
 from app.models import BasicMedia, Item, MediaTypes, Sources
 from app.providers import services, tmdb
 from app.services import metadata_resolution
@@ -2254,6 +2254,17 @@ class MediaSyncView(drf_views.APIView):
                 },
                 status=HTTP.BAD_REQUEST,
             )
+
+        if media_type == MediaTypes.PODCAST.value:
+            # A podcast show's provider is its RSS feed, and it has no Item row
+            # of its own (Items are per-episode), so it never reaches the
+            # generic path below without minting a bogus one.
+            synced_show = _sync_podcast_show_from_rss(media_id, source)
+            if synced_show is not None:
+                return Response(
+                    {"detail": "Metadata synced successfully."},
+                    status=HTTP.ACCEPTED,
+                )
 
         cache_key = f"{source}_{media_type}_{media_id}"
 

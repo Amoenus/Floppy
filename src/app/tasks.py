@@ -195,6 +195,12 @@ from app.tasks_music import (  # noqa: E402
     prefetch_album_covers_batch,
     prefetch_artist_images_batch,
 )
+from app.tasks_podcast import (  # noqa: E402
+    PODCAST_WEBSITE_BACKFILL_VERSION,
+    backfill_podcast_show_websites,
+    ensure_podcast_website_backfill_reconcile,
+    reconcile_podcast_website_backfill,
+)
 from app.tasks_providers import (  # noqa: E402
     WATCH_PROVIDERS_BACKFILL_ITEMS_QUEUE_KEY,
     WATCH_PROVIDERS_BACKFILL_ITEMS_SCHEDULED_KEY,
@@ -1135,6 +1141,7 @@ __all__ = [
     "METADATA_BACKFILL_BASE_DELAY_SECONDS",
     "METADATA_BACKFILL_MAX_ATTEMPTS",
     "METADATA_BACKFILL_MAX_DELAY_SECONDS",
+    "PODCAST_WEBSITE_BACKFILL_VERSION",
     "RUNTIME_BACKFILL_EPISODES_LOCK_PREFIX",
     "RUNTIME_BACKFILL_EPISODES_LOCK_TTL",
     "RUNTIME_BACKFILL_EPISODES_QUEUE_KEY",
@@ -1166,6 +1173,7 @@ __all__ = [
     "_populate_runtime_for_items",
     "_provider_items_queryset",
     "_schedule_metadata_statistics_refresh",
+    "backfill_podcast_show_websites",
     "bulk_episode_plays_task",
     "bulk_music_plays_task",
     "count_igdb_rating_backfill_items",
@@ -1175,6 +1183,7 @@ __all__ = [
     "enrich_albums_task",
     "enrich_music_library_task",
     "ensure_genre_backfill_reconcile",
+    "ensure_podcast_website_backfill_reconcile",
     "ensure_provider_backfill_reconcile",
     "fast_runtime_backfill_task",
     "is_genre_backfill_reconcile_complete",
@@ -1202,6 +1211,7 @@ __all__ = [
     "prefetch_artist_images_batch",
     "reconcile_genre_backfill",
     "reconcile_igdb_rating_backfill",
+    "reconcile_podcast_website_backfill",
     "reconcile_provider_backfill",
     "reconcile_trakt_popularity",
     "refresh_discover_rows",
