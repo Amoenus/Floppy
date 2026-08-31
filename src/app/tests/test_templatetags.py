@@ -1,10 +1,11 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 from django.contrib.auth import get_user_model
 from django.template.loader import render_to_string
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.test.client import RequestFactory
 from django.urls import reverse
 from django.utils import timezone
@@ -215,6 +216,22 @@ class AppTagsTests(TestCase):
 
             # Check that it returns a non-empty string
             self.assertTrue(isinstance(result, str))
+
+    @override_settings(TIME_ZONE="America/New_York")
+    def test_release_year_handles_year_one_sentinel_datetime(self):
+        """release_year must not raise OverflowError for a year-0001 release_datetime.
+
+        A negative UTC offset (e.g. America/New_York) underflows below
+        datetime.MINYEAR when converting the sentinel to local time.
+        """
+        item = Item(
+            media_id="118340",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Test Movie",
+            release_datetime=datetime(1, 1, 1, tzinfo=UTC),
+        )
+        self.assertIsNone(app_tags.release_year(item))
 
     def test_natural_day(self):
         """Test the natural_day filter."""
