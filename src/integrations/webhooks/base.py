@@ -392,13 +392,35 @@ class BaseWebhookProcessor:
                 if anime_outcome:
                     return None
 
+            # The AniBridge mapping is keyed by TVDB show. When TMDB carries no
+            # TVDB external id, resolve one rather than skipping the lookup:
+            # otherwise a TMDB-only anime routes to the flat library only when
+            # some other user on this instance happened to watch it first and
+            # seeded the shared provider-link cache, and the shape is sticky.
+            mapping_tvdb_id = tvdb_id
+            if not mapping_tvdb_id and app.providers.tvdb.enabled():
+                try:
+                    mapping_tvdb_id = (
+                        app.providers.tmdb.resolve_tvdb_id_for_tmdb_show(
+                            media_id,
+                            tv_metadata,
+                        )
+                    )
+                except Exception as exc:  # pragma: no cover - defensive guard
+                    logger.warning(
+                        "Failed TVDB id resolution for show %s: %s",
+                        media_id,
+                        exception_summary(exc),
+                    )
+                    mapping_tvdb_id = None
+
             mapping_data = anime_mappings.fetch_mapping_data()
             mapping_sources = [
                 (
                     "TVDB",
                     *anime_mappings.get_mal_id_from_tvdb(
                         mapping_data,
-                        tvdb_id,
+                        mapping_tvdb_id,
                         season_number,
                         episode_number,
                     ),
@@ -433,7 +455,8 @@ class BaseWebhookProcessor:
                 media_id,
                 episode_number,
                 tv_metadata,
-                tvdb_id,
+                # Reuse the id resolved above rather than resolving twice.
+                mapping_tvdb_id or tvdb_id,
             ):
                 return None
 
