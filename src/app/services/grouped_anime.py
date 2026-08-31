@@ -29,6 +29,11 @@ GROUPED_BUCKET = MediaTypes.ANIME.value
 GROUPED_PARENT_TYPES = {Sources.TMDB.value, Sources.TVDB.value}
 CLASSIFIER_CALL_COUNT = 0
 
+# Distinguishes "no snapshot supplied, load it lazily" from "a load was
+# attempted and failed". Collapsing these two into `None` turns the classifier
+# fail-open, which is how anime silently leaks into the TV library.
+UNSET = object()
+
 logger = logging.getLogger(__name__)
 
 
@@ -118,6 +123,23 @@ def _metadata_external_ids(metadata: dict[str, Any]) -> dict[str, str]:
         for key, value in external_ids.items()
         if value not in (None, "")
     }
+
+
+def classify(tv_metadata, *, snapshot=UNSET):
+    """Return the grouped-anime verdict for a show, or None when unknown.
+
+    Returns None both when the show is not anime and when the Anime-IDs
+    snapshot could not be loaded: grouping is fail-closed on load failure, so
+    the ordinary TV path still records progress.
+
+    `snapshot` is UNSET to load lazily, None when a load was already attempted
+    and failed, or a loaded snapshot to use.
+    """
+    if snapshot is None:
+        return None
+    if snapshot is UNSET:
+        return classify_tv_metadata(tv_metadata)
+    return classify_tv_metadata(tv_metadata, snapshot=snapshot)
 
 
 def classify_tv_metadata(

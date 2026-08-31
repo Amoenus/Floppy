@@ -303,21 +303,9 @@ class BaseWebhookProcessor:
 
         tvdb_id = tv_metadata.get("tvdb_id") if tv_metadata else None
 
-        # The Anime library's storage shape follows the provider the user chose
-        # for it: MAL keeps flat per-cour Anime rows, TMDB/TVDB keep TV-shaped
-        # grouped rows. Read it through `metadata_default_source`, which falls
-        # back when the chosen provider is disabled (e.g. TVDB with no API key).
-        prefers_grouped_anime = False
-        if user.anime_enabled:
-            from app.services import metadata_resolution as _metadata_resolution
+        from app.services import metadata_resolution as _metadata_resolution
 
-            prefers_grouped_anime = (
-                _metadata_resolution.metadata_default_source(
-                    user,
-                    MediaTypes.ANIME.value,
-                )
-                in _metadata_resolution.GROUPED_ANIME_PROVIDERS
-            )
+        prefers_grouped_anime = _metadata_resolution.prefers_grouped_anime(user)
 
         grouped_anime_match = None
         if user.anime_enabled and prefers_grouped_anime:
@@ -573,78 +561,24 @@ class BaseWebhookProcessor:
         """
         from app.services import grouped_anime
 
-        classifier_kwargs = {}
+        snapshot = grouped_anime.UNSET
         if getattr(self, "_grouped_anime_mapping_loaded", False):
-            if self._grouped_anime_snapshot is not None:
-                classifier_kwargs["snapshot"] = self._grouped_anime_snapshot
-            else:
-                classifier_kwargs = None
-        if classifier_kwargs is None:
-            return None
-        return grouped_anime.classify_tv_metadata(tv_metadata, **classifier_kwargs)
+            snapshot = self._grouped_anime_snapshot
+        return grouped_anime.classify(tv_metadata, snapshot=snapshot)
 
     def _find_existing_anime_home(self, user, tmdb_media_id, tvdb_id=None):
         """Return the user's existing Anime-library home for this show.
 
-        Routing must be sticky. Once a show lives in the Anime library, every
-        later episode belongs there too - whether or not the grouped-anime
-        snapshot happened to load on this request, and whether or not the
-        per-season mapping covers this particular episode. Without this the
-        same show oscillates between libraries and accrues progress in both
-        (discussion #967).
-
-        Returns ``("grouped", item)`` for anime stored on TV rows,
-        ``("flat", item)`` for a MAL-sourced Anime row, or ``None``.
+        See `metadata_resolution.find_existing_anime_home`; kept as a method so
+        `PlexImporter` can keep calling it through its processor.
         """
-        from django.db.models import Q
+        from app.services import metadata_resolution as _metadata_resolution
 
-        identities = []
-        if tmdb_media_id:
-            identities.append((Sources.TMDB.value, str(tmdb_media_id)))
-        if tvdb_id:
-            identities.append((Sources.TVDB.value, str(tvdb_id)))
-        if not identities:
-            return None
-
-        link_filter = Q()
-        direct_filter = Q()
-        for provider, provider_media_id in identities:
-            link_filter |= Q(provider=provider, provider_media_id=provider_media_id)
-            direct_filter |= Q(source=provider, media_id=provider_media_id)
-
-        linked_item_ids = app.models.ItemProviderLink.objects.filter(
-            link_filter,
-            provider_media_type=MediaTypes.TV.value,
-        ).values("item_id")
-
-        # Grouped anime: a TV row this user tracks, sitting in the anime bucket.
-        grouped = (
-            app.models.Item.objects.filter(
-                Q(id__in=linked_item_ids) | direct_filter,
-                media_type=MediaTypes.TV.value,
-                library_media_type=MediaTypes.ANIME.value,
-                tv__user=user,
-            )
-            .order_by("id")
-            .first()
+        return _metadata_resolution.find_existing_anime_home(
+            user,
+            tmdb_id=tmdb_media_id,
+            tvdb_id=tvdb_id,
         )
-        if grouped:
-            return "grouped", grouped
-
-        # Flat MAL: an Anime row this user tracks that is linked to this show.
-        flat = (
-            app.models.Item.objects.filter(
-                media_type=MediaTypes.ANIME.value,
-                anime__user=user,
-                id__in=linked_item_ids,
-            )
-            .order_by("id")
-            .first()
-        )
-        if flat:
-            return "flat", flat
-
-        return None
 
     def _find_existing_tracked_tv_item(
         self,

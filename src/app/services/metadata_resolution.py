@@ -241,6 +241,89 @@ def anime_library_visibility(user) -> tuple[bool, bool]:
     )
 
 
+def prefers_grouped_anime(user) -> bool:
+    """Return whether this user's Anime library stores TV-shaped grouped rows.
+
+    The Anime library's storage shape follows the provider the user chose for
+    it: MAL keeps flat per-cour Anime rows, TMDB/TVDB keep TV-shaped grouped
+    rows. Read through `metadata_default_source`, which falls back when the
+    chosen provider is disabled (e.g. TVDB with no API key).
+    """
+    if not getattr(user, "anime_enabled", False):
+        return False
+    return (
+        metadata_default_source(user, MediaTypes.ANIME.value)
+        in GROUPED_ANIME_PROVIDERS
+    )
+
+
+def find_existing_anime_home(user, tmdb_id=None, tvdb_id=None):
+    """Return the user's existing Anime-library home for this show.
+
+    Routing must be sticky. Once a show lives in the Anime library, every later
+    episode belongs there too - whether or not the grouped-anime snapshot
+    happened to load on this request, and whether or not the per-season mapping
+    covers this particular episode. Without this the same show oscillates
+    between libraries and accrues progress in both (discussion #967).
+
+    The `ItemProviderLink` table is global by design - it caches a content fact,
+    not user state - so the link lookup is unscoped while the Item queries are
+    scoped to this user's tracking rows.
+
+    Returns ``("grouped", item)`` for anime stored on TV rows, ``("flat", item)``
+    for a MAL-sourced Anime row, or ``None``.
+    """
+    from django.db.models import Q
+
+    identities = []
+    if tmdb_id:
+        identities.append((Sources.TMDB.value, str(tmdb_id)))
+    if tvdb_id:
+        identities.append((Sources.TVDB.value, str(tvdb_id)))
+    if not identities:
+        return None
+
+    link_filter = Q()
+    direct_filter = Q()
+    for provider, provider_media_id in identities:
+        link_filter |= Q(provider=provider, provider_media_id=provider_media_id)
+        direct_filter |= Q(source=provider, media_id=provider_media_id)
+
+    linked_item_ids = ItemProviderLink.objects.filter(
+        link_filter,
+        provider_media_type=MediaTypes.TV.value,
+    ).values("item_id")
+
+    # Grouped anime: a TV row this user tracks, sitting in the anime bucket.
+    grouped = (
+        Item.objects.filter(
+            Q(id__in=linked_item_ids) | direct_filter,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.ANIME.value,
+            tv__user=user,
+        )
+        .order_by("id")
+        .first()
+    )
+    if grouped:
+        return "grouped", grouped
+
+    # Flat MAL: an Anime row this user tracks that is linked to this show.
+    flat = (
+        Item.objects.filter(
+            media_type=MediaTypes.ANIME.value,
+            anime__user=user,
+            id__in=linked_item_ids,
+        )
+        .order_by("id")
+        .first()
+    )
+    if flat:
+        return "flat", flat
+
+    return None
+
+
 def item_uses_grouped_anime(item: Item | None) -> bool:
     """Return True when an Item is a grouped anime title stored on TV rows."""
     return bool(
