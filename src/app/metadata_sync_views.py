@@ -1051,7 +1051,8 @@ def _flat_anime_preview_season_numbers(
         if isinstance(grouped_series_metadata, dict)
         else {}
     )
-    seasons = related.get("seasons") if isinstance(related, dict) else []
+    # "seasons" can be present but null, which used to crash the details page.
+    seasons = (related.get("seasons") or []) if isinstance(related, dict) else []
     target_total = grouped_preview_target.get("episode_total")
     try:
         target_total = int(target_total) if target_total is not None else None
