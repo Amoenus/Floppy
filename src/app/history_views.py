@@ -1074,6 +1074,16 @@ def history_genres(request):
 @require_GET
 def history(request):
     """Show a day-by-day history of episode and movie plays."""
+    # Surface the media type the user came from (e.g. "view your activity
+    # history" on a movie page) so the navbar search type stays in context
+    # instead of falling back to a stale last_search_type. Invalid values are
+    # dropped so the search bar falls back to last_search_type.
+    requested_media_type = request.GET.get("media_type")
+    context_media_type = (
+        requested_media_type
+        if requested_media_type in MediaTypes.values
+        else None
+    )
     try:
         view_start = time.perf_counter()
         history_mode = request.GET.get("history_mode")
@@ -1266,6 +1276,7 @@ def history(request):
             "active_filters": active_filters,
             "history_refreshing": history_refreshing,
             "history_mode": history_mode,
+            "media_type": context_media_type,
             "use_month_view": use_month_cache,
             "view_year": view_year,
             "view_month": view_month,
@@ -1352,6 +1363,7 @@ def history(request):
             "active_filters": {},
             "database_error": True,
             "history_refreshing": False,
+            "media_type": context_media_type,
         }
         return render(request, "app/history.html", context)
     else:
