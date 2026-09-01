@@ -9,6 +9,8 @@ from app.log_safety import exception_summary, mapping_keys, presence_map, safe_u
 from app.models import MediaTypes, Sources
 from app.services import music_scrobble
 from integrations import plex as plex_api
+from integrations import plex_audiobook_sync
+from integrations.imports import plex_audiobooks
 from integrations.imports.helpers import find_item_across_buckets
 
 from .base import BaseWebhookProcessor
@@ -122,6 +124,10 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 )
                 return None
 
+            audiobook_kind = self._audiobook_routing(payload, user)
+            if audiobook_kind == "book":
+                return self._process_audiobook_scrobble(payload, user)
+
             if not getattr(user, "music_enabled", False):
                 logger.debug(
                     "Ignoring Plex music webhook because music tracking is disabled"
@@ -129,6 +135,11 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 return None
 
             music_event = self._build_music_event(payload, user)
+            if audiobook_kind == "music_no_lookup":
+                # Audiobook-shaped, but the user wants this library kept as
+                # music. Searching MusicBrainz for "Chapter 7" only ever
+                # produces a junk match, so use the local Plex tags as-is.
+                music_event.defer_cover_prefetch = True
             music_entry = music_scrobble.record_music_playback(music_event)
             if music_entry is None:
                 logger.info(
@@ -1301,6 +1312,115 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             value,
         )
         return match.group(0) if match else None
+
+    @staticmethod
+    def _server_uuid(payload):
+        """Return the Plex server's machine identifier from a webhook payload."""
+        server = payload.get("Server")
+        return server.get("uuid") if isinstance(server, dict) else None
+
+    def _audiobook_routing(self, payload, user):
+        """Decide how a Plex music scrobble should be handled.
+
+        Returns "book" to track it as an audiobook, "music_no_lookup" to keep
+        it as music but skip the MusicBrainz search, or None for normal music.
+        """
+        plex_account = getattr(self, "_source_plex_account", None) or getattr(
+            user,
+            "plex_account",
+            None,
+        )
+        if not plex_account:
+            return None
+
+        metadata = payload.get("Metadata", {}) or {}
+        kind = plex_account.content_kind(
+            self._server_uuid(payload),
+            metadata.get("librarySectionID"),
+        )
+
+        if kind == plex_audiobooks.CONTENT_KIND_AUDIOBOOK:
+            return "book"
+
+        # A webhook fires per track, so only spend the album lookup when the
+        # single track in hand already looks like a chapter.
+        if not plex_audiobooks.track_looks_like_audiobook(metadata):
+            return None
+
+        if kind == plex_audiobooks.CONTENT_KIND_MUSIC:
+            return "music_no_lookup"
+        return "book" if self._confirm_audiobook_album(payload, user) else None
+
+    def _confirm_audiobook_album(self, payload, user):
+        """Confirm an auto-detected audiobook by scoring its whole album."""
+        album, tracks = self._fetch_audiobook_album(payload, user)
+        if not album:
+            return False
+        return plex_audiobooks.is_audiobook_album(album, tracks)
+
+    def _fetch_audiobook_album(self, payload, user):
+        """Return (album metadata, tracks) for the played track's album."""
+        metadata = payload.get("Metadata", {}) or {}
+        album_key = metadata.get("parentRatingKey") or metadata.get("parentKey")
+        if not album_key:
+            return None, []
+        album_key = str(album_key).rsplit("/", 1)[-1]
+
+        plex_account, plex_uri = self._resolve_plex_server(user, payload)
+        if not plex_account or not plex_uri:
+            return None, []
+
+        try:
+            album = plex_api.fetch_metadata(
+                plex_account.plex_token,
+                plex_uri,
+                album_key,
+            )
+            tracks = plex_api.fetch_children(
+                plex_account.plex_token,
+                plex_uri,
+                album_key,
+            )
+        except plex_api.PlexClientError as exc:
+            logger.debug(
+                "Could not fetch Plex album for audiobook webhook: %s",
+                exception_summary(exc),
+            )
+            return None, []
+        return album, tracks
+
+    def _process_audiobook_scrobble(self, payload, user):
+        """Update the book tracking a Plex audiobook after a chapter plays."""
+        if not getattr(user, "book_enabled", False):
+            logger.debug(
+                "Ignoring Plex audiobook webhook because book tracking is disabled",
+            )
+            return None
+
+        album, tracks = self._fetch_audiobook_album(payload, user)
+        if not album:
+            return None
+
+        plex_account = getattr(self, "_source_plex_account", None) or getattr(
+            user,
+            "plex_account",
+            None,
+        )
+        book = plex_audiobook_sync.upsert_plex_audiobook(
+            user,
+            album,
+            tracks,
+            machine_identifier=self._server_uuid(payload),
+            account_id=plex_account.id if plex_account else None,
+        )
+        if book is None:
+            return None
+        logger.info(
+            "Processed Plex audiobook event (status=%s progress=%s)",
+            book.status,
+            book.progress,
+        )
+        return book
 
     def _build_music_event(self, payload, user):
         """Build a normalized music playback event from Plex payload."""
