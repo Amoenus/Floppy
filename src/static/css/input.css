@@ -251,6 +251,12 @@ html.light .theme-toggle-icon-moon {
   object-fit: none;
 }
 
+/* Cards are tapped twice (first reveals the actions, second opens details);
+   without this, a quick second tap can be swallowed as a double-tap zoom. */
+.media-card {
+  touch-action: manipulation;
+}
+
 .media-card-poster {
   object-fit: cover;
 }
@@ -1091,6 +1097,98 @@ html.light .theme-toggle-icon-moon {
   .search-result-card:hover .media-card-year,
   .search-result-card-square:hover .media-card-year {
     max-height: max-content;
+  }
+}
+
+/*
+ * First touch tap opens a card: match what :hover shows so the subtitle and the
+ * action buttons appear together rather than only the buttons. Kept inside the
+ * coarse-pointer block below so it beats the emulated-hover neutralisation.
+ */
+
+/* ...unless a first touch tap opened it, which is the one case the compact
+   grid does want the actions on screen. */
+@media (pointer: coarse) {
+  body[data-mobile-grid="compact"] .media-card-overlay.media-card-overlay-revealed {
+    display: flex;
+  }
+}
+
+/*
+ * Touch has no hover, but browsers emulate it for a moment on tap. That fires
+ * the card's hover reveals and then reverts them, which reads as a flash - the
+ * title cross-fades between its one-line ::before and the three-line text. On
+ * coarse pointers those reveals are neutralised and driven by the tap state,
+ * so nothing moves until the card is actually opened.
+ */
+@media (pointer: coarse) {
+  .search-result-card:hover .media-card-title-row,
+  .search-result-card-square:hover .media-card-title-row {
+    max-height: var(--card-title-line);
+  }
+
+  .search-result-card:hover .media-card-title[title],
+  .search-result-card-square:hover .media-card-title[title] {
+    color: transparent;
+  }
+
+  .search-result-card:hover .media-card-title[title]::before,
+  .search-result-card-square:hover .media-card-title[title]::before {
+    opacity: 1;
+  }
+
+  .search-result-card:hover .media-card-title[title]:hover,
+  .search-result-card-square:hover .media-card-title[title]:hover {
+    color: transparent;
+  }
+
+  .search-result-card:hover:not(.media-card-subtitle-always) .media-card-year,
+  .search-result-card-square:hover:not(.media-card-subtitle-always) .media-card-year {
+    max-height: 0;
+    margin-top: 0;
+    opacity: 0;
+  }
+
+  .search-result-card.media-card-revealed:not(.media-card-subtitle-always) .media-card-year,
+  .search-result-card-square.media-card-revealed:not(.media-card-subtitle-always) .media-card-year {
+    max-height: 2lh;
+    margin-top: 0.25rem;
+    opacity: 1;
+  }
+
+  @supports (interpolate-size: allow-keywords) {
+    .search-result-card.media-card-revealed:not(.media-card-subtitle-always) .media-card-year,
+    .search-result-card-square.media-card-revealed:not(.media-card-subtitle-always) .media-card-year {
+      max-height: max-content;
+    }
+  }
+
+  .search-result-card.media-card-revealed .media-card-title-row,
+  .search-result-card-square.media-card-revealed .media-card-title-row {
+    max-height: calc(3 * var(--card-title-line));
+  }
+
+  .search-result-card.media-card-revealed .media-card-title[title],
+  .search-result-card.media-card-revealed .media-card-title[title]:hover,
+  .search-result-card-square.media-card-revealed .media-card-title[title],
+  .search-result-card-square.media-card-revealed .media-card-title[title]:hover {
+    color: #fff;
+  }
+
+  .search-result-card.media-card-revealed .media-card-title[title]::before,
+  .search-result-card-square.media-card-revealed .media-card-title[title]::before {
+    opacity: 0;
+  }
+
+  /* The reveal cross-fades the ::before single-line over the three-line text,
+     which briefly dims the title on tap. Snap that colour/opacity swap but
+     keep the row's max-height transition, so the title still expands and
+     collapses smoothly like the hover reveal. */
+  .search-result-card.media-card-revealed .media-card-title,
+  .search-result-card-square.media-card-revealed .media-card-title,
+  .search-result-card.media-card-revealed .media-card-title[title]::before,
+  .search-result-card-square.media-card-revealed .media-card-title[title]::before {
+    transition: none;
   }
 }
 
