@@ -113,6 +113,20 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.page.get_by_role("button", name="Sign in").click()
         expect(self.page.locator("#global-search")).to_be_visible()
 
+    def click_card_lists_action(self):
+        """Hover a media card, then click its Lists action button.
+
+        The card's action overlay is `opacity-0` until hovered
+        (`hover-tap:opacity-100`, which compiles to `&:hover`). Playwright
+        treats a fully transparent element as visible, so clicking it without
+        hovering first is intercepted by the poster link stacked above it once
+        the image finishes loading - which happens on CI but not where the
+        placeholder image never resolves.
+        """
+        overlay = self.page.locator(".media-card-overlay").first
+        overlay.hover()
+        overlay.locator(".relative > button:nth-child(2)").first.click()
+
     def search_and_submit(self, query):
         """Run a global search via the submit button.
 
@@ -142,7 +156,7 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.page.get_by_role("button", name="TV Shows").click()
         self.page.locator("li").filter(has_text=re.compile(r"^Anime$")).click()
         self.search_and_submit("perfect blue")
-        self.page.locator(".absolute > .relative > button:nth-child(2)").first.click()
+        self.click_card_lists_action()
         expect(self.page.locator("#lists-anime-437")).to_contain_text(
             "You haven't created any lists yet.",
         )
@@ -162,7 +176,7 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.page.get_by_role("button", name="TV Shows").click()
         self.page.locator("li").filter(has_text=re.compile(r"^Anime$")).click()
         self.search_and_submit("perfect blue")
-        self.page.locator(".absolute > .relative > button:nth-child(2)").first.click()
+        self.click_card_lists_action()
         expect(self.page.locator("#lists-anime-437")).to_contain_text("Lists test Add")
         self.page.get_by_role("button", name="Add item to test", exact=True).click()
         expect(self.page.locator("#lists-anime-437")).to_contain_text("Remove")
