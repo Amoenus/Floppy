@@ -3,6 +3,7 @@
 import hashlib
 import logging
 import re
+import time
 from collections import defaultdict
 from datetime import UTC, datetime
 from difflib import SequenceMatcher
@@ -63,13 +64,29 @@ class AudiobookshelfClient:
         self.base_url = base_url.rstrip("/")
         self.token = token
 
-    def _request(self, path: str):
+    def _request(self, path: str, max_retries: int = 3, base_delay: float = 0.5):
+        """GET a path, retrying transient network failures.
+
+        A single dropped connection (TLS handshake timeout, reset, etc.) is
+        common on self-hosted setups and shouldn't be treated the same as a
+        real API error - retry it a few times before giving up (see #1047).
+        """
         url = f"{self.base_url}{path}"
-        response = requests.get(
-            url,
-            headers={"Authorization": f"Bearer {self.token}"},
-            timeout=20,
-        )
+        attempt = 0
+        while True:
+            try:
+                response = requests.get(
+                    url,
+                    headers={"Authorization": f"Bearer {self.token}"},
+                    timeout=20,
+                )
+            except requests.exceptions.RequestException:
+                attempt += 1
+                if attempt >= max_retries:
+                    raise
+                time.sleep(base_delay * attempt)
+                continue
+            break
         if response.status_code in (401, 403):
             msg = "Audiobookshelf token is invalid or expired"
             raise AudiobookshelfAuthError(msg)
@@ -554,7 +571,7 @@ class AudiobookshelfImporter:
         kwargs = {"expanded": True} if expanded else {}
         try:
             return self.client.get_library_item(library_item_id, **kwargs)
-        except AudiobookshelfClientError:
+        except (AudiobookshelfClientError, requests.exceptions.RequestException):
             self.warnings.append(f"{library_item_id}: failed to fetch metadata")
             return None
 

@@ -1,8 +1,9 @@
 """Tests for Audiobookshelf importer."""
 
 from datetime import UTC, datetime
-from unittest.mock import call, patch
+from unittest.mock import Mock, call, patch
 
+import requests
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -23,6 +24,7 @@ from integrations import audiobookshelf_cover
 from integrations.imports import helpers
 from integrations.imports.audiobookshelf import (
     AudiobookshelfAuthError,
+    AudiobookshelfClient,
     AudiobookshelfClientError,
     AudiobookshelfImporter,
 )
@@ -741,6 +743,58 @@ class AudiobookshelfImporterTests(TestCase):
 
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_transient_network_error_skips_item_without_aborting_import(
+        self,
+        mock_me,
+        mock_item,
+    ):
+        """A timeout on one item's fetch should not fail the whole import (#1047)."""
+        mock_me.return_value = {
+            "mediaProgress": [
+                {"libraryItemId": "flaky-item", "lastUpdate": 3_000},
+                {
+                    "libraryItemId": "healthy-item",
+                    "currentTime": 600,
+                    "duration": 1_200,
+                    "lastUpdate": 4_000,
+                },
+            ],
+        }
+
+        def fetch(library_item_id, **kwargs):
+            if library_item_id == "flaky-item":
+                raise requests.exceptions.ReadTimeout("handshake timed out")
+            return {
+                "media": {
+                    "duration": 1_200,
+                    "metadata": {
+                        "title": "Healthy Book",
+                        "authors": [{"name": "Some Author"}],
+                    },
+                },
+                "coverPath": "https://img.example/healthy.jpg",
+            }
+
+        mock_item.side_effect = fetch
+
+        importer = AudiobookshelfImporter(self.user)
+        counts, warnings = importer.import_data()
+
+        self.assertEqual(counts.get(MediaTypes.BOOK.value), 1)
+        self.assertIn("flaky-item", warnings)
+        healthy_media_id = importer._stable_media_id(
+            "https://abs.example.com",
+            "healthy-item",
+        )
+        self.assertTrue(
+            Book.objects.filter(
+                user=self.user,
+                item__media_id=healthy_media_id,
+            ).exists(),
+        )
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
     def test_falls_back_to_item_title_and_plain_string_authors(
         self,
         mock_me,
@@ -1317,3 +1371,40 @@ class AudiobookshelfImporterTests(TestCase):
         self.assertEqual(counts, {})
         self.assertEqual(warnings, "")
         mock_item.assert_not_called()
+
+
+class AudiobookshelfClientRetryTests(TestCase):
+    """Validate transient network error retry in AudiobookshelfClient._request."""
+
+    def setUp(self):
+        """Create a bare client."""
+        self.client = AudiobookshelfClient("https://abs.example.com", "token")
+
+    @patch("integrations.imports.audiobookshelf.time.sleep")
+    @patch("integrations.imports.audiobookshelf.requests.get")
+    def test_retries_transient_timeout_then_succeeds(self, mock_get, mock_sleep):
+        """A read timeout should be retried instead of failing the whole request."""
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {"ok": True}
+        mock_get.side_effect = [
+            requests.exceptions.ReadTimeout("handshake timed out"),
+            response,
+        ]
+
+        result = self.client._request("/api/me")
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(mock_get.call_count, 2)
+        mock_sleep.assert_called_once()
+
+    @patch("integrations.imports.audiobookshelf.time.sleep")
+    @patch("integrations.imports.audiobookshelf.requests.get")
+    def test_raises_after_exhausting_retries(self, mock_get, mock_sleep):
+        """Persistent timeouts should still raise once retries are exhausted."""
+        mock_get.side_effect = requests.exceptions.ReadTimeout("handshake timed out")
+
+        with self.assertRaises(requests.exceptions.ReadTimeout):
+            self.client._request("/api/me")
+
+        self.assertEqual(mock_get.call_count, 3)
