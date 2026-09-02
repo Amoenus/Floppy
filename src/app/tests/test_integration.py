@@ -609,18 +609,26 @@ class IntegrationTest(StaticLiveServerTestCase):
                 end_date=end_date,
             )
 
-        self.page.goto(
-            self.live_server_url
-            + reverse(
-                "media_details",
-                kwargs={
-                    "source": Sources.TMDB.value,
-                    "media_type": MediaTypes.MOVIE.value,
-                    "media_id": "238",
-                    "title": "test-movie",
-                },
-            ),
-        )
+        # The detail page defers part of itself to a "fragment=secondary" htmx
+        # load. Opening the session-history modal while that request is still in
+        # flight lets the swap land on top of the modal and re-initialize its
+        # calendar, leaving the activity markers empty. Wait for the fragment
+        # first, the same way the episode test above does.
+        with self.page.expect_response(
+            lambda response: "fragment=secondary" in response.url,
+        ):
+            self.page.goto(
+                self.live_server_url
+                + reverse(
+                    "media_details",
+                    kwargs={
+                        "source": Sources.TMDB.value,
+                        "media_type": MediaTypes.MOVIE.value,
+                        "media_id": "238",
+                        "title": "test-movie",
+                    },
+                ),
+            )
         expect(self.page.get_by_role("main")).to_contain_text("Test Movie")
 
         self.page.get_by_role("button", name="View session history").first.click()

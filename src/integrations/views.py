@@ -52,6 +52,7 @@ from integrations import (
     xbox_api,
 )
 from integrations import plex as plex_api
+from integrations import plex_cover as plex_cover_proxy
 from integrations.gpodder_api import GPodderAuthError, GPodderClientError
 from integrations.imports import anilist, helpers, mdblist, simkl, stremio, trakt
 from integrations.imports.audiobookshelf import (
@@ -829,6 +830,22 @@ def plex_disconnect(request):
     return redirect("import_data")
 
 
+def _save_plex_content_kind(plex_account, library, content_kind):
+    """Persist how a Plex library should be imported (auto/music/audiobook).
+
+    Stored on the account rather than passed per-run so scheduled imports and
+    the live webhook honor the same choice.
+    """
+    if not content_kind or library in (None, "", "all"):
+        return
+    try:
+        machine_identifier, section_id = library.split("::", 1)
+    except ValueError:
+        return
+    if plex_account.set_content_kind(machine_identifier, section_id, content_kind):
+        plex_account.save(update_fields=["section_settings"])
+
+
 @require_POST
 def import_plex(request):
     """Queue a Plex history import for the current user."""
@@ -842,8 +859,10 @@ def import_plex(request):
     frequency = request.POST.get("frequency", "once")
     import_time = request.POST.get("time", "00:00")
     raw_usernames = request.POST.get("plex_usernames", "")
+    content_kind = request.POST.get("content_kind")
 
     _save_plex_usernames(request.user, raw_usernames)
+    _save_plex_content_kind(plex_account, library, content_kind)
 
     if mode == "watchlist":
         _ensure_plex_watchlist_schedule(request.user, plex_account)
@@ -1799,6 +1818,86 @@ def audiobookshelf_cover(request, token):
             upstream.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
         )
         if content_type not in AUDIOBOOKSHELF_COVER_CONTENT_TYPES:
+            return HttpResponseNotFound()
+
+        try:
+            content_length = int(upstream.headers.get("Content-Length", "0"))
+        except ValueError:
+            content_length = 0
+        if content_length > image_cache.MAX_IMAGE_BYTES:
+            return HttpResponseNotFound()
+
+        body = bytearray()
+        for chunk in upstream.iter_content(chunk_size=64 * 1024):
+            if not chunk:
+                continue
+            body.extend(chunk)
+            if len(body) > image_cache.MAX_IMAGE_BYTES:
+                return HttpResponseNotFound()
+    finally:
+        upstream.close()
+
+    response = HttpResponse(bytes(body), content_type=content_type)
+    response["Cache-Control"] = "private, max-age=3600"
+    return response
+
+
+PLEX_COVER_TIMEOUT = 15
+# Same allow-list as the Audiobookshelf proxy: a Plex server is an arbitrary
+# user-configured host, so anything but a plain raster type would be served as
+# active content from Floppy's own origin to whoever holds the signed URL.
+PLEX_COVER_CONTENT_TYPES = frozenset(
+    {"image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"},
+)
+
+
+@login_not_required
+@require_GET
+def plex_cover(request, token):
+    """Stream a Plex item's cover art using the account's own Plex token.
+
+    Plex art endpoints require an X-Plex-Token, which must never end up in an
+    `<img src>` or in a stored Item.image. This resolves the signed token to the
+    owning account and server, fetches the art server-side, and streams it back
+    under the same size cap and content-type allow-list as the Audiobookshelf
+    cover proxy.
+    """
+    resolved = plex_cover_proxy.resolve_cover_proxy_token(token)
+    if resolved is None:
+        return HttpResponseNotFound()
+    account_id, machine_identifier, thumb_path = resolved
+
+    account = PlexAccount.objects.filter(pk=account_id).first()
+    if account is None:
+        return HttpResponseNotFound()
+
+    uri, plex_token = plex_api.connection_for_machine(
+        account.sections,
+        machine_identifier,
+        account.plex_token,
+    )
+    if not uri or not plex_token:
+        return HttpResponseNotFound()
+
+    try:
+        upstream = requests.get(
+            f"{uri}{thumb_path}",
+            params={"X-Plex-Token": plex_token},
+            timeout=PLEX_COVER_TIMEOUT,
+            stream=True,
+            verify=settings.PLEX_SSL_VERIFY,
+        )
+    except requests.RequestException:
+        return HttpResponseNotFound()
+
+    try:
+        if upstream.status_code != HTTPStatus.OK:
+            return HttpResponseNotFound()
+
+        content_type = (
+            upstream.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+        )
+        if content_type not in PLEX_COVER_CONTENT_TYPES:
             return HttpResponseNotFound()
 
         try:

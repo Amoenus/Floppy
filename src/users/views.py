@@ -1400,12 +1400,46 @@ def integrations(request):
     )
 
 
+def _decorate_plex_sections(sections, plex_account):
+    """Annotate Plex sections with their audiobook hint and configured kind.
+
+    The import form needs both: `content_kind` is what the user chose (or
+    "auto"), `audiobook_hint` is what the library looks like, so an obvious
+    audiobook library can pre-select the right option.
+    """
+    from integrations.imports.plex_audiobooks import (
+        is_music_section,
+        section_audiobook_hint,
+    )
+
+    decorated = []
+    for section in sections or []:
+        entry = dict(section)
+        entry["is_music"] = is_music_section(section)
+        entry["audiobook_hint"] = entry["is_music"] and section_audiobook_hint(
+            section,
+        )
+        entry["content_kind"] = (
+            plex_account.content_kind(
+                section.get("machine_identifier"),
+                section.get("id"),
+            )
+            if plex_account
+            else "auto"
+        )
+        decorated.append(entry)
+    return decorated
+
+
 @require_GET
 def import_data(request):
     """Render the import data settings page."""
     user = _get_import_data_user(request.user)
     plex_account = _get_stored_plex_account(user)
-    plex_sections = plex_account.sections or [] if plex_account else []
+    plex_sections = _decorate_plex_sections(
+        plex_account.sections if plex_account else [],
+        plex_account,
+    )
 
     # Get Audiobookshelf account
     audiobookshelf_account = getattr(user, "audiobookshelf_account", None)
@@ -1622,7 +1656,7 @@ def import_data_plex_sections(request):
     sections, error = _refresh_cached_plex_sections(plex_account)
     return JsonResponse(
         {
-            "sections": sections,
+            "sections": _decorate_plex_sections(sections, plex_account),
             "error": error or "",
         },
     )

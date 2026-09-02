@@ -19,6 +19,8 @@
          plexLibrariesLoading: {% if plex_account %}true{% else %}false{% endif %},
          plexLiveError: '',
          plexWatchlistSyncEnabled: {% if plex_account and plex_account.watchlist_sync_enabled %}true{% else %}false{% endif %},
+         plexLibrary: 'all',
+         plexContentKind: 'auto',
          activeModal: null,
          openModal(slug) {
            this.activeModal = slug;
@@ -84,6 +86,29 @@
              return 'Checking';
            }
            return 'Disconnected';
+         },
+         selectedPlexSection() {
+           return this.plexSections.find(
+             (section) => `${section.machine_identifier}::${section.id}` === this.plexLibrary
+           ) || null;
+         },
+         showPlexContentKind() {
+           const section = this.selectedPlexSection();
+           return !!(section && section.is_music);
+         },
+         syncPlexContentKind() {
+           const section = this.selectedPlexSection();
+           if (!section || !section.is_music) {
+             this.plexContentKind = 'auto';
+             return;
+           }
+           if (section.content_kind && section.content_kind !== 'auto') {
+             this.plexContentKind = section.content_kind;
+           } else if (section.audiobook_hint) {
+             this.plexContentKind = 'audiobook';
+           } else {
+             this.plexContentKind = 'auto';
+           }
          },
          plexLibraryLabel(section) {
            let label = section.title || 'Unknown library';
@@ -155,6 +180,7 @@
 
              if (Array.isArray(data.sections)) {
                this.plexSections = data.sections;
+               this.syncPlexContentKind();
                this.hasPlexSections = data.sections.length > 0;
              }
 
@@ -729,6 +755,8 @@
                 <label class="block text-sm text-[var(--color-text-secondary)] mb-2">Library</label>
                 <div class="relative">
                   <select name="library"
+                          x-model="plexLibrary"
+                          @change="syncPlexContentKind()"
                           class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none disabled:opacity-50"
                           :disabled="plexSubmitDisabled()">
                     <option value="all">All libraries</option>
@@ -752,6 +780,26 @@
                    x-show="!plexSections.length && !plexLibrariesLoading && plexConnectionState !== 'error'"
                    class="text-xs text-[var(--color-text-muted)] mt-1">
                   No libraries detected yet. Reconnect Plex to refresh.
+                </p>
+              </div>
+
+              <div x-cloak x-show="!isWatchlistMode() && showPlexContentKind()">
+                <label class="block text-sm text-[var(--color-text-secondary)] mb-2">Content type</label>
+                <div class="relative">
+                  <select name="content_kind"
+                          x-model="plexContentKind"
+                          class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none disabled:opacity-50"
+                          :disabled="plexSubmitDisabled()">
+                    <option value="auto">Auto-detect</option>
+                    <option value="music">Music</option>
+                    <option value="audiobook">Audiobooks</option>
+                  </select>
+                  {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
+                </div>
+                <p class="text-xs text-[var(--color-text-muted)] mt-1">
+                  Audiobooks kept in a Plex Music library are tracked as books instead of
+                  music. Auto-detect decides per album; choose Audiobooks to import the whole
+                  library as books.
                 </p>
               </div>
 
