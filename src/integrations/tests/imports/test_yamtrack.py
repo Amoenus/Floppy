@@ -25,6 +25,8 @@ from app.models import (
     MediaTypes,
     Movie,
     Podcast,
+    PodcastEpisode,
+    PodcastShow,
     Season,
     Sources,
     Status,
@@ -775,3 +777,55 @@ class ImportYamtrackDoesNotReclassify(TestCase):
                 library_media_type=MediaTypes.ANIME.value,
             ).exists(),
         )
+
+
+class ImportYamtrackPodcastReferences(TestCase):
+    """A CSV-imported podcast row links to an already-added show (issue #1048)."""
+
+    def setUp(self):
+        """Create a user and an already-synced podcast show/episode."""
+        self.user = get_user_model().objects.create_user(
+            username="podcast-csv-import",
+            password="12345",
+        )
+        self.show = PodcastShow.objects.create(
+            podcast_uuid="itunes:12345",
+            source=Sources.POCKETCASTS.value,
+            title="Test Podcast",
+        )
+        self.episode = PodcastEpisode.objects.create(
+            show=self.show,
+            episode_uuid="episode-uuid-1",
+            title="Episode One",
+        )
+
+    def _csv_row(self, media_id, source):
+        return (
+            '"media_id","source","media_type","library_media_type","title",'
+            '"image","season_number","episode_number","score","progress",'
+            '"status","start_date","end_date","notes","progressed_at"\n'
+            f'"{media_id}","{source}","podcast","","Episode One",'
+            '"https://image.url","","","","30","Completed","","","",""\n'
+        )
+
+    def test_matching_episode_is_linked(self):
+        """A row whose Item identity matches an existing PodcastEpisode links it."""
+        csv_content = self._csv_row(self.episode.episode_uuid, self.show.source)
+
+        yamtrack.importer(BytesIO(csv_content.encode()), self.user, "new")
+
+        podcast = Podcast.objects.get(user=self.user)
+        self.assertEqual(podcast.show, self.show)
+        self.assertEqual(podcast.episode, self.episode)
+        self.assertEqual(podcast.status, Status.COMPLETED.value)
+
+    def test_unmatched_episode_imports_unlinked(self):
+        """A row with no locally-known show still imports without error."""
+        csv_content = self._csv_row("unknown-episode-uuid", Sources.POCKETCASTS.value)
+
+        yamtrack.importer(BytesIO(csv_content.encode()), self.user, "new")
+
+        podcast = Podcast.objects.get(user=self.user)
+        self.assertIsNone(podcast.show)
+        self.assertIsNone(podcast.episode)
+        self.assertEqual(podcast.status, Status.COMPLETED.value)
