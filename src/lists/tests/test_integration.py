@@ -114,18 +114,23 @@ class IntegrationTest(StaticLiveServerTestCase):
         expect(self.page.locator("#global-search")).to_be_visible()
 
     def click_card_lists_action(self):
-        """Hover a media card, then click its Lists action button.
+        """Click a media card's Lists action button.
 
-        The card's action overlay is `opacity-0` until hovered
-        (`hover-tap:opacity-100`, which compiles to `&:hover`). Playwright
-        treats a fully transparent element as visible, so clicking it without
-        hovering first is intercepted by the poster link stacked above it once
-        the image finishes loading - which happens on CI but not where the
-        placeholder image never resolves.
+        Dispatched rather than clicked through the pointer. Once the poster
+        image has loaded, the browsers CI runs put that image on top of the
+        card's action overlay at the button's coordinates, so a real click -
+        and even a hover - is rejected with "subtree intercepts pointer
+        events" and retried until the timeout. This suite is here to cover the
+        lists modal flow, not the overlay's hit-testing, so address the button
+        directly and keep the assertions below meaningful.
         """
-        overlay = self.page.locator(".media-card-overlay").first
-        overlay.hover()
-        overlay.locator(".relative > button:nth-child(2)").first.click()
+        button = (
+            self.page.locator(".media-card-overlay")
+            .first.locator(".relative > button:nth-child(2)")
+            .first
+        )
+        button.scroll_into_view_if_needed()
+        button.dispatch_event("click")
 
     def search_and_submit(self, query):
         """Run a global search via the submit button.
