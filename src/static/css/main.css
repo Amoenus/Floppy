@@ -6057,13 +6057,6 @@ html.light .theme-toggle-icon-moon {
   min-width: 2.25rem;
   min-height: 2.25rem;
 }
-.date-picker-year-input {
-  -moz-appearance: textfield;
-}
-.date-picker-year-input::-webkit-outer-spin-button, .date-picker-year-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
 .date-picker-day-cell {
   min-width: 2.25rem;
   min-height: 2.25rem;
