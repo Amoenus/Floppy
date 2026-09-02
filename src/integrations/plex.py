@@ -490,6 +490,53 @@ def fetch_metadata(
     return entries[0] if entries else None
 
 
+def find_cached_section(
+    sections: list[dict[str, Any]] | None,
+    machine_identifier: str | None,
+    section_id: Any = None,
+) -> dict[str, Any] | None:
+    """Return a cached section for a server, optionally a specific library.
+
+    Plex rating keys and section ids are only unique within a server, so
+    anything resolving a server connection has to match the machine identifier
+    rather than taking whichever section happens to be cached first.
+    """
+    if not sections or not machine_identifier:
+        return None
+
+    fallback = None
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        if section.get("machine_identifier") != machine_identifier:
+            continue
+        if not section.get("uri"):
+            continue
+        if section_id is None:
+            return section
+        if str(section.get("id")) == str(section_id):
+            return section
+        fallback = fallback or section
+    return fallback
+
+
+def connection_for_machine(
+    sections: list[dict[str, Any]] | None,
+    machine_identifier: str | None,
+    token: str | None = None,
+    section_id: Any = None,
+) -> tuple[str | None, str | None]:
+    """Return (uri, token) for a cached server connection, or (None, None).
+
+    Prefers the section's own access token, which is what a server shared by
+    another user requires.
+    """
+    section = find_cached_section(sections, machine_identifier, section_id)
+    if not section:
+        return None, None
+    return section.get("uri"), section.get("access_token") or token
+
+
 def fetch_children(
     token: str, uri: str, rating_key: str, timeout: int = 20
 ) -> list[dict[str, Any]]:

@@ -179,6 +179,99 @@ class PlexAudiobookWebhookTests(TestCase):
             self.assertIsNone(processor._audiobook_routing(payload, self.user))
             mock_fetch.assert_not_called()
 
+    def test_album_is_fetched_from_the_payloads_own_server(self):
+        """Rating keys are server-local, so a multi-server account must match.
+
+        A Plex webhook's Server block carries a uuid but no uri, so resolving
+        by "first cached section" would fetch the album from the wrong server.
+        """
+        self.account.sections = [
+            {
+                "id": "2",
+                "title": "Audiobooks",
+                "type": "artist",
+                "machine_identifier": "other-machine",
+                "uri": "http://wrong.local:32400",
+                "access_token": "wrong-token",
+            },
+            *self.account.sections,
+        ]
+        self.account.save()
+        self.set_kind("audiobook")
+
+        with (
+            patch(
+                "integrations.webhooks.plex.plex_api.fetch_metadata",
+                return_value=album(),
+            ) as mock_metadata,
+            patch(
+                "integrations.webhooks.plex.plex_api.fetch_children",
+                return_value=chapters(3),
+            ),
+        ):
+            PlexWebhookProcessor().process_payload(scrobble_payload(), self.user)
+
+        token, uri, _ = mock_metadata.call_args[0]
+        self.assertEqual(uri, "http://plex.local:32400")
+        self.assertEqual(token, "token")
+
+    def test_shared_server_uses_the_sections_access_token(self):
+        """A server shared by another user needs that section's own token."""
+        self.account.sections = [
+            {
+                **self.account.sections[0],
+                "access_token": "friend-token",
+            },
+        ]
+        self.account.save()
+        self.set_kind("audiobook")
+
+        with (
+            patch(
+                "integrations.webhooks.plex.plex_api.fetch_metadata",
+                return_value=album(),
+            ) as mock_metadata,
+            patch(
+                "integrations.webhooks.plex.plex_api.fetch_children",
+                return_value=chapters(3),
+            ),
+        ):
+            PlexWebhookProcessor().process_payload(scrobble_payload(), self.user)
+
+        self.assertEqual(mock_metadata.call_args[0][0], "friend-token")
+
+    def test_section_hint_is_applied_to_live_detection(self):
+        """Auto detection must agree with the importer on a hinted library.
+
+        Otherwise a borderline album imports as a book from history while its
+        live scrobbles are recorded as music.
+        """
+        borderline = {"ratingKey": "100", "type": "album", "title": "Untitled Book"}
+        tracks = [
+            {
+                "ratingKey": str(100 + index),
+                "title": f"Part {index}",
+                "index": index,
+                "duration": 25 * MINUTE_MS,
+            }
+            for index in range(1, 4)
+        ]
+
+        processor = PlexWebhookProcessor()
+        payload = scrobble_payload(title="Part 3")
+        with (
+            patch(
+                "integrations.webhooks.plex.plex_api.fetch_metadata",
+                return_value=borderline,
+            ),
+            patch(
+                "integrations.webhooks.plex.plex_api.fetch_children",
+                return_value=tracks,
+            ),
+        ):
+            # The cached section is titled "Audiobooks", so the hint applies.
+            self.assertTrue(processor._confirm_audiobook_album(payload, self.user))
+
     def test_music_choice_skips_the_musicbrainz_search(self):
         """Chapters kept as music must not be fuzzy-matched to MusicBrainz.
 

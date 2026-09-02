@@ -1851,17 +1851,6 @@ PLEX_COVER_CONTENT_TYPES = frozenset(
 )
 
 
-def _plex_connection_for_machine(account, machine_identifier):
-    """Return (uri, token) for a cached Plex server connection, or (None, None)."""
-    for section in account.sections or []:
-        if section.get("machine_identifier") != machine_identifier:
-            continue
-        uri = section.get("uri")
-        if uri:
-            return uri, section.get("access_token") or account.plex_token
-    return None, None
-
-
 @login_not_required
 @require_GET
 def plex_cover(request, token):
@@ -1882,7 +1871,11 @@ def plex_cover(request, token):
     if account is None:
         return HttpResponseNotFound()
 
-    uri, plex_token = _plex_connection_for_machine(account, machine_identifier)
+    uri, plex_token = plex_api.connection_for_machine(
+        account.sections,
+        machine_identifier,
+        account.plex_token,
+    )
     if not uri or not plex_token:
         return HttpResponseNotFound()
 

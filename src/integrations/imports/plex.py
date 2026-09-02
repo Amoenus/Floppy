@@ -124,12 +124,16 @@ class PlexHistoryImporter:
         self._current_section_content_kind = plex_audiobooks.CONTENT_KIND_AUTO
         self._current_section_audiobook_hint = False
         self._current_section_machine_id: str | None = None
-        # Album rating key -> audiobook verdict, so an album is fetched and
-        # scored once per run no matter how many chapters appear in history.
-        self._audiobook_album_verdicts: dict[str, bool] = {}
-        # Album rating keys already upserted this run, so the other chapters
-        # of the same book fall through instead of re-fetching it.
-        self._audiobook_albums_seen: set[str] = set()
+        # (machine id, album rating key) -> audiobook verdict, so an album is
+        # fetched and scored once per run no matter how many chapters appear in
+        # history. Rating keys are only unique within a server, so an "all
+        # libraries" import across two servers would otherwise let one album
+        # inherit another's classification.
+        self._audiobook_album_verdicts: dict[tuple[str | None, str], bool] = {}
+        # (machine id, album rating key) already upserted this run, so the
+        # other chapters of the same book fall through instead of re-fetching
+        # it -- server-scoped for the same reason as the verdict cache.
+        self._audiobook_albums_seen: set[tuple[str | None, str]] = set()
         self._audiobook_detected_count = 0
         self._audiobook_skipped_disabled = 0
         self._current_server_owned = True
@@ -713,6 +717,13 @@ class PlexHistoryImporter:
             return None, []
         return album, tracks
 
+    def _album_cache_key(self, album_key) -> tuple[str | None, str]:
+        """Return a server-scoped cache key for an album rating key."""
+        return (
+            self._current_section_machine_id,
+            str(album_key).rsplit("/", 1)[-1],
+        )
+
     def _should_import_as_audiobook(self, metadata: dict) -> bool:
         """Return whether a music history entry belongs to an audiobook.
 
@@ -728,23 +739,23 @@ class PlexHistoryImporter:
                 plex_audiobooks.CONTENT_KIND_AUDIOBOOK
             )
 
-        album_key = str(album_key).rsplit("/", 1)[-1]
-        if album_key in self._audiobook_album_verdicts:
-            return self._audiobook_album_verdicts[album_key]
+        cache_key = self._album_cache_key(album_key)
+        if cache_key in self._audiobook_album_verdicts:
+            return self._audiobook_album_verdicts[cache_key]
 
         if self._current_section_content_kind == (
             plex_audiobooks.CONTENT_KIND_AUDIOBOOK
         ):
-            self._audiobook_album_verdicts[album_key] = True
+            self._audiobook_album_verdicts[cache_key] = True
             return True
 
-        album, tracks = self._fetch_album(album_key)
+        album, tracks = self._fetch_album(cache_key[1])
         verdict = bool(album) and plex_audiobooks.is_audiobook_album(
             album,
             tracks,
             section_hint=self._current_section_audiobook_hint,
         )
-        self._audiobook_album_verdicts[album_key] = verdict
+        self._audiobook_album_verdicts[cache_key] = verdict
         return verdict
 
     def _process_audiobook_entry(self, metadata: dict):
@@ -758,11 +769,12 @@ class PlexHistoryImporter:
         if not album_key:
             self._track_unknown_type(metadata)
             return
-        album_key = str(album_key).rsplit("/", 1)[-1]
+        cache_key = self._album_cache_key(album_key)
+        album_key = cache_key[1]
 
-        if album_key in self._audiobook_albums_seen:
+        if cache_key in self._audiobook_albums_seen:
             return
-        self._audiobook_albums_seen.add(album_key)
+        self._audiobook_albums_seen.add(cache_key)
 
         if not getattr(self.user, "book_enabled", False):
             # The reporter's "nothing imported": silently dropping these is

@@ -1325,11 +1325,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         Returns "book" to track it as an audiobook, "music_no_lookup" to keep
         it as music but skip the MusicBrainz search, or None for normal music.
         """
-        plex_account = getattr(self, "_source_plex_account", None) or getattr(
-            user,
-            "plex_account",
-            None,
-        )
+        plex_account = self._plex_account(user)
         if not plex_account:
             return None
 
@@ -1352,11 +1348,49 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         return "book" if self._confirm_audiobook_album(payload, user) else None
 
     def _confirm_audiobook_album(self, payload, user):
-        """Confirm an auto-detected audiobook by scoring its whole album."""
+        """Confirm an auto-detected audiobook by scoring its whole album.
+
+        Uses the same section hint the history importer applies, so a
+        borderline album in an audiobook library can't import as a book and
+        then have its live scrobbles recorded as music.
+        """
         album, tracks = self._fetch_audiobook_album(payload, user)
         if not album:
             return False
-        return plex_audiobooks.is_audiobook_album(album, tracks)
+        return plex_audiobooks.is_audiobook_album(
+            album,
+            tracks,
+            section_hint=self._section_audiobook_hint(payload, user),
+        )
+
+    def _section_audiobook_hint(self, payload, user):
+        """Return whether the payload's Plex library looks like audiobooks."""
+        section = self._cached_section(payload, user)
+        if not section:
+            return False
+        return plex_audiobooks.is_music_section(
+            section,
+        ) and plex_audiobooks.section_audiobook_hint(section)
+
+    def _cached_section(self, payload, user):
+        """Return the cached Plex section the payload's library belongs to."""
+        plex_account = self._plex_account(user)
+        if not plex_account:
+            return None
+        metadata = payload.get("Metadata", {}) or {}
+        return plex_api.find_cached_section(
+            plex_account.sections,
+            self._server_uuid(payload),
+            metadata.get("librarySectionID"),
+        )
+
+    def _plex_account(self, user):
+        """Return the Plex account this event should be attributed to."""
+        return getattr(self, "_source_plex_account", None) or getattr(
+            user,
+            "plex_account",
+            None,
+        )
 
     def _fetch_audiobook_album(self, payload, user):
         """Return (album metadata, tracks) for the played track's album."""
@@ -1366,21 +1400,31 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             return None, []
         album_key = str(album_key).rsplit("/", 1)[-1]
 
-        plex_account, plex_uri = self._resolve_plex_server(user, payload)
-        if not plex_account or not plex_uri:
+        plex_account = self._plex_account(user)
+        if not plex_account or not plex_account.plex_token:
             return None, []
 
+        # Rating keys are only unique within a server, so the album must be
+        # fetched from the server the event came from. A Plex webhook's Server
+        # block carries a uuid but no uri, so _resolve_plex_server's fallback
+        # would pick whichever section is cached first — the wrong server on a
+        # multi-server account. Match the uuid, and prefer the section's own
+        # access token, which a server shared by another user requires.
+        plex_uri, plex_token = plex_api.connection_for_machine(
+            plex_account.sections,
+            self._server_uuid(payload),
+            plex_account.plex_token,
+            metadata.get("librarySectionID"),
+        )
+        if not plex_uri:
+            plex_account, plex_uri = self._resolve_plex_server(user, payload)
+            if not plex_account or not plex_uri:
+                return None, []
+            plex_token = plex_account.plex_token
+
         try:
-            album = plex_api.fetch_metadata(
-                plex_account.plex_token,
-                plex_uri,
-                album_key,
-            )
-            tracks = plex_api.fetch_children(
-                plex_account.plex_token,
-                plex_uri,
-                album_key,
-            )
+            album = plex_api.fetch_metadata(plex_token, plex_uri, album_key)
+            tracks = plex_api.fetch_children(plex_token, plex_uri, album_key)
         except plex_api.PlexClientError as exc:
             logger.debug(
                 "Could not fetch Plex album for audiobook webhook: %s",
@@ -1401,11 +1445,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         if not album:
             return None
 
-        plex_account = getattr(self, "_source_plex_account", None) or getattr(
-            user,
-            "plex_account",
-            None,
-        )
+        plex_account = self._plex_account(user)
         book = plex_audiobook_sync.upsert_plex_audiobook(
             user,
             album,

@@ -327,3 +327,56 @@ class TestAutoDetectedAudiobooks(PlexAudiobookImportTestCase):
                 media_type=MediaTypes.BOOK.value,
             ).exists(),
         )
+
+
+class TestAlbumCacheScoping(PlexAudiobookImportTestCase):
+    """Album caches must be scoped to the server the rating key came from."""
+
+    def _importer(self):
+        return PlexHistoryImporter(
+            user=self.user,
+            account=self.account,
+            mode="new",
+            library="all",
+        )
+
+    def test_same_rating_key_on_two_servers_is_classified_separately(self):
+        """Plex rating keys are only unique within a server.
+
+        An "all libraries" import spanning two servers would otherwise let the
+        second album inherit the first one's verdict, misrouting music or
+        dropping a book.
+        """
+        importer = self._importer()
+        importer._current_section_content_kind = "audiobook"
+
+        importer._current_section_machine_id = "server-a"
+        self.assertTrue(importer._should_import_as_audiobook(history_entry()))
+
+        # Same album rating key, different server, explicitly kept as music.
+        importer._current_section_machine_id = "server-b"
+        importer._current_section_content_kind = "music"
+        self.assertFalse(importer._should_import_as_audiobook(history_entry()))
+
+        self.assertEqual(
+            set(importer._audiobook_album_verdicts),
+            {("server-a", "100")},
+        )
+
+    def test_same_album_upserts_once_per_server(self):
+        """The already-seen set is server-scoped for the same reason."""
+        importer = self._importer()
+        importer._current_section_machine_id = "server-a"
+        self.assertEqual(importer._album_cache_key("100"), ("server-a", "100"))
+
+        importer._current_section_machine_id = "server-b"
+        self.assertEqual(importer._album_cache_key("100"), ("server-b", "100"))
+
+    def test_rating_key_paths_are_normalized(self):
+        """A `parentKey` arrives as a path; the numeric key identifies it."""
+        importer = self._importer()
+        importer._current_section_machine_id = "server-a"
+        self.assertEqual(
+            importer._album_cache_key("/library/metadata/100"),
+            ("server-a", "100"),
+        )
