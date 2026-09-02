@@ -52,7 +52,7 @@
         <div class="relative" @click.outside="dropdownOpen = false">
           <button type="button"
                   class="h-10 px-3 text-sm bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex items-center gap-2 cursor-pointer"
-                  @click="actionsOpen = false; dropdownOpen = !dropdownOpen"
+                  @click="actionsOpen = false; statusDropdownOpen = false; dropdownOpen = !dropdownOpen"
                   :aria-expanded="dropdownOpen">
             {% include "app/icons/funnel.svg" with classes="w-4 h-4" %}
             <span class="block min-w-0 truncate max-w-[10rem] sm:max-w-[14rem]"
@@ -96,12 +96,59 @@
           </div>
         </div>
 
+        <div class="relative" @click.outside="statusDropdownOpen = false">
+          <button type="button"
+                  class="h-10 px-3 text-sm bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex items-center gap-2 cursor-pointer"
+                  @click="actionsOpen = false; dropdownOpen = false; statusDropdownOpen = !statusDropdownOpen"
+                  :aria-expanded="statusDropdownOpen">
+            {% include "app/icons/circle-check.svg" with classes="w-4 h-4" %}
+            <span class="block min-w-0 truncate max-w-[10rem] sm:max-w-[14rem]"
+                  x-text="statusDropdownLabel()"></span>
+            <svg xmlns="http://www.w3.org/2000/svg"
+                 viewBox="0 0 20 20"
+                 class="w-4 h-4 ml-1"
+                 aria-hidden="true">
+              <path d="M10 14 L4.5 7 H15.5 Z" fill="currentColor"></path>
+            </svg>
+          </button>
+
+          <div x-cloak
+               x-show="statusDropdownOpen"
+               x-transition:enter="transition ease-out duration-100"
+               x-transition:enter-start="transform opacity-0 scale-95"
+               x-transition:enter-end="transform opacity-100 scale-100"
+               x-transition:leave="transition ease-in duration-75"
+               x-transition:leave-start="transform opacity-100 scale-100"
+               x-transition:leave-end="transform opacity-0 scale-95"
+               class="absolute right-0 mt-2 w-64 rounded-md bg-[var(--color-surface-strong)] border border-[var(--color-border)] shadow-lg overflow-hidden z-40">
+            <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-[var(--color-border)]">
+              <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Status</div>
+              <button type="button"
+                      class="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
+                      @click="toggleAllStatuses()"
+                      x-text="allStatusesSelected() ? 'Hide all' : 'Show all'"></button>
+            </div>
+            <div class="max-h-64 overflow-y-auto">
+              <template x-for="status in availableStatuses" :key="status.value">
+                <button type="button"
+                        class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                        @click="toggleStatus(status.value)">
+                  <span x-text="status.label"></span>
+                  <span class="ml-auto" x-show="isStatusSelected(status.value)">
+                    {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                  </span>
+                </button>
+              </template>
+            </div>
+          </div>
+        </div>
+
         <div class="relative" @click.outside="actionsOpen = false">
           <button type="button"
                   aria-label="Calendar Actions"
                   title="Calendar Actions"
                   class="w-10 h-10 text-sm bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex items-center justify-center cursor-pointer"
-                  @click="dropdownOpen = false; actionsOpen = !actionsOpen"
+                  @click="dropdownOpen = false; statusDropdownOpen = false; actionsOpen = !actionsOpen"
                   :aria-expanded="actionsOpen">
             {% include "app/icons/settings.svg" with classes="w-4 h-4" %}
           </button>
@@ -169,11 +216,19 @@
              {% endwith %}
            {% endfor %}
          ],
+         selectedStatuses: [
+           {% for status in event_statuses %}
+             '{{ status }}',
+           {% endfor %}
+         ],
          calendarBaseUrl: '{{ request.scheme }}://{{ request.get_host }}{% url 'download_calendar' token=user.token %}',
          get calendarExportUrl() {
            const params = new URLSearchParams();
            this.selectedMediaTypes.forEach((mediaType) => {
              params.append('media_types', mediaType);
+           });
+           this.selectedStatuses.forEach((status) => {
+             params.append('status', status);
            });
            const query = params.toString();
            return query ? `${this.calendarBaseUrl}?${query}` : this.calendarBaseUrl;
@@ -218,6 +273,32 @@
       </div>
     </div>
 
+    <div class="mb-4">
+      <div class="flex items-center mb-3">
+        {% include "app/icons/circle-check.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
+        <h4 class="text-sm font-semibold">Status</h4>
+      </div>
+      <p class="text-[var(--color-text-muted)] mb-3 text-xs">
+        Choose which statuses to include in this calendar URL.
+      </p>
+      <div class="grid gap-3 md:grid-cols-3">
+        {% for status in event_statuses %}
+          <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
+            <span class="text-[var(--color-text-secondary)] text-sm">{{ status|media_status_readable }}</span>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input class="sr-only peer"
+                     type="checkbox"
+                     value="{{ status }}"
+                     x-model="selectedStatuses"
+                     checked>
+              <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
+              </div>
+            </label>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
     <div class="bg-[var(--color-surface-dim)] p-3 rounded-md mb-4">
       <input readonly=""
              class="w-full py-2 px-3 bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-secondary)] text-sm border-0 focus:ring-0 outline-none font-mono"
@@ -233,6 +314,7 @@
     function calendarFilters() {
       return {
         dropdownOpen: false,
+        statusDropdownOpen: false,
         actionsOpen: false,
         availableMediaTypes: [
           {% for media_type in available_media_types %}
@@ -244,11 +326,22 @@
             '{{ media_type }}'{% if not forloop.last %},{% endif %}
           {% endfor %}
         ],
+        availableStatuses: [
+          {% for status in available_statuses %}
+            { value: '{{ status }}', label: '{{ status|media_status_readable|escapejs }}' }{% if not forloop.last %},{% endif %}
+          {% endfor %}
+        ],
+        selectedStatuses: [
+          {% for status in available_statuses %}
+            '{{ status }}'{% if not forloop.last %},{% endif %}
+          {% endfor %}
+        ],
         mobileSelectedDay: null,
         filteredGridHtml: '',
         filteredListHtml: '',
         init() {
           this.$watch('selectedMediaTypes', () => this.applyFilter());
+          this.$watch('selectedStatuses', () => this.applyFilter());
           this.applyFilter();
         },
         dropdownLabel() {
@@ -300,6 +393,48 @@
           this.selectedMediaTypes = [];
           this.applyFilter();
         },
+        statusDropdownLabel() {
+          if (this.allStatusesSelected()) {
+            return 'All Statuses';
+          }
+          if (this.selectedStatuses.length === 0) {
+            return 'No Statuses';
+          }
+          if (this.selectedStatuses.length === 1) {
+            const selectedStatus = this.availableStatuses.find(
+              status => status.value === this.selectedStatuses[0],
+            );
+            return selectedStatus ? selectedStatus.label : '1 Status';
+          }
+          return `${this.selectedStatuses.length} Statuses`;
+        },
+        allStatusesSelected() {
+          return (
+            this.availableStatuses.length > 0
+            && this.selectedStatuses.length === this.availableStatuses.length
+          );
+        },
+        isStatusSelected(status) {
+          return this.selectedStatuses.includes(status);
+        },
+        toggleStatus(status) {
+          if (this.isStatusSelected(status)) {
+            this.selectedStatuses = this.selectedStatuses.filter(
+              selectedStatus => selectedStatus !== status,
+            );
+          } else {
+            this.selectedStatuses = [...this.selectedStatuses, status];
+          }
+          this.applyFilter();
+        },
+        toggleAllStatuses() {
+          if (this.allStatusesSelected()) {
+            this.selectedStatuses = [];
+          } else {
+            this.selectedStatuses = this.availableStatuses.map(status => status.value);
+          }
+          this.applyFilter();
+        },
         applyFilter() {
           if (this.$refs.gridTemplate) {
             this.filteredGridHtml = this.filterReleaseMarkup(this.$refs.gridTemplate.innerHTML);
@@ -310,13 +445,17 @@
           this.$nextTick(() => this.bindMobileCalendar());
         },
         filterReleaseMarkup(html) {
-          const selected = new Set(this.selectedMediaTypes);
+          const selectedTypes = new Set(this.selectedMediaTypes);
+          const selectedStatuses = new Set(this.selectedStatuses);
           const container = document.createElement('div');
           container.innerHTML = html;
 
           container.querySelectorAll('[data-release-media-type]').forEach(el => {
             const type = el.dataset.releaseMediaType;
-            if (!selected.has(type)) {
+            const status = el.dataset.releaseStatus;
+            const typeHidden = !selectedTypes.has(type);
+            const statusHidden = status && !selectedStatuses.has(status);
+            if (typeHidden || statusHidden) {
               el.remove();
             }
           });
