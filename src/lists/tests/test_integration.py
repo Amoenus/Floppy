@@ -76,6 +76,14 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
 
+        # The Anime library defaults to TMDB (users/0129), but this suite mocks
+        # the MAL provider and asserts on a MAL-sourced item (#lists-anime-437).
+        # Without pinning the provider the search goes to TMDB, which ordinary
+        # tests cannot reach, so it renders "No results found" and every
+        # card-level locator below times out.
+        self.user.anime_metadata_source_default = "mal"
+        self.user.save(update_fields=["anime_metadata_source_default"])
+
         # Search results and detail lookups mutate the returned dicts in place
         # (e.g. lists_modal's Item.objects.create consumes the metadata dict),
         # so hand back a fresh deep copy every call rather than a shared
