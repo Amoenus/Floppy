@@ -485,6 +485,8 @@ def season_card_title(item):
         normalized_provider_title
         and normalized_provider_title != normalized_fallback_title
     ):
+        if normalized_fallback_title:
+            return f"{normalized_fallback_title}: {normalized_provider_title}"
         return normalized_provider_title
 
     try:
@@ -492,10 +494,11 @@ def season_card_title(item):
     except (TypeError, ValueError):
         season_number = None
 
-    if season_number == 0:
-        return "Specials"
     if season_number is not None:
-        return f"Season {season_number}"
+        season_str = "Specials" if season_number == 0 else f"Season {season_number}"
+        if normalized_fallback_title:
+            return f"{normalized_fallback_title} {season_str}"
+        return season_str
 
     return normalized_fallback_title or ""
 

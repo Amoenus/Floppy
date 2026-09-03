@@ -929,6 +929,77 @@ class AppTagsTests(TestCase):
         )
         self.assertRegex(podcast_url_id, r"^[A-Za-z0-9_-]+$")
 
+    def test_season_card_title(self):
+        """Test the season_card_title tag includes the parent show title (#1060)."""
+        # Numbered season, object input
+        self.assertEqual(
+            app_tags.season_card_title(self.season_item),
+            "Test TV Show Season 1",
+        )
+
+        # Numbered season, dict input
+        self.assertEqual(
+            app_tags.season_card_title(self.season_dict),
+            "Test TV Show Season 1",
+        )
+
+        # Specials (season 0), object input
+        specials_item = Item(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Test TV Show",
+            season_number=0,
+        )
+        self.assertEqual(
+            app_tags.season_card_title(specials_item),
+            "Test TV Show Specials",
+        )
+
+        # Specials (season 0), dict input
+        specials_dict = {**self.season_dict, "season_number": 0}
+        self.assertEqual(
+            app_tags.season_card_title(specials_dict),
+            "Test TV Show Specials",
+        )
+
+        # Named provider/arc title, object input
+        arc_item = SimpleNamespace(
+            title="Test TV Show",
+            season_number=1,
+            season_title="Indigo League",
+        )
+        self.assertEqual(
+            app_tags.season_card_title(arc_item),
+            "Test TV Show: Indigo League",
+        )
+
+        # Named provider/arc title, dict input
+        arc_dict = {
+            "title": "Test TV Show",
+            "season_number": 1,
+            "season_title": "Indigo League",
+        }
+        self.assertEqual(
+            app_tags.season_card_title(arc_dict),
+            "Test TV Show: Indigo League",
+        )
+
+        # Missing fallback title falls back to the bare season string
+        no_title_item = SimpleNamespace(title="", season_number=2, season_title=None)
+        self.assertEqual(app_tags.season_card_title(no_title_item), "Season 2")
+
+        # Missing fallback title with a named arc falls back to the bare arc title
+        no_title_arc_item = SimpleNamespace(
+            title="",
+            season_number=1,
+            season_title="Indigo League",
+        )
+        self.assertEqual(
+            app_tags.season_card_title(no_title_arc_item),
+            "Indigo League",
+        )
+
     def test_media_view_url(self):
         """Test the media_view_url tag."""
         # Test with object for TV
