@@ -158,6 +158,22 @@ def metadata_default_source(user, media_type: str) -> str:
         return provider
 
     available = available_metadata_sources(media_type, user)
+
+    if media_type == MediaTypes.ANIME.value and provider in GROUPED_ANIME_PROVIDERS:
+        # For anime the provider decides the library's storage shape, not just
+        # which API supplies the metadata. Anime's source order is
+        # [MAL, TMDB, TVDB], so the generic "first available" fallback below
+        # would send a user who picked TVDB-but-has-no-API-key to flat MAL
+        # rows, silently changing the shape of their library. Keep them on a
+        # grouped provider whenever one is usable.
+        grouped = [
+            source
+            for source in available
+            if source.value in GROUPED_ANIME_PROVIDERS
+        ]
+        if grouped:
+            return grouped[0].value
+
     return available[0].value if available else provider
 
 

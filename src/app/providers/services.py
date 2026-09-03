@@ -145,6 +145,55 @@ def _audiobookshelf_book(media_id):
     }
 
 
+def _plex_book(media_id):
+    """Return local metadata for an audiobook imported from a Plex library.
+
+    Plex albums detected as audiobooks get a synthetic media_id derived from the
+    server + album rating key, so resolve them from the local Item rather than
+    an external book provider that has never heard of them.
+    """
+    from app.models import Item
+
+    item = Item.objects.filter(
+        media_id=media_id,
+        source=Sources.PLEX.value,
+        media_type=MediaTypes.BOOK.value,
+    ).first()
+
+    title = item.title if item else ""
+    image = item.image if item and item.image else settings.IMG_NONE
+    runtime_minutes = item.runtime_minutes if item else None
+    authors = item.authors if item else []
+    genres = item.genres if item else []
+    publishers = item.publishers if item else ""
+    publish_date = (
+        item.release_datetime.date().isoformat()
+        if item and item.release_datetime
+        else None
+    )
+    format_name = item.format if item and item.format else "audiobook"
+
+    return {
+        "media_id": str(media_id),
+        "source": Sources.PLEX.value,
+        "media_type": MediaTypes.BOOK.value,
+        "title": title,
+        "image": image,
+        "max_progress": runtime_minutes,
+        "synopsis": item.synopsis if item else "",
+        "genres": genres,
+        "related": {},
+        "details": {
+            "author": authors,
+            "isbn": [],
+            "publisher": publishers,
+            "publish_date": publish_date,
+            "format": format_name,
+            "runtime_minutes": runtime_minutes,
+        },
+    }
+
+
 def _storyteller_book(media_id):
     """Return local metadata for a Storyteller book item.
 
@@ -1085,6 +1134,8 @@ def get_media_metadata(
             if source == Sources.AUDIOBOOKSHELF.value
             else _storyteller_book(media_id)
             if source == Sources.STORYTELLER.value
+            else _plex_book(media_id)
+            if source == Sources.PLEX.value
             else openlibrary.book(media_id)
         ),
         MediaTypes.COMIC.value: lambda: comicvine.comic(media_id),
