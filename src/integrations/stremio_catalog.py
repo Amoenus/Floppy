@@ -81,35 +81,35 @@ TRACKED_MODELS = {
 
 CONFIG_SEPARATOR = ","
 
-DEFAULT_CATALOG_IDS = frozenset(
-    {
-        "floppy-watchlist-movies",
-        "floppy-watchlist-series",
-        "floppy-history-movies",
-        "floppy-history-series",
-        "floppy-in-progress-movies",
-        "floppy-in-progress-series",
-    }
+DEFAULT_CATALOG_IDS = (
+    "floppy-watchlist-movies",
+    "floppy-watchlist-series",
+    "floppy-history-movies",
+    "floppy-history-series",
+    "floppy-in-progress-movies",
+    "floppy-in-progress-series",
 )
 
 
 def parse_catalog_config(config):
     """Return the catalog ids selected by an install URL config segment.
 
-    Unknown ids are ignored so a stale install URL keeps working. An empty
-    or fully unrecognised segment falls back to the defaults.
+    Order is preserved so the install URL also decides the order catalogs
+    are published in. Unknown and duplicate ids are ignored so a stale URL
+    keeps working, and an empty or fully unrecognised segment falls back
+    to the defaults.
     """
     if not config:
         return DEFAULT_CATALOG_IDS
 
-    requested = {
-        part.strip()
-        for part in unquote(config).split(CONFIG_SEPARATOR)
-        if part.strip()
-    }
     supported = {spec.catalog_id for spec in CATALOG_SPECS}
-    selected = requested & supported
-    return frozenset(selected) if selected else DEFAULT_CATALOG_IDS
+    selected = []
+    for part in unquote(config).split(CONFIG_SEPARATOR):
+        catalog_id = part.strip()
+        if catalog_id in supported and catalog_id not in selected:
+            selected.append(catalog_id)
+
+    return tuple(selected) if selected else DEFAULT_CATALOG_IDS
 
 
 def get_catalog_spec(stremio_type, catalog_id):
@@ -163,18 +163,24 @@ def catalog_options(user):
 
 
 def manifest_catalogs(user, selected=None):
-    """Build manifest catalogs from the same source rules used for projection."""
+    """Build manifest catalogs in the order the install URL asked for."""
     enabled = selected if selected is not None else DEFAULT_CATALOG_IDS
-    return [
-        {
-            "type": spec.stremio_type,
-            "id": spec.catalog_id,
-            "name": f"Floppy: {catalog_display_name(user, spec)}",
-            "extra": [{"name": "skip", "isRequired": False}],
-        }
-        for spec in CATALOG_SPECS
-        if spec.catalog_id in enabled
-    ]
+    specs = {spec.catalog_id: spec for spec in CATALOG_SPECS}
+
+    catalogs = []
+    for catalog_id in enabled:
+        spec = specs.get(catalog_id)
+        if spec is None:
+            continue
+        catalogs.append(
+            {
+                "type": spec.stremio_type,
+                "id": spec.catalog_id,
+                "name": f"Floppy: {catalog_display_name(user, spec)}",
+                "extra": [{"name": "skip", "isRequired": False}],
+            }
+        )
+    return catalogs
 
 
 def parse_skip(extra):

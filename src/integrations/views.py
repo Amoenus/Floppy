@@ -3628,7 +3628,7 @@ def stremio_addon_configure(request, token, config=None):
         "integrations/stremio_configure.html",
         {
             "catalog_options": stremio_catalog.catalog_options(user),
-            "selected_ids": sorted(stremio_catalog.parse_catalog_config(config)),
+            "selected_ids": list(stremio_catalog.parse_catalog_config(config)),
         },
     )
 
