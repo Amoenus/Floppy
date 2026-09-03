@@ -5,6 +5,8 @@ from django import forms as django_forms
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
+from django.core.validators import URLValidator
 from django.db import IntegrityError
 from django.db.utils import OperationalError
 from django.utils.timezone import datetime, localdate, make_aware
@@ -70,11 +72,13 @@ from .contract_serializers import (
     SearchEnvelopeSerializer,
     TrackedMediaEnvelopeSerializer,
     TrackedMediaResponseSerializer,
+    TrackedMediaUpdateRequestSerializer,
     TrackMediaRequestSerializer,
 )
 from .helpers import (
     MEDIA_TYPE_COMPLETE_MODEL_MAP,
     apply_aggregated_sort,
+    apply_image_url,
     apply_list_sort,
     build_game_lengths_summary,
     build_lists_by_item_id,
@@ -968,7 +972,21 @@ class MediaTypeListView(drf_views.APIView):
                 status=HTTP.BAD_REQUEST,
             )
 
-        body = request.data
+        if request.FILES:
+            return Response(
+                {
+                    "detail": (
+                        "File uploads are not supported. "
+                        "Set `image_url` to an image URL instead."
+                    ),
+                },
+                status=HTTP.BAD_REQUEST,
+            )
+
+        # QueryDict (multipart/form-urlencoded) stores values as lists internally and
+        # is immutable without file parts, so flatten to a plain mutable dict first.
+        raw_body = request.data
+        body = raw_body.dict() if hasattr(raw_body, "dict") else dict(raw_body)
         body["media_type"] = media_type
         body["status"] = (
             get_media_status(body["status"], reverse=True)
@@ -1026,6 +1044,7 @@ class MediaTypeListView(drf_views.APIView):
                 )
 
             media_form.save()
+            apply_image_url(item, media_form.cleaned_data.get("image_url"))
             serialized_data = serialize_data(media_form.instance)
             return Response(serialized_data, status=HTTP.CREATED)
 
@@ -1114,6 +1133,7 @@ class MediaTypeListView(drf_views.APIView):
             )
 
         media_form.save()
+        apply_image_url(item, media_form.cleaned_data.get("image_url"))
         serialized_data = serialize_data(media_form.instance)
         return Response(serialized_data, status=HTTP.CREATED)
 
@@ -1375,7 +1395,7 @@ class MediaDetailView(drf_views.APIView):
     @extend_schema(
         parameters=[MEDIA_TYPE_PARAM],
         operation_id="updateMediaItem",
-        request=MediaUpdateRequestSerializer,
+        request=TrackedMediaUpdateRequestSerializer,
         responses={
             200: CompleteMediaResponseSerializer,
             400: DetailErrorSerializer,
@@ -1406,7 +1426,23 @@ class MediaDetailView(drf_views.APIView):
                 status=HTTP.BAD_REQUEST,
             )
 
-        body = request.data or {}
+        raw_body = request.data or {}
+        body = raw_body.dict() if hasattr(raw_body, "dict") else dict(raw_body)
+        # `image` lives on the shared Item, not the media row, so it bypasses
+        # validate_body's per-media-type field filter. `image` is accepted as an
+        # alias of the canonical `image_url`.
+        image_alias = body.pop("image", None)
+        image_url = body.pop("image_url", None)
+        if image_url is None:
+            image_url = image_alias
+        if image_url is not None:
+            try:
+                URLValidator()(image_url)
+            except ValidationError:
+                return Response(
+                    {"detail": "Invalid image_url."},
+                    status=HTTP.BAD_REQUEST,
+                )
 
         try:
             user_medias = BasicMedia.objects.filter_media(
@@ -1432,13 +1468,17 @@ class MediaDetailView(drf_views.APIView):
 
         media = user_medias[0]
 
-        validated_body, error = validate_body(body, media_type)
+        if body or image_url is None:
+            validated_body, error = validate_body(body, media_type)
 
-        if error:
-            return Response(
-                {"detail": f"{error}"},
-                status=HTTP.BAD_REQUEST,
-            )
+            if error:
+                return Response(
+                    {"detail": f"{error}"},
+                    status=HTTP.BAD_REQUEST,
+                )
+        else:
+            # image-only update: nothing to validate on the media row itself
+            validated_body = {}
 
         for field, value in validated_body.items():
             if hasattr(media, field):
@@ -1455,6 +1495,7 @@ class MediaDetailView(drf_views.APIView):
                 status=HTTP.BAD_REQUEST,
             )
 
+        apply_image_url(media.item, image_url)
         media.refresh_from_db()
 
         try:
