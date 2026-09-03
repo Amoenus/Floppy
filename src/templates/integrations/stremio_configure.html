@@ -15,9 +15,21 @@
     p.lede { margin: 0 0 1.5rem; color: #9aa1ad; font-size: .93rem; }
     fieldset { border: 1px solid #2a2f38; border-radius: .6rem; padding: 1rem 1.1rem; margin: 0 0 1.25rem; }
     legend { padding: 0 .4rem; color: #9aa1ad; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
-    label { display: flex; align-items: center; gap: .6rem; padding: .4rem 0; cursor: pointer; }
-    label span.type { color: #7d838f; font-size: .8rem; }
-    input[type="checkbox"] { width: 1.05rem; height: 1.05rem; accent-color: #6c8cff; }
+    ul#catalog-list { list-style: none; margin: 0; padding: 0; }
+    ul#catalog-list li {
+      display: flex; align-items: center; gap: .6rem; padding: .45rem 0;
+      border-bottom: 1px solid #21252c;
+    }
+    ul#catalog-list li:last-child { border-bottom: 0; }
+    ul#catalog-list li.off .name, ul#catalog-list li.off .type { opacity: .45; }
+    .name { flex: 1; }
+    .type { color: #7d838f; font-size: .8rem; }
+    input[type="checkbox"] { width: 1.05rem; height: 1.05rem; accent-color: #6c8cff; cursor: pointer; }
+    .move {
+      background: #21252c; border: 0; color: #cfd3db; border-radius: .35rem;
+      width: 1.75rem; height: 1.75rem; font-size: .85rem; cursor: pointer; line-height: 1;
+    }
+    .move:disabled { opacity: .3; cursor: default; }
     .url {
       display: block; width: 100%; box-sizing: border-box; background: #0e1013;
       border: 1px solid #2a2f38; border-radius: .5rem; color: #cfd3db; padding: .7rem .8rem;
@@ -37,17 +49,11 @@
 <body>
 <main>
   <h1>Configure Floppy for Stremio</h1>
-  <p class="lede">Choose which catalogs this addon publishes. Reinstall the addon in Stremio for changes to take effect.</p>
+  <p class="lede">Choose which catalogs this addon publishes and the order they appear in. Reinstall the addon in Stremio for changes to take effect.</p>
 
   <fieldset>
     <legend>Catalogs</legend>
-    {% for option in catalog_options %}
-      <label>
-        <input type="checkbox" class="catalog" value="{{ option.id }}">
-        <span>Floppy: {{ option.label }}</span>
-        <span class="type">{{ option.stremio_type }}</span>
-      </label>
-    {% endfor %}
+    <ul id="catalog-list"></ul>
   </fieldset>
 
   <textarea class="url" id="install-url" rows="3" readonly></textarea>
@@ -59,18 +65,28 @@
   <p class="warn" id="warn"></p>
 </main>
 
+{{ catalog_options|json_script:"catalog-options" }}
 {{ selected_ids|json_script:"selected-ids" }}
 <script>
   (function () {
+    var options = JSON.parse(document.getElementById("catalog-options").textContent);
     var selected = JSON.parse(document.getElementById("selected-ids").textContent);
-    var boxes = Array.prototype.slice.call(document.querySelectorAll(".catalog"));
+    var list = document.getElementById("catalog-list");
     var urlField = document.getElementById("install-url");
     var installLink = document.getElementById("install");
     var warn = document.getElementById("warn");
 
-    boxes.forEach(function (box) {
-      box.checked = selected.indexOf(box.value) !== -1;
-      box.addEventListener("change", render);
+    var byId = {};
+    options.forEach(function (option) { byId[option.id] = option; });
+
+    var order = selected.filter(function (id) { return byId[id]; });
+    options.forEach(function (option) {
+      if (order.indexOf(option.id) === -1) { order.push(option.id); }
+    });
+
+    var checked = {};
+    options.forEach(function (option) {
+      checked[option.id] = selected.indexOf(option.id) !== -1;
     });
 
     function baseUrl() {
@@ -80,15 +96,74 @@
       return window.location.origin + path;
     }
 
+    function move(index, delta) {
+      var target = index + delta;
+      if (target < 0 || target >= order.length) { return; }
+      var moved = order[index];
+      order[index] = order[target];
+      order[target] = moved;
+      render();
+    }
+
+    function row(id, index) {
+      var option = byId[id];
+      var li = document.createElement("li");
+      if (!checked[id]) { li.className = "off"; }
+
+      var box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = checked[id];
+      box.setAttribute("aria-label", "Publish " + option.label);
+      box.addEventListener("change", function () {
+        checked[id] = box.checked;
+        render();
+      });
+
+      var name = document.createElement("span");
+      name.className = "name";
+      name.textContent = "Floppy: " + option.label;
+
+      var type = document.createElement("span");
+      type.className = "type";
+      type.textContent = option.stremio_type;
+
+      var up = document.createElement("button");
+      up.type = "button";
+      up.className = "move";
+      up.textContent = "\u2191";
+      up.setAttribute("aria-label", "Move " + option.label + " up");
+      up.disabled = index === 0;
+      up.addEventListener("click", function () { move(index, -1); });
+
+      var down = document.createElement("button");
+      down.type = "button";
+      down.className = "move";
+      down.textContent = "\u2193";
+      down.setAttribute("aria-label", "Move " + option.label + " down");
+      down.disabled = index === order.length - 1;
+      down.addEventListener("click", function () { move(index, 1); });
+
+      li.appendChild(box);
+      li.appendChild(name);
+      li.appendChild(type);
+      li.appendChild(up);
+      li.appendChild(down);
+      return li;
+    }
+
     function render() {
-      var chosen = boxes.filter(function (b) { return b.checked; })
-                        .map(function (b) { return b.value; });
+      list.textContent = "";
+      order.forEach(function (id, index) { list.appendChild(row(id, index)); });
+
+      var chosen = order.filter(function (id) { return checked[id]; });
       var url = chosen.length
         ? baseUrl() + "/c/" + chosen.join(",") + "/manifest.json"
         : baseUrl() + "/manifest.json";
       urlField.value = url;
       installLink.href = url.replace(/^https?:/, "stremio:");
-      warn.textContent = chosen.length ? "" : "Nothing selected \u2014 the default catalogs will be used.";
+      warn.textContent = chosen.length
+        ? ""
+        : "Nothing selected \u2014 the default catalogs will be used.";
     }
 
     document.getElementById("copy").addEventListener("click", function () {
