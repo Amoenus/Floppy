@@ -13,7 +13,7 @@
      })"
      x-init="init"
      {% if suggestion_date_expr %}x-effect="suggestionDate = ({{ suggestion_date_expr }}) || ''"{% endif %}
-     @keydown.escape.window="open && closePicker()">
+     @keydown.escape.window.capture="onEscape($event)">
 
   <div class="flex-1 flex items-stretch border border-gray-600 rounded-md bg-[var(--color-surface-strong)] focus-within:ring-2 focus-within:ring-[var(--color-accent)]">
     {% if mobile_label %}
