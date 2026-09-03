@@ -5589,16 +5589,6 @@
       opacity: 100%;
     }
   }
-  .hover-tap\:pointer-events-auto {
-    &:hover {
-      pointer-events: auto;
-    }
-  }
-  .hover-tap\:opacity-100 {
-    &:hover {
-      opacity: 100%;
-    }
-  }
   .parent-hover-tap\:flex {
     .hover-tap:hover & {
       display: flex;
@@ -6253,6 +6243,12 @@ html.light .theme-toggle-icon-moon {
 }
 .media-card-overlay {
   z-index: 5;
+}
+@media (hover: hover) and (pointer: fine) {
+  .media-card:hover .media-card-overlay {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 .media-card-body {
   position: relative;

@@ -777,6 +777,24 @@ html.light .theme-toggle-icon-moon {
   z-index: 5;
 }
 
+/*
+ * Desktop reveal of the card's action overlay.
+ *
+ * This cannot hang off the overlay's own :hover. The overlay sits at
+ * pointer-events: none until Alpine's tap-reveal flips it, and an element with
+ * pointer-events: none is never a hit target, so :hover does not match it and
+ * any hover-tap:* utility on it can never fire - the track/lists/history
+ * buttons stayed unclickable. The card itself remains hittable, so drive it
+ * from there. Scoped to real hover devices so the coarse-pointer tap reveal,
+ * and the emulated-hover flash it avoids, are left alone.
+ */
+@media (hover: hover) and (pointer: fine) {
+  .media-card:hover .media-card-overlay {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
 .media-card-body {
   position: relative;
   z-index: 10;
