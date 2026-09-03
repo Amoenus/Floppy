@@ -9,7 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from app import models as app_models
-from app.models import TV, Item, MediaTypes, Movie, Season, Sources, Status
+from app.models import TV, Anime, Item, MediaTypes, Movie, Season, Sources, Status
 from events.models import Event, SentinelDatetime
 
 
@@ -348,10 +348,105 @@ class CalendarViewTests(TestCase):
         response = self.client.get(reverse("calendar"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["available_statuses"], [Status.PLANNING.value])
+        self.assertEqual(
+            response.context["available_statuses_by_type"],
+            {MediaTypes.MOVIE.value: [Status.PLANNING.value]},
+        )
         self.assertIn(
             f'data-release-status="{Status.PLANNING.value}"',
             response.content.decode(),
+        )
+
+    @patch("events.models.Event.objects.get_user_events")
+    @patch.object(get_user_model(), "update_preference")
+    def test_calendar_scopes_available_statuses_per_media_type(
+        self,
+        mock_update_preference,
+        mock_get_user_events,
+    ):
+        """Statuses for one media type should not appear under another type."""
+        mock_update_preference.return_value = "grid"
+
+        movie_item = Item.objects.create(
+            media_id="movie-1",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Planned Movie",
+        )
+        Movie.objects.create(
+            item=movie_item,
+            user=self.user,
+            status=Status.PLANNING.value,
+        )
+        anime_item = Item.objects.create(
+            media_id="anime-1",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Completed Anime",
+        )
+        Anime.objects.create(
+            item=anime_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+        )
+
+        today = timezone.localdate()
+        mock_get_user_events.return_value = [
+            Event(
+                item=movie_item,
+                datetime=timezone.make_aware(
+                    timezone.datetime(today.year, today.month, 15, 12, 0),
+                ),
+            ),
+            Event(
+                item=anime_item,
+                datetime=timezone.make_aware(
+                    timezone.datetime(today.year, today.month, 16, 12, 0),
+                ),
+            ),
+        ]
+
+        response = self.client.get(reverse("calendar"))
+
+        self.assertEqual(
+            response.context["available_statuses_by_type"],
+            {
+                MediaTypes.MOVIE.value: [Status.PLANNING.value],
+                MediaTypes.ANIME.value: [Status.COMPLETED.value],
+            },
+        )
+
+    @patch("events.models.Event.objects.get_user_events")
+    @patch.object(get_user_model(), "update_preference")
+    def test_calendar_omits_media_type_without_resolvable_status(
+        self,
+        mock_update_preference,
+        mock_get_user_events,
+    ):
+        """Types with no tracked release status should have no status submenu."""
+        mock_update_preference.return_value = "grid"
+
+        movie_item = Item.objects.create(
+            media_id="untracked-movie-1",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Untracked Movie",
+        )
+        today = timezone.localdate()
+        mock_get_user_events.return_value = [
+            Event(
+                item=movie_item,
+                datetime=timezone.make_aware(
+                    timezone.datetime(today.year, today.month, 15, 12, 0),
+                ),
+            ),
+        ]
+
+        response = self.client.get(reverse("calendar"))
+
+        self.assertNotIn(
+            MediaTypes.MOVIE.value,
+            response.context["available_statuses_by_type"],
         )
 
     @patch("events.tasks.reload_calendar.delay")
