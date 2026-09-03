@@ -57,7 +57,7 @@
        :aria-modal="isMobile ? 'true' : 'false'"
        aria-label="{{ field_label|default:'Date' }} picker"
        @keydown.tab="trapFocus($event)"
-       @click.outside="!isMobile && !$refs.trigger.contains($event.target) && closePicker()"
+       @mousedown.outside="!isMobile && !$refs.trigger.contains($event.target) && closePicker()"
        :style="popoverStyle"
        class="date-picker-popover fixed inset-x-0 bottom-0 rounded-t-xl max-h-[85dvh] overflow-y-auto overscroll-contain bg-[var(--color-surface)] border-t border-[var(--color-border)] shadow-2xl p-4 sm:inset-x-auto sm:bottom-auto sm:w-[22rem] sm:rounded-lg sm:border"
        x-transition:enter="transition ease-out duration-150"
@@ -127,7 +127,11 @@
           </button>
         </template>
         {% if copy_from %}
-        <button type="button" @click="copyFromOther()" class="date-picker-common-time-button">
+        <button type="button"
+                @click="copyFromOther()"
+                :disabled="!copyAvailable"
+                :title="copyAvailable ? '' : '{{ copy_from_label|default:copy_from|escapejs }} is empty'"
+                class="date-picker-common-time-button">
           {% include "app/icons/copy.svg" with classes="w-3.5 h-3.5" %}
           Copy from {{ copy_from_label|default:copy_from }}
         </button>

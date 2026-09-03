@@ -32,12 +32,12 @@
               </button>
 
               <div x-show="trackOpen"
+              @mousedown.self="trackOpen = false"
                    x-cloak
                    @keydown.escape.window="trackOpen = false"
                    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                 <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
                      style="width: min(96vw, 72rem)"
-                     @click.outside="trackOpen = false"
                      @click.stop>
                   <div id="podcast-show-track-modal"></div>
                 </div>
@@ -82,23 +82,23 @@
                   </div>
 
                   <div x-show="editTrackOpen"
+                  @mousedown.self="editTrackOpen = false"
                        x-cloak
                        @keydown.escape.window="editTrackOpen = false"
                        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
                          style="width: min(96vw, 72rem)"
-                         @click.outside="editTrackOpen = false"
                          @click.stop>
                       <div id="{% component_id 'track' media current_instance.id %}"></div>
                     </div>
                   </div>
 
                   <div x-show="createTrackOpen"
+                  @mousedown.self="createTrackOpen = false"
                        @keydown.escape.window="createTrackOpen = false"
                        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
                          style="width: min(96vw, 72rem)"
-                         @click.outside="createTrackOpen = false"
                          @click.stop>
                       <div id="{% component_id 'track' media %}"></div>
                     </div>
@@ -207,11 +207,11 @@
               </div>
 
               <div x-show="tagsOpen"
+              @mousedown.self="tagsOpen = false"
                    x-cloak
                    @keydown.escape.window="tagsOpen = false"
                    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                <div class="w-96 max-h-[90vh] px-4 md:px-0 relative z-60"
-                     @click.outside="tagsOpen = false">
+                <div class="w-96 max-h-[90vh] px-4 md:px-0 relative z-60">
                   <div id="{% component_id 'tags' media %}"></div>
                 </div>
               </div>
@@ -227,11 +227,11 @@
                       @click="listsOpen = true">{% include "app/icons/list-add.svg" with classes="w-4 h-4" %}</button>
 
               <div x-show="listsOpen"
+              @mousedown.self="listsOpen = false"
                    x-cloak
                    @keydown.escape.window="listsOpen = false"
                    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                <div class="w-96 max-h-[90vh] px-4 md:px-0 relative z-60"
-                     @click.outside="listsOpen = false">
+                <div class="w-96 max-h-[90vh] px-4 md:px-0 relative z-60">
                   <div id="{% component_id 'lists' media %}"></div>
                 </div>
               </div>
