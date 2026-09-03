@@ -352,8 +352,10 @@ def _render_standard_track_modal(
             MediaTypes.MANGA.value,
         ):
             if media_type == MediaTypes.BOOK.value:
-                if media.item.number_of_pages:
-                    max_progress = media.item.number_of_pages
+                if media.item.book_max_progress:
+                    max_progress = media.item.book_max_progress
+                elif media.item.format == "audiobook":
+                    max_progress = None
                 else:
                     try:
                         with services.interactive_request_scope():

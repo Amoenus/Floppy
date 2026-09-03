@@ -11,7 +11,17 @@ from django.urls import reverse
 from django.utils import timezone
 
 from app import config
-from app.models import Album, Artist, Item, MediaTypes, Sources, Studio
+from app.models import (
+    Album,
+    Artist,
+    BasicMedia,
+    Book,
+    Item,
+    MediaTypes,
+    Sources,
+    Status,
+    Studio,
+)
 from app.templatetags import app_tags
 from users.models import DateFormatChoices, TimeFormatChoices
 
@@ -474,6 +484,85 @@ class AppTagsTests(TestCase):
             ),
             content,
         )
+
+    def _render_book_card(self, *, status, progress, percentage=False, audiobook=False):
+        """Render media_card.html for a book and return its markup."""
+        item = Item.objects.create(
+            media_id=f"book-card-{status}-{audiobook}",
+            source=Sources.OPENLIBRARY.value,
+            media_type=MediaTypes.BOOK.value,
+            title="Card Book",
+            image="http://example.com/book.jpg",
+            release_datetime=datetime(2020, 1, 1, tzinfo=UTC),
+            format="audiobook" if audiobook else "",
+            runtime_minutes=600 if audiobook else None,
+            number_of_pages=None if audiobook else 350,
+        )
+        self.user.book_comic_manga_progress_percentage = percentage
+        self.user.save(update_fields=["book_comic_manga_progress_percentage"])
+
+        media = Book.objects.create(
+            item=item, user=self.user, status=status, progress=progress
+        )
+        BasicMedia.objects.annotate_max_progress([media], MediaTypes.BOOK.value)
+
+        request = self.request_factory.get("/library")
+        request.user = self.user
+        return render_to_string(
+            "app/components/media_card.html",
+            {
+                "item": item,
+                "media": media,
+                "user": self.user,
+                "title": item.title,
+                "show_status_chip": False,
+                "show_progress_chip": False,
+                "from_grid": True,
+            },
+            request=request,
+        )
+
+    def test_media_card_shows_book_progress_when_dropped(self):
+        """A dropped book keeps showing how far the reader got."""
+        content = self._render_book_card(status=Status.DROPPED.value, progress=120)
+
+        self.assertIn("120/350 pages", content)
+
+    def test_media_card_shows_book_progress_when_paused(self):
+        """A paused book keeps showing how far the reader got."""
+        content = self._render_book_card(status=Status.PAUSED.value, progress=120)
+
+        self.assertIn("120/350 pages", content)
+
+    def test_media_card_shows_percentage_without_raw_total(self):
+        """Percentage mode renders a bare percentage, never '34% / 350'."""
+        content = self._render_book_card(
+            status=Status.DROPPED.value, progress=120, percentage=True
+        )
+
+        self.assertIn("34%", content)
+        self.assertNotIn("% /", content)
+        self.assertNotIn("350", content)
+
+    def test_media_card_shows_audiobook_progress_as_listening_time(self):
+        """Audiobooks read as h/min on both sides of the slash, never as pages."""
+        content = self._render_book_card(
+            status=Status.IN_PROGRESS.value, progress=150, audiobook=True
+        )
+
+        self.assertIn("2h 30min/10h 00min", content)
+        self.assertNotIn("pages", content)
+
+    def test_media_card_shows_audiobook_percentage(self):
+        """The percentage preference applies to audiobooks too."""
+        content = self._render_book_card(
+            status=Status.IN_PROGRESS.value,
+            progress=150,
+            percentage=True,
+            audiobook=True,
+        )
+
+        self.assertIn("25%", content)
 
     def test_genres_cell_falls_back_to_plain_text_for_blank_media_type(self):
         """Genres cell shouldn't crash reversing 'medialist' for a blank media_type."""
