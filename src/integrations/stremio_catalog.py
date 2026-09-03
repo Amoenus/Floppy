@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from urllib.parse import parse_qsl, unquote
 
 from app.models import TV, MediaTypes, Movie, Sources, Status
+from django.db.models import F, Max
 from lists.models import CustomList, CustomListItem
 
 PAGE_SIZE = 100
@@ -218,28 +219,29 @@ def list_source_items(user, spec):
         yield membership.item
 
 
-def tracked_ordering(model):
-    """Order by recent activity when stored, else by row creation.
+def last_watched_queryset(model, media_type, user, statuses):
+    """Filter tracked rows and expose a sortable last-watched date.
 
-    TV exposes progressed_at as a property derived from its seasons, so it
-    is not a sortable column the way it is on Movie.
+    Movie stores end_date directly. TV derives it through properties over
+    its seasons and episodes, so the stored episode dates are aggregated
+    into an annotation instead.
     """
-    concrete = {field.name for field in model._meta.get_fields()}
-    if "progressed_at" in concrete:
-        return ("-progressed_at", "-id")
-    return ("-created_at", "-id")
+    tracked = model.objects.filter(user=user, status__in=statuses)
+    if media_type == MediaTypes.TV.value:
+        return tracked.annotate(last_watched=Max("seasons__episodes__end_date"))
+    return tracked.annotate(last_watched=F("end_date"))
 
 
 def status_source_items(user, spec):
-    """Yield tracked items matching the catalog's statuses, most recent first."""
+    """Yield tracked items matching the catalog's statuses, latest watched first."""
     model = TRACKED_MODELS.get(spec.media_type)
     if model is None:
         return
 
     tracked = (
-        model.objects.filter(user=user, status__in=spec.statuses)
+        last_watched_queryset(model, spec.media_type, user, spec.statuses)
         .select_related("item")
-        .order_by(*tracked_ordering(model))
+        .order_by(F("last_watched").desc(nulls_last=True), "-id")
     )
     for entry in tracked.iterator():
         yield entry.item
