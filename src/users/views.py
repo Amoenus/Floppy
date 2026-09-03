@@ -1668,24 +1668,45 @@ def _backup_dir_status(user):
     Matches the path integrations.exports.write_backup() actually writes to.
     Creates the directory if missing so it's browsable even before any export
     has run.
-
-    os.path.ismount(BACKUP_DIR) only catches BACKUP_DIR being the mount point
-    itself; a custom BACKUP_DIR nested under a mounted parent (e.g. under
-    FLOPPY_DATA_DIR) would wrongly read as ephemeral. Comparing st_dev against
-    the container root instead catches a mount anywhere in the directory's
-    ancestry, not just at that exact path.
     """
     backup_dir = Path(settings.BACKUP_DIR) / str(user.username)
     backup_dir.mkdir(parents=True, exist_ok=True)
     file_count = sum(1 for entry in backup_dir.iterdir() if entry.is_file())
-    in_container = Path("/.dockerenv").exists()
-    host_reachable = (not in_container) or (
-        backup_dir.stat().st_dev != Path("/").stat().st_dev
-    )
     return {
         "path": str(backup_dir),
         "file_count": file_count,
-        "host_reachable": host_reachable,
+        "host_reachable": _mount_is_host_reachable(backup_dir),
+    }
+
+
+def _mount_is_host_reachable(directory):
+    """Whether a directory under a container mount actually reaches the host.
+
+    os.path.ismount(directory) only catches the directory being the mount
+    point itself; a custom BACKUP_DIR nested under a mounted parent (e.g.
+    under FLOPPY_DATA_DIR) would wrongly read as ephemeral. Comparing st_dev
+    against the container root instead catches a mount anywhere in the
+    directory's ancestry, not just at that exact path.
+    """
+    in_container = Path("/.dockerenv").exists()
+    return (not in_container) or (directory.stat().st_dev != Path("/").stat().st_dev)
+
+
+def _db_snapshot_status():
+    """Return the raw database snapshot directory, its file count, and status.
+
+    Mirrors _backup_dir_status() for the #1053 disaster-recovery snapshots
+    written by app.tasks_db_backup.write_database_snapshot, so the same page
+    that explains CSV export can show whether a real database backup exists.
+    """
+    snapshot_dir = Path(settings.BACKUP_DIR) / "database"
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    file_count = sum(1 for entry in snapshot_dir.iterdir() if entry.is_file())
+    return {
+        "path": str(snapshot_dir),
+        "file_count": file_count,
+        "host_reachable": _mount_is_host_reachable(snapshot_dir),
+        "enabled": settings.DB_SNAPSHOT_ENABLED,
     }
 
 
@@ -1703,6 +1724,7 @@ def export_data(request):
         "media_types": media_types,
         "export_tasks": export_tasks,
         "backup_status": _backup_dir_status(request.user),
+        "db_snapshot_status": _db_snapshot_status(),
     }
     return render(request, "users/export_data.html", context)
 

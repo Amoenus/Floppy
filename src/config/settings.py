@@ -1003,6 +1003,16 @@ TRACK_TIME = config("TRACK_TIME", default=True, cast=bool)
 
 BACKUP_DIR = config("BACKUP_DIR", default=str(BASE_DIR / "backups"))
 
+# Raw SQLite snapshots for disaster recovery (#1053) -- distinct from the CSV
+# exports above, which cannot replace a physically damaged db.sqlite3. Rides
+# the same BACKUP_DIR volume mount installs already have.
+DB_SNAPSHOT_ENABLED = config("DB_SNAPSHOT_ENABLED", default=True, cast=bool)
+DB_SNAPSHOT_RETENTION_COUNT = config(
+    "DB_SNAPSHOT_RETENTION_COUNT", default=7, cast=int,
+)
+DB_SNAPSHOT_HOUR = config("DB_SNAPSHOT_HOUR", default=2, cast=int)
+DB_SNAPSHOT_MINUTE = config("DB_SNAPSHOT_MINUTE", default=30, cast=int)
+
 # Runtime population settings
 RUNTIME_POPULATION_DISABLED = config(
     "RUNTIME_POPULATION_DISABLED", default=False, cast=bool
@@ -1566,6 +1576,11 @@ CELERY_BEAT_SCHEDULE = {
     "cleanup_image_cache": {
         "task": "Cleanup image cache",
         "schedule": crontab(hour=4, minute=0),
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
+    "write_database_snapshot": {
+        "task": "Write database snapshot",
+        "schedule": crontab(hour=DB_SNAPSHOT_HOUR, minute=DB_SNAPSHOT_MINUTE),
         "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     "send_release_notifications": {
