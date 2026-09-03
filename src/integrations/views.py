@@ -26,7 +26,7 @@ from django.http import (
     JsonResponse,
     StreamingHttpResponse,
 )
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -3556,6 +3556,7 @@ STREMIO_ADDON_MANIFEST = {
     "types": ["movie", "series"],
     "idPrefixes": ["tt"],
     "catalogs": [],
+    "behaviorHints": {"configurable": True, "configurationRequired": False},
 }
 STREMIO_SCROBBLE_THROTTLE_SECONDS = 1800
 STREMIO_MAX_MEDIA_ID_LENGTH = 128
@@ -3610,6 +3611,26 @@ def stremio_addon_catalog(
         unresolved_count,
     )
     return _stremio_addon_response({"metas": metas})
+
+
+@login_not_required
+@require_GET
+def stremio_addon_configure(request, token, config=None):
+    """Serve the addon configuration page for a user's install URL."""
+    try:
+        user = users.models.User.objects.get(token=token)
+    except ObjectDoesNotExist:
+        logger.warning("Invalid token on Stremio addon configure request")
+        return HttpResponse("Invalid token", status=401)
+
+    return render(
+        request,
+        "integrations/stremio_configure.html",
+        {
+            "catalog_options": stremio_catalog.catalog_options(user),
+            "selected_ids": sorted(stremio_catalog.parse_catalog_config(config)),
+        },
+    )
 
 
 @login_not_required

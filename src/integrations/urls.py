@@ -206,6 +206,16 @@ urlpatterns = [
         name="stremio_addon_manifest",
     ),
     path(
+        "stremio-addon/<str:token>/configure",
+        views.stremio_addon_configure,
+        name="stremio_addon_configure",
+    ),
+    path(
+        "stremio-addon/<str:token>/c/<str:config>/configure",
+        views.stremio_addon_configure,
+        name="stremio_addon_configure_configured",
+    ),
+    path(
         "stremio-addon/<str:token>/c/<str:config>/manifest.json",
         views.stremio_addon_manifest,
         name="stremio_addon_manifest_configured",

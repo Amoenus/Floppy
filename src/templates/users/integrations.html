@@ -1102,6 +1102,9 @@
             </div>
             {# djlint:on #}
           </li>
+          <li>
+            Optional: <a href="{% url 'stremio_addon_configure' request.user.token %}" class="text-[var(--color-link)] hover:underline" target="_blank" rel="noopener">choose which catalogs</a> the addon publishes, then use the URL it gives you in place of the one above.
+          </li>
           <li>In Stremio, open <strong>Addons</strong>, paste the URL into the search box at the top, and click <strong>Install</strong>.</li>
           <li>Floppy must be reachable from your Stremio device over <strong>HTTPS</strong> (plain HTTP only works for localhost).</li>
           <li>Playback start marks the item in progress; the recurring library import marks items watched.</li>

@@ -150,6 +150,18 @@ def catalog_display_name(user, spec):
     return spec.preferred_list_name
 
 
+def catalog_options(user):
+    """Return every catalog with its display label, for the configure page."""
+    return [
+        {
+            "id": spec.catalog_id,
+            "label": catalog_display_name(user, spec),
+            "stremio_type": spec.stremio_type,
+        }
+        for spec in CATALOG_SPECS
+    ]
+
+
 def manifest_catalogs(user, selected=None):
     """Build manifest catalogs from the same source rules used for projection."""
     enabled = selected if selected is not None else DEFAULT_CATALOG_IDS
