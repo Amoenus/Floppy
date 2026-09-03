@@ -79,6 +79,38 @@ TRACKED_MODELS = {
     MediaTypes.TV.value: TV,
 }
 
+CONFIG_SEPARATOR = ","
+
+DEFAULT_CATALOG_IDS = frozenset(
+    {
+        "floppy-watchlist-movies",
+        "floppy-watchlist-series",
+        "floppy-history-movies",
+        "floppy-history-series",
+        "floppy-in-progress-movies",
+        "floppy-in-progress-series",
+    }
+)
+
+
+def parse_catalog_config(config):
+    """Return the catalog ids selected by an install URL config segment.
+
+    Unknown ids are ignored so a stale install URL keeps working. An empty
+    or fully unrecognised segment falls back to the defaults.
+    """
+    if not config:
+        return DEFAULT_CATALOG_IDS
+
+    requested = {
+        part.strip()
+        for part in unquote(config).split(CONFIG_SEPARATOR)
+        if part.strip()
+    }
+    supported = {spec.catalog_id for spec in CATALOG_SPECS}
+    selected = requested & supported
+    return frozenset(selected) if selected else DEFAULT_CATALOG_IDS
+
 
 def get_catalog_spec(stremio_type, catalog_id):
     """Return the matching supported catalog, if any."""
@@ -118,8 +150,9 @@ def catalog_display_name(user, spec):
     return spec.preferred_list_name
 
 
-def manifest_catalogs(user):
+def manifest_catalogs(user, selected=None):
     """Build manifest catalogs from the same source rules used for projection."""
+    enabled = selected if selected is not None else DEFAULT_CATALOG_IDS
     return [
         {
             "type": spec.stremio_type,
@@ -128,6 +161,7 @@ def manifest_catalogs(user):
             "extra": [{"name": "skip", "isRequired": False}],
         }
         for spec in CATALOG_SPECS
+        if spec.catalog_id in enabled
     ]
 
 

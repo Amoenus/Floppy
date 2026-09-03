@@ -3580,6 +3580,7 @@ def stremio_addon_catalog(
     media_type,
     catalog_id,
     extra=None,
+    config=None,
 ):
     """Serve a Floppy Watchlist catalog to Stremio."""
     try:
@@ -3614,7 +3615,7 @@ def stremio_addon_catalog(
 @login_not_required
 @csrf_exempt
 @require_GET
-def stremio_addon_manifest(request, token):
+def stremio_addon_manifest(request, token, config=None):
     """Serve the Stremio addon manifest for a user's install URL."""
     try:
         user = users.models.User.objects.get(token=token)
@@ -3622,8 +3623,9 @@ def stremio_addon_manifest(request, token):
         logger.warning("Invalid token on Stremio addon manifest request")
         return _stremio_addon_response({"error": "Invalid token"}, status=401)
 
+    selected = stremio_catalog.parse_catalog_config(config)
     manifest = STREMIO_ADDON_MANIFEST | {
-        "catalogs": stremio_catalog.manifest_catalogs(user)
+        "catalogs": stremio_catalog.manifest_catalogs(user, selected)
     }
     return _stremio_addon_response(manifest)
 
@@ -3631,7 +3633,7 @@ def stremio_addon_manifest(request, token):
 @login_not_required
 @csrf_exempt
 @require_GET
-def stremio_addon_subtitles(request, token, media_type, media_id):
+def stremio_addon_subtitles(request, token, media_type, media_id, config=None):
     """Record a playback-start scrobble from a Stremio subtitles request."""
     from django.core.cache import cache
 
