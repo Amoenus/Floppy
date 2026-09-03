@@ -16,6 +16,7 @@ if (!window.__floppyDateTimePickerBound) {
     suggestionDate: config.suggestionDate || "",
     suggestionRuntimeMinutes: config.suggestionRuntimeMinutes || "",
     copyFrom: config.copyFrom || "",
+    copyAvailable: false,
 
     value: config.initialValue || "",
     open: false,
@@ -389,6 +390,14 @@ if (!window.__floppyDateTimePickerBound) {
       this.backfillStartDateIfNeeded();
     },
 
+    copySourceValue() {
+      if (!this.copyFrom) {
+        return "";
+      }
+      const form = this.$refs.hiddenInput?.closest("form");
+      return form?.querySelector(`[name="${this.copyFrom}"]`)?.value || "";
+    },
+
     copyFromOther() {
       if (!this.copyFrom) {
         return;
@@ -555,6 +564,7 @@ if (!window.__floppyDateTimePickerBound) {
 
     openPicker() {
       this.open = true;
+      this.copyAvailable = Boolean(this.copySourceValue());
       this.pickerView = "days";
       this.positionPopover();
       this.$nextTick(() => {
