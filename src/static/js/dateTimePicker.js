@@ -16,6 +16,7 @@ if (!window.__floppyDateTimePickerBound) {
     suggestionDate: config.suggestionDate || "",
     suggestionRuntimeMinutes: config.suggestionRuntimeMinutes || "",
     copyFrom: config.copyFrom || "",
+    copyAvailable: false,
 
     value: config.initialValue || "",
     open: false,
@@ -389,6 +390,14 @@ if (!window.__floppyDateTimePickerBound) {
       this.backfillStartDateIfNeeded();
     },
 
+    copySourceValue() {
+      if (!this.copyFrom) {
+        return "";
+      }
+      const form = this.$refs.hiddenInput?.closest("form");
+      return form?.querySelector(`[name="${this.copyFrom}"]`)?.value || "";
+    },
+
     copyFromOther() {
       if (!this.copyFrom) {
         return;
@@ -553,8 +562,31 @@ if (!window.__floppyDateTimePickerBound) {
       this.closePicker();
     },
 
+    // Escape steps back through the picker before it reaches the modal:
+    // years -> months -> days -> close the picker -> (next press) close the
+    // modal. Bound with .capture on window so this runs before the modal's own
+    // window listener; stopPropagation then keeps the event from ever reaching
+    // it, which is what stopped a single press from closing everything.
+    onEscape(event) {
+      if (!this.open) {
+        return;
+      }
+
+      if (this.pickerView === "years") {
+        this.showMonthsView();
+      } else if (this.pickerView === "months") {
+        this.showDaysView();
+      } else {
+        this.closePicker();
+      }
+
+      event.stopPropagation();
+      event.preventDefault();
+    },
+
     openPicker() {
       this.open = true;
+      this.copyAvailable = Boolean(this.copySourceValue());
       this.pickerView = "days";
       this.positionPopover();
       this.$nextTick(() => {

@@ -1,4 +1,9 @@
 (function() {
+  // The year grid is laid out four to a row, so this wants to stay a
+  // multiple of four. yearRange() and the year-view chevrons both read it,
+  // so a page and a step can never disagree.
+  const YEAR_PAGE_SIZE = 20;
+
   function parseMonth(value) {
     const match = /^(\d{4})-(\d{2})$/.exec(value || "");
     if (!match) {
@@ -167,6 +172,19 @@
         this.yearInput = String(this.viewYear);
       },
 
+      // The year view shows a whole YEAR_PAGE_SIZE block, so its chevrons step
+      // a block. Stepping a single year there appears to do nothing: the grid
+      // only shifts on the years that straddle a boundary.
+      gotoPrevYearPage() {
+        this.viewYear -= YEAR_PAGE_SIZE;
+        this.yearInput = String(this.viewYear);
+      },
+
+      gotoNextYearPage() {
+        this.viewYear += YEAR_PAGE_SIZE;
+        this.yearInput = String(this.viewYear);
+      },
+
       onYearInput(event) {
         const digits = event.target.value.replace(/\D/g, "").slice(0, 4);
         this.yearInput = digits;
@@ -192,8 +210,9 @@
       },
 
       yearRange() {
-        const start = Math.floor(this.viewYear / 20) * 20;
-        return Array.from({ length: 20 }, (_, i) => start + i);
+        const start =
+          Math.floor(this.viewYear / YEAR_PAGE_SIZE) * YEAR_PAGE_SIZE;
+        return Array.from({ length: YEAR_PAGE_SIZE }, (_, i) => start + i);
       },
 
       calendarDayHasActivity(cell) {
