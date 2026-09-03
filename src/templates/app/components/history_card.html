@@ -53,7 +53,7 @@
 
     {# Hover overlay with history-specific buttons #}
     {% if entry.item and entry.item.media_type %}
-      <div class="media-card-overlay absolute inset-0 flex items-center justify-center hover-tap:opacity-100 hover-tap:pointer-events-auto transition-opacity duration-200{% if user.clickable_media_cards %} pointer-coarse:hidden{% endif %}"
+      <div class="media-card-overlay absolute inset-0 flex items-center justify-center transition-opacity duration-200{% if user.clickable_media_cards %} pointer-coarse:hidden{% endif %}"
                 :class="revealed ? 'opacity-100 pointer-events-auto media-card-overlay-revealed' : 'opacity-0 pointer-events-none'">
         {# Darkening background layer #}
         <div class="absolute inset-0 bg-black/50 z-0"></div>
