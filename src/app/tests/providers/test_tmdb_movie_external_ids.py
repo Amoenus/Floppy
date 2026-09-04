@@ -151,3 +151,67 @@ class TMDBMovieCacheKeyTests(TestCase):
         _clear_item_metadata_cache(item)
 
         self.assertIsNone(cache.get(tmdb._movie_cache_key("550")))
+
+
+class ProviderMetadataCacheKeyHelperTests(TestCase):
+    """Refresh paths must reach the versioned key, not the legacy shape.
+
+    A refresh that builds `source_mediatype_mediaid` by hand reads a TTL of
+    None, deletes nothing, and is then served the very payload it meant to
+    replace - reporting success without fetching anything (issue #1066).
+    """
+
+    def setUp(self):
+        cache.clear()
+
+    def test_tmdb_movie_keys_include_the_versioned_key_first(self):
+        from app import metadata_utils
+
+        keys = metadata_utils.provider_metadata_cache_keys(
+            Sources.TMDB.value,
+            MediaTypes.MOVIE.value,
+            "550",
+        )
+
+        self.assertEqual(keys[0], tmdb._movie_cache_key("550"))
+        self.assertIn(f"{Sources.TMDB.value}_{MediaTypes.MOVIE.value}_550", keys)
+
+    def test_tmdb_season_keys_include_the_versioned_key(self):
+        from app import metadata_utils
+
+        keys = metadata_utils.provider_metadata_cache_keys(
+            Sources.TMDB.value,
+            MediaTypes.SEASON.value,
+            "1396",
+            season_number=1,
+        )
+
+        self.assertIn(tmdb._season_cache_key("1396", 1), keys)
+
+    def test_deleting_the_returned_keys_evicts_a_cached_movie(self):
+        from django.core.cache import cache as django_cache
+
+        from app import metadata_utils
+
+        django_cache.set(tmdb._movie_cache_key("550"), {"stale": True})
+
+        django_cache.delete_many(
+            metadata_utils.provider_metadata_cache_keys(
+                Sources.TMDB.value,
+                MediaTypes.MOVIE.value,
+                "550",
+            ),
+        )
+
+        self.assertIsNone(django_cache.get(tmdb._movie_cache_key("550")))
+
+    def test_unknown_sources_fall_back_to_the_legacy_shape(self):
+        from app import metadata_utils
+
+        keys = metadata_utils.provider_metadata_cache_keys(
+            Sources.MAL.value,
+            MediaTypes.ANIME.value,
+            "52991",
+        )
+
+        self.assertEqual(keys, [f"{Sources.MAL.value}_{MediaTypes.ANIME.value}_52991"])

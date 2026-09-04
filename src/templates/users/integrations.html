@@ -1116,7 +1116,8 @@
                 {% if catalog.unresolved %}
                   <strong class="text-[var(--color-text-secondary)]">{{ catalog.publishable }} of {{ catalog.total }}</strong>
                   {{ catalog.noun }} in <strong class="text-[var(--color-text-secondary)]">{{ catalog.list_name }}</strong> can be published.
-                  Floppy is still resolving IMDb IDs for the other {{ catalog.unresolved }} in the background; they will appear once it finishes.
+                  Stremio identifies titles by IMDb ID, and the other {{ catalog.unresolved }} {{ catalog.unresolved|pluralize:"has,have" }} none yet.
+                  Floppy resolves these in the background, but a title with no IMDb ID at its provider stays unpublishable.
                 {% else %}
                   All <strong class="text-[var(--color-text-secondary)]">{{ catalog.total }}</strong>
                   {{ catalog.noun }} in <strong class="text-[var(--color-text-secondary)]">{{ catalog.list_name }}</strong> can be published.

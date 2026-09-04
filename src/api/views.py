@@ -24,6 +24,7 @@ from rest_framework import permissions
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
+from app import metadata_utils
 from app.activity_builders import (
     _get_game_lengths_refresh_lock,
     _queue_game_lengths_refresh,
@@ -2307,7 +2308,12 @@ class MediaSyncView(drf_views.APIView):
                     status=HTTP.ACCEPTED,
                 )
 
-        cache_key = f"{source}_{media_type}_{media_id}"
+        provider_cache_keys = metadata_utils.provider_metadata_cache_keys(
+            source,
+            media_type,
+            media_id,
+        )
+        cache_key = provider_cache_keys[0]
 
         ttl = cache.ttl(cache_key)
         if ttl is not None and ttl > (settings.CACHE_TIMEOUT - 3):
@@ -2322,7 +2328,7 @@ class MediaSyncView(drf_views.APIView):
             response["Retry-After"] = str(ttl)
             return response
 
-        cache.delete(cache_key)
+        cache.delete_many(provider_cache_keys)
 
         try:
             metadata = services.get_media_metadata(
@@ -3421,7 +3427,13 @@ class MediaSeasonSyncView(drf_views.APIView):
                 status=HTTP.BAD_REQUEST,
             )
 
-        cache_key = f"{source}_season_{media_id}_{season_number}"
+        provider_cache_keys = metadata_utils.provider_metadata_cache_keys(
+            source,
+            MediaTypes.SEASON.value,
+            media_id,
+            season_number=season_number,
+        )
+        cache_key = provider_cache_keys[0]
 
         ttl = cache.ttl(cache_key)
         if ttl is not None and ttl > (settings.CACHE_TIMEOUT - 3):
@@ -3436,7 +3448,7 @@ class MediaSeasonSyncView(drf_views.APIView):
             response["Retry-After"] = str(ttl)
             return response
 
-        cache.delete(cache_key)
+        cache.delete_many(provider_cache_keys)
 
         try:
             metadata = services.get_media_metadata(
