@@ -33,7 +33,7 @@ from app.models import Album, Artist, Item, MediaTypes, Status
 from app.providers import tmdb
 from app.services import metadata_resolution
 from app.templatetags import app_tags
-from integrations import exports, plex, tasks
+from integrations import exports, plex, stremio_catalog, tasks
 from integrations.models import (
     ImportRun,
     LastFMAccount,
@@ -1396,6 +1396,7 @@ def integrations(request):
             "jellyfin_playback_reporting_import": jellyfin_playback_reporting_import,
             "jellyfin_pull_interval_minutes": tasks.JELLYFIN_PULL_INTERVAL_MINUTES,
             "seerr_global_webhook_enabled": bool(settings.SEERR_GLOBAL_WEBHOOK_SECRET),
+            "stremio_catalog_readiness": stremio_catalog.catalog_readiness(user),
         },
     )
 

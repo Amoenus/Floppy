@@ -34,7 +34,7 @@ from app.models import (
     MetadataProviderPreference,
     Sources,
 )
-from app.providers import hardcover, services, tmdb, tvdb
+from app.providers import hardcover, services, tmdb
 from app.services import (
     anime_migration,
     bulk_episode_tracking,
@@ -1595,10 +1595,14 @@ def enrich_synced_item(
                 route_media_type,
                 source=preferred_provider,
             )
-            preferred_cache_key = (
-                f"{preferred_provider}_{preferred_tracking_type}_{preferred_media_id}"
+            cache.delete_many(
+                metadata_utils.provider_metadata_cache_keys(
+                    preferred_provider,
+                    preferred_tracking_type,
+                    preferred_media_id,
+                    season_number=season_number,
+                ),
             )
-            cache.delete(preferred_cache_key)
             try:
                 preferred_metadata = services.get_media_metadata(
                     metadata_resolution.provider_route_media_type(
@@ -1743,28 +1747,14 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
         media_type,
         source=source,
     )
-    tvdb_cache_keys = None
-    if source == Sources.TVDB.value:
-        routed_media_type = (
-            MediaTypes.ANIME.value
-            if media_type == MediaTypes.ANIME.value
-            else MediaTypes.TV.value
-        )
-        if media_type == MediaTypes.SEASON.value:
-            cache_key = tvdb._season_cache_key(
-                media_id,
-                season_number,
-                routed_media_type,
-            )
-        else:
-            cache_key = tvdb._cache_key(routed_media_type, media_id)
-        tvdb_cache_keys = tvdb.metadata_cache_keys(media_id, season_number)
-    elif media_type == MediaTypes.SEASON.value and source == Sources.TMDB.value:
-        cache_key = tmdb._season_cache_key(media_id, season_number)
-    else:
-        cache_key = f"{source}_{tracking_media_type}_{media_id}"
-        if media_type == MediaTypes.SEASON.value:
-            cache_key += f"_{season_number}"
+    provider_cache_keys = metadata_utils.provider_metadata_cache_keys(
+        source,
+        tracking_media_type,
+        media_id,
+        season_number=season_number,
+        route_media_type=media_type,
+    )
+    cache_key = provider_cache_keys[0]
 
     cached_metadata = cache.get(cache_key)
     ttl = cache.ttl(cache_key)
@@ -1775,11 +1765,7 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
         messages.error(request, msg)
         logger.error(msg)
     else:
-        deleted = (
-            cache.delete_many(tvdb_cache_keys)
-            if tvdb_cache_keys
-            else cache.delete(cache_key)
-        )
+        deleted = cache.delete_many(provider_cache_keys)
         logger.debug("%s - Old cache deleted: %s", cache_key, deleted)
 
         try:

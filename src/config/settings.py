@@ -1488,6 +1488,7 @@ RECONCILE_BATCH_SIZE = config(
     cast=int,
 )
 WATCH_PROVIDERS_RECONCILE_BATCH_SIZE = RECONCILE_BATCH_SIZE
+EXTERNAL_IDS_RECONCILE_BATCH_SIZE = RECONCILE_BATCH_SIZE
 GENRE_RECONCILE_BATCH_SIZE = RECONCILE_BATCH_SIZE
 # Chunks of 50 items enqueued per reconcile pass, bounding in-flight work.
 RECONCILE_MAX_CHUNKS_PER_RUN = config(
@@ -1648,6 +1649,14 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": RECONCILE_INTERVAL_SECONDS,
         "kwargs": {
             "batch_size": WATCH_PROVIDERS_RECONCILE_BATCH_SIZE,
+        },
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
+    "ensure_external_ids_backfill_reconcile": {
+        "task": "Ensure external ID backfill reconcile",
+        "schedule": RECONCILE_INTERVAL_SECONDS,
+        "kwargs": {
+            "batch_size": EXTERNAL_IDS_RECONCILE_BATCH_SIZE,
         },
         "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
