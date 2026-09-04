@@ -28,12 +28,14 @@
           </div>
 
           <div class="detail-carousel-grid__carousel relative min-w-0">
-            {# Left empty (not a loading skeleton) so .detail-carousel-grid's
-               :has(#detail-carousel-wrap:not(:empty)) rule in input.css only
-               expands into the carousel layout once real content lands --
-               a skeleton here would count as "not empty" and expand the
-               grid immediately, showing the carousel's layout before we
-               know whether there's anything to put in it. #}
+            {% comment %}
+              Left empty (not a loading skeleton) so .detail-carousel-grid's
+              :has(#detail-carousel-wrap:not(:empty)) rule in input.css only
+              expands into the carousel layout once real content lands --
+              a skeleton here would count as "not empty" and expand the
+              grid immediately, showing the carousel's layout before we
+              know whether there's anything to put in it.
+            {% endcomment %}
             <div class="absolute inset-0"
                  id="detail-carousel-wrap"
                  hx-get="{{ detail_carousel_fragment_url }}"
