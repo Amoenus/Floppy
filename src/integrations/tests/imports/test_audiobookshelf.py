@@ -1797,6 +1797,31 @@ class AudiobookshelfTitleMatchingTests(TestCase):
                     TITLE_MATCH_THRESHOLD,
                 )
 
+    def test_keeps_marks_that_change_the_word(self):
+        """Folding marks off non-Latin scripts collapses distinct titles.
+
+        NFKD decomposes Japanese dakuten and the Cyrillic yo, so stripping
+        every combining mark scored different works as a perfect match and
+        let a provider overwrite the item with another book's metadata
+        (#1069 review).
+        """
+        collisions = (
+            ("\u3070\u3057", "\u306f\u3057"),  # ba-shi vs ha-shi
+            ("\u3071\u3057", "\u306f\u3057"),  # pa-shi vs ha-shi
+            ("\u3071\u3057", "\u3070\u3057"),  # pa-shi vs ba-shi
+            ("\u0432\u0441\u0451", "\u0432\u0441\u0435"),  # vsyo vs vse
+        )
+        for left, right in collisions:
+            with self.subTest(left=left, right=right):
+                self.assertNotEqual(
+                    self.importer._normalize_name(left),
+                    self.importer._normalize_name(right),
+                )
+                self.assertLess(
+                    self.importer._title_similarity(left, right),
+                    1.0,
+                )
+
     def test_still_strips_punctuation_and_case(self):
         """The normalisation the ASCII form did must keep working."""
         self.assertEqual(

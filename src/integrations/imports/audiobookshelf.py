@@ -1370,14 +1370,34 @@ class AudiobookshelfImporter:
         deleted every non-ASCII character: a Cyrillic or Japanese title
         normalised to the empty string and so could never match a provider
         result, and accented Latin titles were degraded below
-        TITLE_MATCH_THRESHOLD (see #861). Accents are folded away rather than
-        dropped so "Zeitbrüch" still matches "Zeitbruch".
+        TITLE_MATCH_THRESHOLD (see #861).
+
+        Accents are folded off Latin letters, so "Zeitbrüch" still matches
+        "Zeitbruch". They are *not* folded off other scripts, where a
+        combining mark changes the word rather than its spelling: stripping
+        them would collapse Japanese は/ば/ぱ and the Cyrillic ye/yo pair,
+        scoring different works as a perfect match and letting a provider
+        overwrite the item's metadata with another book's.
         """
         decomposed = unicodedata.normalize("NFKD", str(value or ""))
-        without_marks = "".join(
-            char for char in decomposed if not unicodedata.combining(char)
-        )
-        normalized = re.sub(r"[\W_]+", " ", without_marks.casefold())
+        kept = []
+        base_is_ascii = False
+        for char in decomposed:
+            if unicodedata.combining(char):
+                # NFKD decomposes an accented Latin letter to an ASCII base
+                # plus its mark, so an ASCII base is exactly the case where
+                # dropping the mark is a spelling variant rather than a
+                # different character.
+                if not base_is_ascii:
+                    kept.append(char)
+                continue
+            base_is_ascii = char.isascii()
+            kept.append(char)
+        # Recompose so a mark kept above rejoins its base into a single
+        # alphanumeric character; left bare it would read as punctuation
+        # below and split the word in half.
+        recomposed = unicodedata.normalize("NFC", "".join(kept))
+        normalized = re.sub(r"[\W_]+", " ", recomposed.casefold())
         return re.sub(r"\s+", " ", normalized).strip()
 
     def _extract_provider_authors(self, provider_metadata: dict[str, Any] | None):

@@ -354,9 +354,14 @@ class AudiobookshelfCoverProxyTests(TestCase):
 
         self.assertPlaceholder(response)
 
-    def test_invalid_token_is_logged_without_echoing_the_token(self):
-        """The rejection is logged, but the token itself never is."""
-        with self.assertLogs("integrations.views", level="WARNING") as logs:
+    def test_invalid_token_does_not_log_a_warning(self):
+        """Junk tokens stay below warning, and the token is never echoed.
+
+        The view is anonymous, so warning on an unsignable token would let
+        anyone flood the log and bury the real Audiobookshelf failures these
+        warnings exist to surface (#1069 review).
+        """
+        with self.assertLogs("integrations.views", level="DEBUG") as logs:
             self.client.get(
                 reverse(
                     "audiobookshelf_cover",
@@ -364,4 +369,6 @@ class AudiobookshelfCoverProxyTests(TestCase):
                 ),
             )
 
-        self.assertNotIn("sneaky-token-value", "\n".join(logs.output))
+        output = "\n".join(logs.output)
+        self.assertNotIn("sneaky-token-value", output)
+        self.assertNotIn("WARNING", output)

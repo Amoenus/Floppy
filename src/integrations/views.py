@@ -1886,8 +1886,12 @@ def audiobookshelf_cover(request, token):
     resolved = abs_cover_proxy.resolve_cover_proxy_token(token)
     if resolved is None:
         # A tampered or malformed token is not something a Floppy page can
-        # produce, so this one stays a plain 404.
-        logger.warning("Audiobookshelf cover proxy rejected an unsignable token")
+        # produce, so this one stays a plain 404. It is logged at debug
+        # rather than warning because the view is anonymous: anyone could
+        # otherwise flood the log with junk tokens and bury the real
+        # Audiobookshelf failures below, which are the point of #861. Every
+        # other branch here needs a valid signature to reach.
+        logger.debug("Audiobookshelf cover proxy rejected an unsignable token")
         return HttpResponseNotFound()
     account_id, library_item_id = resolved
 
