@@ -1,9 +1,22 @@
+from unittest import mock
+
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
 from django.test import TestCase
 from django.urls import reverse
 
-from app.models import Item, MediaTypes, Movie, Music, Sources, Status
+from app.models import (
+    Album,
+    AlbumTracker,
+    Artist,
+    ArtistTracker,
+    Item,
+    MediaTypes,
+    Movie,
+    Music,
+    Sources,
+    Status,
+)
 from integrations.models import ImportRun
 
 
@@ -110,3 +123,121 @@ class BulkDeleteByImportSourceTests(TestCase):
 
         self.assertRedirects(response, reverse("import_data"))
         self.assertFalse(Music.objects.filter(id=music.id).exists())
+
+    def _music(self, media_id, user, import_run, artist=None, album=None):
+        """Create one tracked Music row backed by its own Item."""
+        item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.MUSICBRAINZ.value,
+            media_type=MediaTypes.MUSIC.value,
+            title=f"Track {media_id}",
+        )
+        return Music.objects.create(
+            item=item,
+            user=user,
+            status=Status.COMPLETED.value,
+            import_run=import_run,
+            artist=artist,
+            album=album,
+        )
+
+    def test_deleting_music_for_source_sweeps_the_trackers_it_stranded(self):
+        """Artists/albums left with no tracks leave the user's library too.
+
+        The trackers carry no import_run of their own, so without this sweep a
+        "delete all Last.fm music" left /medialist/music looking untouched.
+        """
+        run = ImportRun.objects.create(user=self.user, source="lastfm")
+        artist = Artist.objects.create(name="Last.fm Artist")
+        album = Album.objects.create(title="Last.fm Album", artist=artist)
+        artist_tracker = ArtistTracker.objects.create(user=self.user, artist=artist)
+        album_tracker = AlbumTracker.objects.create(user=self.user, album=album)
+        music = self._music("lastfm-track", self.user, run, artist, album)
+
+        response = self.client.post(
+            reverse(
+                "bulk_delete_by_import_source",
+                args=[MediaTypes.MUSIC.value, "lastfm"],
+            ),
+        )
+
+        self.assertRedirects(response, reverse("import_data"))
+        self.assertFalse(Music.objects.filter(id=music.id).exists())
+        self.assertFalse(ArtistTracker.objects.filter(id=artist_tracker.id).exists())
+        self.assertFalse(AlbumTracker.objects.filter(id=album_tracker.id).exists())
+
+    def test_music_tracker_survives_when_another_source_still_has_tracks(self):
+        """An artist with tracks left from another source keeps its tracker."""
+        lastfm_run = ImportRun.objects.create(user=self.user, source="lastfm")
+        koito_run = ImportRun.objects.create(user=self.user, source="koito")
+        artist = Artist.objects.create(name="Shared Artist")
+        album = Album.objects.create(title="Shared Album", artist=artist)
+        artist_tracker = ArtistTracker.objects.create(user=self.user, artist=artist)
+        album_tracker = AlbumTracker.objects.create(user=self.user, album=album)
+        lastfm_music = self._music("lastfm-dupe", self.user, lastfm_run, artist, album)
+        koito_music = self._music("koito-track", self.user, koito_run, artist, album)
+
+        response = self.client.post(
+            reverse(
+                "bulk_delete_by_import_source",
+                args=[MediaTypes.MUSIC.value, "lastfm"],
+            ),
+        )
+
+        self.assertRedirects(response, reverse("import_data"))
+        self.assertFalse(Music.objects.filter(id=lastfm_music.id).exists())
+        self.assertTrue(Music.objects.filter(id=koito_music.id).exists())
+        self.assertTrue(ArtistTracker.objects.filter(id=artist_tracker.id).exists())
+        self.assertTrue(AlbumTracker.objects.filter(id=album_tracker.id).exists())
+
+    def test_music_delete_leaves_unrelated_and_other_user_trackers_alone(self):
+        """Only artists/albums the deleted rows referenced are considered."""
+        run = ImportRun.objects.create(user=self.user, source="lastfm")
+        imported_artist = Artist.objects.create(name="Imported Artist")
+        followed_artist = Artist.objects.create(name="Hand-followed Artist")
+        ArtistTracker.objects.create(user=self.user, artist=imported_artist)
+        hand_followed = ArtistTracker.objects.create(
+            user=self.user,
+            artist=followed_artist,
+        )
+        other_user_tracker = ArtistTracker.objects.create(
+            user=self.other_user,
+            artist=imported_artist,
+        )
+        self._music("lastfm-only", self.user, run, imported_artist, None)
+
+        response = self.client.post(
+            reverse(
+                "bulk_delete_by_import_source",
+                args=[MediaTypes.MUSIC.value, "lastfm"],
+            ),
+        )
+
+        self.assertRedirects(response, reverse("import_data"))
+        self.assertFalse(
+            ArtistTracker.objects.filter(
+                user=self.user,
+                artist=imported_artist,
+            ).exists(),
+        )
+        self.assertTrue(ArtistTracker.objects.filter(id=hand_followed.id).exists())
+        self.assertTrue(ArtistTracker.objects.filter(id=other_user_tracker.id).exists())
+
+    def test_music_tracker_sweep_spans_id_lookup_chunks(self):
+        """The sweep still deletes every tracker when ids span several chunks."""
+        run = ImportRun.objects.create(user=self.user, source="lastfm")
+        artists = [Artist.objects.create(name=f"Artist {i}") for i in range(5)]
+        for index, artist in enumerate(artists):
+            ArtistTracker.objects.create(user=self.user, artist=artist)
+            self._music(f"chunked-{index}", self.user, run, artist, None)
+
+        with mock.patch("users.views._ID_LOOKUP_CHUNK", 2):
+            response = self.client.post(
+                reverse(
+                    "bulk_delete_by_import_source",
+                    args=[MediaTypes.MUSIC.value, "lastfm"],
+                ),
+            )
+
+        self.assertRedirects(response, reverse("import_data"))
+        self.assertFalse(ArtistTracker.objects.filter(user=self.user).exists())
