@@ -103,7 +103,21 @@ def _run_playback_activity_pull(user, account, client) -> dict | None:
     if not available:
         return None
 
-    entries = _fetch_new_playback_activity(client, account)
+    try:
+        entries = _fetch_new_playback_activity(client, account)
+    except JellyfinClientError as exc:
+        # The probe endpoint can succeed while the actual query endpoint
+        # still fails (e.g. a broken/incompatible Playback Reporting plugin
+        # on the user's server) -- treat it the same as "unavailable" and
+        # fall back to the library backfill tier instead of failing the run.
+        logger.warning(
+            "Jellyfin Playback Reporting fetch failed for user %s, "
+            "falling back to library backfill: %s",
+            user.id,
+            exc,
+        )
+        return None
+
     importer = JellyfinPlaybackReportingImporter(user, account)
     counts, warnings, max_rowid = importer.import_activity_rows(entries)
 
