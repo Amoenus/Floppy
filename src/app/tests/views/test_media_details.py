@@ -2151,6 +2151,207 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(response.context["media"]["image"], item.image)
 
     @patch("app.providers.services.get_media_metadata")
+    def test_media_details_shell_keeps_provider_score_from_stored_item(
+        self,
+        mock_get_metadata,
+    ):
+        """A synced item keeps its provider rating chip on shell loads (#1077)."""
+        Item.objects.create(
+            media_id="238",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Godfather",
+            image="https://images.example.com/godfather.jpg",
+            provider_rating=8.1,
+            provider_rating_count=1234,
+            metadata_fetched_at=timezone.now(),
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "238",
+                    "title": "the-godfather",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_get_metadata.assert_not_called()
+        self.assertEqual(response.context["media"]["score"], 8.1)
+        self.assertEqual(response.context["media"]["score_count"], 1234)
+        self.assertContains(response, "1,234 votes")
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_media_details_shell_hides_score_chip_without_stored_rating(
+        self,
+        mock_get_metadata,
+    ):
+        """No stored rating still means no chip, matching a live render (#1077)."""
+        Item.objects.create(
+            media_id="238",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Godfather",
+            image="https://images.example.com/godfather.jpg",
+            metadata_fetched_at=timezone.now(),
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "238",
+                    "title": "the-godfather",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_get_metadata.assert_not_called()
+        self.assertIsNone(response.context["media"]["score_count"])
+        self.assertNotContains(response, "vote")
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_media_details_shell_rebuilds_external_links_from_stored_ids(
+        self,
+        mock_get_metadata,
+    ):
+        """External links survive the stored-metadata shortcut (#1077)."""
+        Item.objects.create(
+            media_id="238",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Godfather",
+            image="https://images.example.com/godfather.jpg",
+            provider_external_ids={
+                "imdb_id": "tt0068646",
+                "tvdb_id": "81189",
+                "wikidata_id": "Q47703",
+            },
+            metadata_fetched_at=timezone.now(),
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "238",
+                    "title": "the-godfather",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_get_metadata.assert_not_called()
+        external_section = next(
+            section
+            for section in response.context["detail_link_sections"]
+            if section["title"] == "External links"
+        )
+        self.assertEqual(
+            {entry["label"] for entry in external_section["entries"]},
+            {"Letterboxd", "IMDb", "TVDB", "Wikidata"},
+        )
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_media_details_link_sections_do_not_duplicate_stored_external_links(
+        self,
+        mock_get_metadata,
+    ):
+        """A stored id must not double a link the live payload already carries."""
+        Item.objects.create(
+            media_id="238",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Godfather",
+            image="https://images.example.com/godfather.jpg",
+            provider_external_ids={"imdb_id": "tt0068646"},
+        )
+        mock_get_metadata.return_value = {
+            "media_id": "238",
+            "title": "The Godfather",
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "image": "https://images.example.com/godfather.jpg",
+            "external_links": {"IMDb": "https://www.imdb.com/title/tt0068646/"},
+            "details": {},
+            "related": {},
+            "cast": [],
+            "crew": [],
+            "studios_full": [],
+        }
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "238",
+                    "title": "the-godfather",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        external_section = next(
+            section
+            for section in response.context["detail_link_sections"]
+            if section["title"] == "External links"
+        )
+        imdb_entries = [
+            entry for entry in external_section["entries"] if entry["label"] == "IMDb"
+        ]
+        self.assertEqual(len(imdb_entries), 1)
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_media_details_shell_keeps_book_series_and_progress_from_stored_item(
+        self,
+        mock_get_metadata,
+    ):
+        """Book series and page count survive the stored-metadata shortcut (#1077)."""
+        Item.objects.create(
+            media_id="377938",
+            source=Sources.HARDCOVER.value,
+            media_type=MediaTypes.BOOK.value,
+            title="The Fellowship of the Ring",
+            image="https://images.example.com/custom-cover.jpg",
+            series_name="The Lord of the Rings",
+            series_position=1,
+            number_of_pages=423,
+            metadata_fetched_at=timezone.now(),
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.HARDCOVER.value,
+                    "media_type": MediaTypes.BOOK.value,
+                    "media_id": "377938",
+                    "title": "the-fellowship-of-the-ring",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_get_metadata.assert_not_called()
+        self.assertEqual(
+            response.context["media"]["series_name"],
+            "The Lord of the Rings",
+        )
+        self.assertEqual(response.context["media"]["max_progress"], 423)
+        self.assertContains(response, "The Lord of the Rings")
+
+    @patch("app.providers.services.get_media_metadata")
     def test_media_details_shell_skips_provider_call_when_metadata_already_fetched(
         self,
         mock_get_metadata,

@@ -1849,8 +1849,11 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
         item_fields = {
             **Item.title_fields_from_metadata(metadata),
             "image": metadata["image"],
-            "number_of_pages": number_of_pages,
         }
+        # Only books resolve a page count here, so writing it unconditionally would
+        # null a comic/manga count another path stored (#1077).
+        if number_of_pages is not None:
+            item_fields["number_of_pages"] = number_of_pages
         if item is None:
             item = Item.objects.create(
                 media_id=media_id,

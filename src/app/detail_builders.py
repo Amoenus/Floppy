@@ -1006,17 +1006,17 @@ def _build_detail_link_sections(
                 Sources.MAL.value,
             )
 
-    # Best-effort IMDB match for games (see app.services.imdb_game_credits) — not
-    # provided by IGDB itself, so it's read off the Item rather than media_metadata.
-    if item is not None and media_type == MediaTypes.GAME.value:
-        imdb_id = (item.provider_external_ids or {}).get("imdb_id")
-        if imdb_id:
-            append_entry(
-                external_entries,
-                "IMDb",
-                f"https://www.imdb.com/title/{imdb_id}/",
-                "imdb",
-            )
+    # Links rebuilt from resolved external ids on the Item. Covers the best-effort
+    # IMDB match for games (see app.services.imdb_game_credits), which IGDB itself
+    # doesn't provide, and keeps the chips alive when media_metadata is the stored
+    # fallback rather than a live payload (#1077). Appended last so payload links
+    # keep their order; identical URLs dedupe through seen_urls.
+    if item is not None:
+        from app.providers import tmdb
+
+        stored_links = tmdb.get_external_links(item.provider_external_ids or {})
+        for name, url in stored_links.items():
+            append_entry(external_entries, name, url, name)
 
     sections = []
     if metadata_source_entries:

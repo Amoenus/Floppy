@@ -217,6 +217,11 @@ def apply_item_metadata(
     for field_name in CORE_METADATA_FIELDS:
         if not include_core:
             break
+        # Only book payloads carry a page count, so an absent one means "not
+        # provided", not "cleared" — nulling it wipes a stored comic/manga
+        # progress denominator on every sync (#1077).
+        if field_name == "number_of_pages" and values[field_name] is None:
+            continue
         if getattr(item, field_name) != values[field_name]:
             setattr(item, field_name, values[field_name])
             update_fields.append(field_name)

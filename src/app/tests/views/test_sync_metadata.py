@@ -485,3 +485,144 @@ class SyncMetadataViewTests(TestCase):
         self.assertEqual(detail_response.status_code, 200)
         mock_get_media_metadata.assert_called_once()
         self.assertContains(detail_response, "8.2")
+
+    @patch("app.metadata_sync_views._sync_plex_rating")
+    @patch("app.views.Item.fetch_releases")
+    @patch("app.views.services.get_media_metadata")
+    def test_synced_item_keeps_score_and_links_after_force_live_window_expires(
+        self,
+        mock_get_media_metadata,
+        mock_fetch_releases,
+        mock_sync_plex_rating,
+    ):
+        """Issue #1077: the rating chip and external links vanished about a
+        minute after a sync, once the force-live marker expired and the detail
+        shell fell back to the stored Item.
+        """
+        Item.objects.create(
+            media_id="603",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Matrix",
+            image="https://example.com/matrix.jpg",
+            provider_external_ids={
+                "imdb_id": "tt0133093",
+                "wikidata_id": "Q83495",
+            },
+        )
+        mock_get_media_metadata.return_value = {
+            "media_id": "603",
+            "title": "The Matrix",
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "image": "https://example.com/matrix.jpg",
+            "synopsis": "A hacker learns the truth about reality.",
+            "genres": ["Action"],
+            "score": 8.2,
+            "score_count": 24000,
+            "external_links": {"IMDb": "https://www.imdb.com/title/tt0133093/"},
+            "cast": [],
+            "crew": [],
+            "studios_full": [],
+            "details": {"release_date": "1999-03-31"},
+            "related": {},
+        }
+
+        sync_response = self.client.post(
+            reverse(
+                "sync_metadata",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "603",
+                },
+            ),
+            {"next": "/"},
+        )
+        self.assertEqual(sync_response.status_code, 302)
+
+        # The force-live marker lasts 60 seconds; after that the shell serves
+        # stored metadata and must still carry the rating and the links.
+        cache.clear()
+        mock_get_media_metadata.reset_mock()
+
+        detail_response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "603",
+                    "title": "the-matrix",
+                },
+            ),
+        )
+
+        self.assertEqual(detail_response.status_code, 200)
+        mock_get_media_metadata.assert_not_called()
+        self.assertEqual(detail_response.context["media"]["score"], 8.2)
+        self.assertEqual(detail_response.context["media"]["score_count"], 24000)
+        external_section = next(
+            section
+            for section in detail_response.context["detail_link_sections"]
+            if section["title"] == "External links"
+        )
+        self.assertEqual(
+            {entry["label"] for entry in external_section["entries"]},
+            {"Letterboxd", "IMDb", "Wikidata"},
+        )
+
+    @patch("app.metadata_sync_views._sync_plex_rating")
+    @patch("app.views.Item.fetch_releases")
+    @patch("app.views.services.get_media_metadata")
+    def test_sync_metadata_keeps_stored_page_count_for_non_books(
+        self,
+        mock_get_media_metadata,
+        mock_fetch_releases,
+        mock_sync_plex_rating,
+    ):
+        """Only books resolve a page count during a sync, so a manga's stored
+        count must survive instead of being nulled (#1077).
+        """
+        Item.objects.create(
+            media_id="11",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.MANGA.value,
+            title="Naruto",
+            image="https://example.com/naruto.jpg",
+            number_of_pages=700,
+        )
+        mock_get_media_metadata.return_value = {
+            "media_id": "11",
+            "title": "Naruto",
+            "media_type": MediaTypes.MANGA.value,
+            "source": Sources.MAL.value,
+            "image": "https://example.com/naruto.jpg",
+            "synopsis": "A ninja story.",
+            "genres": ["Action"],
+            "cast": [],
+            "crew": [],
+            "studios_full": [],
+            "details": {},
+            "related": {},
+        }
+
+        response = self.client.post(
+            reverse(
+                "sync_metadata",
+                kwargs={
+                    "source": Sources.MAL.value,
+                    "media_type": MediaTypes.MANGA.value,
+                    "media_id": "11",
+                },
+            ),
+            {"next": "/"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        item = Item.objects.get(
+            media_id="11",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.MANGA.value,
+        )
+        self.assertEqual(item.number_of_pages, 700)
