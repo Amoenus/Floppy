@@ -4,6 +4,7 @@ import logging
 import re
 import uuid
 from io import BytesIO
+from itertools import batched
 from pathlib import Path
 
 import apprise
@@ -29,7 +30,17 @@ from django_celery_beat.models import PeriodicTask
 from app import history_cache, image_cache, statistics_cache
 from app.discover.feeds import get_external_row_definitions
 from app.discover.registry import DISCOVER_MEDIA_TYPES
-from app.models import Album, Artist, Item, MediaTypes, Status
+from app.models import (
+    Album,
+    AlbumTracker,
+    Artist,
+    ArtistTracker,
+    Item,
+    MediaTypes,
+    Music,
+    MusicReleasePreference,
+    Status,
+)
 from app.providers import tmdb
 from app.services import metadata_resolution
 from app.templatetags import app_tags
@@ -1858,16 +1869,122 @@ def bulk_delete_by_import_source(request, media_type, source):
         messages.error(request, "Unknown import source.")
         return redirect("import_data")
 
+    # A running import writes Music rows and re-creates trackers as it goes, so
+    # deleting underneath it leaves rows the sweep has already walked past.
+    # rollback_import_run refuses for the same reason.
+    if ImportRun.objects.filter(
+        user=request.user,
+        source=source,
+        status=ImportRun.Status.RUNNING,
+    ).exists():
+        messages.error(
+            request,
+            "Cancel the running import from this source before deleting it.",
+        )
+        return redirect("import_data")
+
     model = apps.get_model(app_label="app", model_name=media_type)
-    deleted_count, _ = model.objects.filter(
-        user=request.user, import_run__source=source
-    ).delete()
+    doomed = model.objects.filter(user=request.user, import_run__source=source)
+    # Capture before the delete: the trackers are reached through these FKs.
+    music_catalog_ids = (
+        _music_catalog_ids_referenced_by(doomed)
+        if media_type == MediaTypes.MUSIC.value
+        else None
+    )
+
+    deleted_count, _ = doomed.delete()
+
+    if music_catalog_ids is not None:
+        deleted_count += _sweep_untracked_music_containers(
+            request.user,
+            *music_catalog_ids,
+        )
 
     if deleted_count:
         messages.success(request, f"Permanently deleted {deleted_count} item(s).")
     else:
         messages.info(request, "Nothing to delete.")
     return redirect("import_data")
+
+
+# Cap on ids per `__in` lookup. A >100k-scrobble library can reference more
+# distinct artists/albums than SQLite allows query parameters in one statement.
+_ID_LOOKUP_CHUNK = 500
+
+
+# Music.artist is a nullable convenience FK ("can be derived via album"), so an
+# artist can be reached either directly or only through the row's album.
+_MUSIC_ARTIST_SOURCES = ("artist_id", "album__artist_id")
+
+
+def _music_catalog_ids_referenced_by(music_queryset):
+    """Return the (artist_ids, album_ids) a set of Music rows points at.
+
+    Must be called before the rows are deleted.
+    """
+    artist_ids = set()
+    for source_field in _MUSIC_ARTIST_SOURCES:
+        artist_ids |= set(
+            music_queryset.values_list(source_field, flat=True).distinct(),
+        )
+    album_ids = set(
+        music_queryset.values_list("album_id", flat=True).distinct(),
+    )
+    return artist_ids - {None}, album_ids - {None}
+
+
+def _sweep_untracked_music_containers(user, artist_ids, album_ids):
+    """Delete the user's artist/album library rows left with no music behind them.
+
+    ArtistTracker/AlbumTracker carry no import_run of their own, so they cannot
+    be deleted by provenance the way Music rows can. Instead, of the artists and
+    albums the deleted rows referenced, drop the trackers for those the user has
+    no Music row for any more. Scoping to the referenced ids means an artist the
+    user follows by hand, with no imported tracks, is never touched. An artist
+    the user followed by hand *and* had imported tracks for does lose its
+    tracker -- that is what "delete all my Last.fm music" asks for.
+    """
+    return _delete_untracked_trackers(
+        ArtistTracker,
+        "artist_id",
+        user,
+        artist_ids,
+        source_fields=_MUSIC_ARTIST_SOURCES,
+    ) + _delete_untracked_trackers(AlbumTracker, "album_id", user, album_ids)
+
+
+def _delete_untracked_trackers(
+    tracker_model,
+    field,
+    user,
+    candidate_ids,
+    *,
+    source_fields=None,
+):
+    """Delete the user's tracker rows for candidate_ids with no Music row left.
+
+    `source_fields` are the Music lookups that can still reach the tracked
+    object. An artist keeps its tracker if any remaining row reaches it either
+    way, so all of them have to be checked before deleting.
+    """
+    source_fields = source_fields or (field,)
+    deleted = 0
+    for chunk in batched(sorted(candidate_ids), _ID_LOOKUP_CHUNK):
+        chunk_ids = set(chunk)
+        still_tracked = set()
+        for source_field in source_fields:
+            still_tracked |= set(
+                Music.objects.filter(
+                    user=user,
+                    **{f"{source_field}__in": chunk_ids},
+                ).values_list(source_field, flat=True),
+            )
+        count, _ = tracker_model.objects.filter(
+            user=user,
+            **{f"{field}__in": chunk_ids - still_tracked},
+        ).delete()
+        deleted += count
+    return deleted
 
 
 @require_POST
@@ -1881,7 +1998,13 @@ def bulk_delete_by_media_type(request):
     delete_metadata = request.POST.get("delete_metadata") == "true"
 
     media_querysets = _media_querysets_for_bulk_delete(request.user, media_type)
-    item_count = sum(queryset.count() for queryset in media_querysets)
+    companions = _companion_querysets_for_bulk_delete(request.user, media_type)
+    media_count = sum(queryset.count() for queryset in media_querysets)
+    companion_counts = [(noun, queryset.count()) for noun, queryset in companions]
+    item_count = media_count + sum(count for _, count in companion_counts)
+
+    # Companion querysets are not Item-backed, so they never contribute
+    # candidate Item ids -- only the Media rows do.
     candidate_item_ids = (
         _candidate_item_ids_for_metadata_cleanup(media_querysets, media_type)
         if delete_metadata
@@ -1889,9 +2012,20 @@ def bulk_delete_by_media_type(request):
     )
     for queryset in media_querysets:
         queryset.delete()
+    # Delete companions before orphan cleanup: _delete_orphaned_music_catalog
+    # only drops Artist/Album rows that no tracker points at any more.
+    for _, queryset in companions:
+        queryset.delete()
+    if media_type == MediaTypes.MUSIC.value:
+        # Per-user music settings, not library rows -- cleared, but not counted
+        # as deleted items.
+        MusicReleasePreference.objects.filter(user=request.user).delete()
 
     metadata_count = 0
-    if delete_metadata and candidate_item_ids:
+    if delete_metadata:
+        # Not guarded on candidate_item_ids: a music library can be all
+        # trackers and no Music rows, which yields no candidate Items but does
+        # leave orphaned Artist/Album rows the checkbox promised to remove.
         metadata_count = _delete_orphaned_metadata(media_type, candidate_item_ids)
 
     if item_count:
@@ -1903,6 +2037,9 @@ def bulk_delete_by_media_type(request):
         cache_management.clear_discover_cache_for_user(request.user.id)
         label = MediaTypes(media_type).label
         message = f"Permanently deleted {item_count} {label} item(s) from your library."
+        breakdown = _bulk_delete_breakdown(media_type, media_count, companion_counts)
+        if breakdown:
+            message += f" ({breakdown})"
         if delete_metadata:
             message += f" Also removed {metadata_count} metadata entr{'y' if metadata_count == 1 else 'ies'}."
         messages.success(request, message)
@@ -1940,6 +2077,44 @@ def _media_querysets_for_bulk_delete(user, media_type):
             item__library_media_type=MediaTypes.ANIME.value,
         )
     return [queryset]
+
+
+def _companion_querysets_for_bulk_delete(user, media_type):
+    """Return (noun, queryset) pairs of a media type's non-Media per-user rows.
+
+    Music is the only such type. Its library page does not list the Media rows:
+    /medialist/music renders ArtistTracker (the default "artists" subview) and
+    AlbumTracker ("albums"), and only the "tracks" subview shows Music itself.
+    Those tracker models are not Media subclasses, so the
+    apps.get_model(app_label="app", model_name=media_type) lookup in
+    _media_querysets_for_bulk_delete cannot see them and a music wipe used to
+    leave the whole visible library behind.
+    """
+    if media_type != MediaTypes.MUSIC.value:
+        return []
+
+    return [
+        ("album", AlbumTracker.objects.filter(user=user)),
+        ("artist", ArtistTracker.objects.filter(user=user)),
+    ]
+
+
+def _bulk_delete_breakdown(media_type, media_count, companion_counts):
+    """Return a human-readable per-model breakdown, or "" when there is nothing to add.
+
+    Only media types with companion rows get one -- for everything else the
+    single total in the success message already says it all.
+    """
+    if not companion_counts:
+        return ""
+
+    media_noun = "track" if media_type == MediaTypes.MUSIC.value else "item"
+    parts = [
+        f"{count} {noun}{pluralize(count)}"
+        for noun, count in [(media_noun, media_count), *companion_counts]
+        if count
+    ]
+    return ", ".join(parts)
 
 
 def _candidate_item_ids_for_metadata_cleanup(media_querysets, media_type):
