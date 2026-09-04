@@ -32,6 +32,19 @@ class BulkDeleteByImportSourceTests(TestCase):
         self.other_credentials = {"username": "otheruser", "password": "testpass123"}
         self.other_user = get_user_model().objects.create_user(**self.other_credentials)
 
+    def _finished_run(self, user, source):
+        """An import run that has already finished.
+
+        Deleting by source is refused while a run from it is still RUNNING,
+        which is the ImportRun default -- these tests are about the
+        after-the-import cleanup.
+        """
+        return ImportRun.objects.create(
+            user=user,
+            source=source,
+            status=ImportRun.Status.COMPLETED,
+        )
+
     def _movie(self, media_id, user, import_run=None):
         item = Item.objects.create(
             media_id=media_id,
@@ -48,9 +61,9 @@ class BulkDeleteByImportSourceTests(TestCase):
 
     def test_deletes_only_matching_media_type_and_source_for_this_user(self):
         """Delete is scoped to (user, media_type, import source)."""
-        trakt_run = ImportRun.objects.create(user=self.user, source="trakt")
-        simkl_run = ImportRun.objects.create(user=self.user, source="simkl")
-        other_user_run = ImportRun.objects.create(user=self.other_user, source="trakt")
+        trakt_run = self._finished_run(self.user, "trakt")
+        simkl_run = self._finished_run(self.user, "simkl")
+        other_user_run = self._finished_run(self.other_user, "trakt")
 
         trakt_movie = self._movie("trakt-movie", self.user, trakt_run)
         simkl_movie = self._movie("simkl-movie", self.user, simkl_run)
@@ -75,7 +88,7 @@ class BulkDeleteByImportSourceTests(TestCase):
 
     def test_rejects_unknown_media_type(self):
         """An invalid media_type is refused, not passed to apps.get_model."""
-        ImportRun.objects.create(user=self.user, source="trakt")
+        self._finished_run(self.user, "trakt")
 
         response = self.client.post(
             reverse("bulk_delete_by_import_source", args=["not-a-real-type", "trakt"]),
@@ -103,7 +116,7 @@ class BulkDeleteByImportSourceTests(TestCase):
 
     def test_deletes_music_rows_for_source(self):
         """Unlike rollback, bulk delete can remove Music rows outright."""
-        run = ImportRun.objects.create(user=self.user, source="lastfm")
+        run = self._finished_run(self.user, "lastfm")
         item = Item.objects.create(
             media_id="music-item",
             source=Sources.MUSICBRAINZ.value,
@@ -147,7 +160,7 @@ class BulkDeleteByImportSourceTests(TestCase):
         The trackers carry no import_run of their own, so without this sweep a
         "delete all Last.fm music" left /medialist/music looking untouched.
         """
-        run = ImportRun.objects.create(user=self.user, source="lastfm")
+        run = self._finished_run(self.user, "lastfm")
         artist = Artist.objects.create(name="Last.fm Artist")
         album = Album.objects.create(title="Last.fm Album", artist=artist)
         artist_tracker = ArtistTracker.objects.create(user=self.user, artist=artist)
@@ -168,8 +181,8 @@ class BulkDeleteByImportSourceTests(TestCase):
 
     def test_music_tracker_survives_when_another_source_still_has_tracks(self):
         """An artist with tracks left from another source keeps its tracker."""
-        lastfm_run = ImportRun.objects.create(user=self.user, source="lastfm")
-        koito_run = ImportRun.objects.create(user=self.user, source="koito")
+        lastfm_run = self._finished_run(self.user, "lastfm")
+        koito_run = self._finished_run(self.user, "koito")
         artist = Artist.objects.create(name="Shared Artist")
         album = Album.objects.create(title="Shared Album", artist=artist)
         artist_tracker = ArtistTracker.objects.create(user=self.user, artist=artist)
@@ -192,7 +205,7 @@ class BulkDeleteByImportSourceTests(TestCase):
 
     def test_music_delete_leaves_unrelated_and_other_user_trackers_alone(self):
         """Only artists/albums the deleted rows referenced are considered."""
-        run = ImportRun.objects.create(user=self.user, source="lastfm")
+        run = self._finished_run(self.user, "lastfm")
         imported_artist = Artist.objects.create(name="Imported Artist")
         followed_artist = Artist.objects.create(name="Hand-followed Artist")
         ArtistTracker.objects.create(user=self.user, artist=imported_artist)
@@ -225,7 +238,7 @@ class BulkDeleteByImportSourceTests(TestCase):
 
     def test_music_tracker_sweep_spans_id_lookup_chunks(self):
         """The sweep still deletes every tracker when ids span several chunks."""
-        run = ImportRun.objects.create(user=self.user, source="lastfm")
+        run = self._finished_run(self.user, "lastfm")
         artists = [Artist.objects.create(name=f"Artist {i}") for i in range(5)]
         for index, artist in enumerate(artists):
             ArtistTracker.objects.create(user=self.user, artist=artist)
@@ -241,3 +254,57 @@ class BulkDeleteByImportSourceTests(TestCase):
 
         self.assertRedirects(response, reverse("import_data"))
         self.assertFalse(ArtistTracker.objects.filter(user=self.user).exists())
+
+    def test_music_sweep_reaches_artists_only_linked_through_the_album(self):
+        """Music.artist is nullable and derivable from the album.
+
+        A row with no direct artist FK still implies its album's artist, so
+        deleting it must sweep that artist's tracker too.
+        """
+        run = self._finished_run(self.user, "lastfm")
+        artist = Artist.objects.create(name="Album-only Artist")
+        album = Album.objects.create(title="Album-only LP", artist=artist)
+        artist_tracker = ArtistTracker.objects.create(user=self.user, artist=artist)
+        album_tracker = AlbumTracker.objects.create(user=self.user, album=album)
+        # artist=None: the link exists only through album.artist.
+        self._music("album-linked", self.user, run, None, album)
+
+        response = self.client.post(
+            reverse(
+                "bulk_delete_by_import_source",
+                args=[MediaTypes.MUSIC.value, "lastfm"],
+            ),
+        )
+
+        self.assertRedirects(response, reverse("import_data"))
+        self.assertFalse(AlbumTracker.objects.filter(id=album_tracker.id).exists())
+        self.assertFalse(ArtistTracker.objects.filter(id=artist_tracker.id).exists())
+
+    def test_refuses_while_an_import_from_that_source_is_running(self):
+        """A running import keeps writing rows, so deleting underneath it is refused.
+
+        The importer re-creates trackers as it goes, so a delete that races it
+        can strip the tracker off a row the importer is about to write --
+        recreating the very orphan state this endpoint exists to clear.
+        """
+        run = ImportRun.objects.create(
+            user=self.user,
+            source="lastfm",
+            status=ImportRun.Status.RUNNING,
+        )
+        artist = Artist.objects.create(name="Mid-import Artist")
+        tracker = ArtistTracker.objects.create(user=self.user, artist=artist)
+        music = self._music("mid-import", self.user, run, artist, None)
+
+        response = self.client.post(
+            reverse(
+                "bulk_delete_by_import_source",
+                args=[MediaTypes.MUSIC.value, "lastfm"],
+            ),
+        )
+
+        self.assertRedirects(response, reverse("import_data"))
+        self.assertTrue(Music.objects.filter(id=music.id).exists())
+        self.assertTrue(ArtistTracker.objects.filter(id=tracker.id).exists())
+        message = str(next(iter(get_messages(response.wsgi_request))))
+        self.assertIn("Cancel the running import", message)

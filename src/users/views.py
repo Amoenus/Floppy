@@ -1868,6 +1868,20 @@ def bulk_delete_by_import_source(request, media_type, source):
         messages.error(request, "Unknown import source.")
         return redirect("import_data")
 
+    # A running import writes Music rows and re-creates trackers as it goes, so
+    # deleting underneath it leaves rows the sweep has already walked past.
+    # rollback_import_run refuses for the same reason.
+    if ImportRun.objects.filter(
+        user=request.user,
+        source=source,
+        status=ImportRun.Status.RUNNING,
+    ).exists():
+        messages.error(
+            request,
+            "Cancel the running import from this source before deleting it.",
+        )
+        return redirect("import_data")
+
     model = apps.get_model(app_label="app", model_name=media_type)
     doomed = model.objects.filter(user=request.user, import_run__source=source)
     # Capture before the delete: the trackers are reached through these FKs.
@@ -1897,18 +1911,25 @@ def bulk_delete_by_import_source(request, media_type, source):
 _ID_LOOKUP_CHUNK = 500
 
 
+# Music.artist is a nullable convenience FK ("can be derived via album"), so an
+# artist can be reached either directly or only through the row's album.
+_MUSIC_ARTIST_SOURCES = ("artist_id", "album__artist_id")
+
+
 def _music_catalog_ids_referenced_by(music_queryset):
     """Return the (artist_ids, album_ids) a set of Music rows points at.
 
     Must be called before the rows are deleted.
     """
-    artist_ids = set(
-        music_queryset.values_list("artist_id", flat=True).distinct(),
-    ) - {None}
+    artist_ids = set()
+    for source_field in _MUSIC_ARTIST_SOURCES:
+        artist_ids |= set(
+            music_queryset.values_list(source_field, flat=True).distinct(),
+        )
     album_ids = set(
         music_queryset.values_list("album_id", flat=True).distinct(),
-    ) - {None}
-    return artist_ids, album_ids
+    )
+    return artist_ids - {None}, album_ids - {None}
 
 
 def _sweep_untracked_music_containers(user, artist_ids, album_ids):
@@ -1927,20 +1948,36 @@ def _sweep_untracked_music_containers(user, artist_ids, album_ids):
         "artist_id",
         user,
         artist_ids,
+        source_fields=_MUSIC_ARTIST_SOURCES,
     ) + _delete_untracked_trackers(AlbumTracker, "album_id", user, album_ids)
 
 
-def _delete_untracked_trackers(tracker_model, field, user, candidate_ids):
-    """Delete the user's tracker rows for candidate_ids with no Music row left."""
+def _delete_untracked_trackers(
+    tracker_model,
+    field,
+    user,
+    candidate_ids,
+    *,
+    source_fields=None,
+):
+    """Delete the user's tracker rows for candidate_ids with no Music row left.
+
+    `source_fields` are the Music lookups that can still reach the tracked
+    object. An artist keeps its tracker if any remaining row reaches it either
+    way, so all of them have to be checked before deleting.
+    """
+    source_fields = source_fields or (field,)
     deleted = 0
     for chunk in batched(sorted(candidate_ids), _ID_LOOKUP_CHUNK):
         chunk_ids = set(chunk)
-        still_tracked = set(
-            Music.objects.filter(
-                user=user,
-                **{f"{field}__in": chunk_ids},
-            ).values_list(field, flat=True),
-        )
+        still_tracked = set()
+        for source_field in source_fields:
+            still_tracked |= set(
+                Music.objects.filter(
+                    user=user,
+                    **{f"{source_field}__in": chunk_ids},
+                ).values_list(source_field, flat=True),
+            )
         count, _ = tracker_model.objects.filter(
             user=user,
             **{f"{field}__in": chunk_ids - still_tracked},
@@ -1984,7 +2021,10 @@ def bulk_delete_by_media_type(request):
         MusicReleasePreference.objects.filter(user=request.user).delete()
 
     metadata_count = 0
-    if delete_metadata and candidate_item_ids:
+    if delete_metadata:
+        # Not guarded on candidate_item_ids: a music library can be all
+        # trackers and no Music rows, which yields no candidate Items but does
+        # leave orphaned Artist/Album rows the checkbox promised to remove.
         metadata_count = _delete_orphaned_metadata(media_type, candidate_item_ids)
 
     if item_count:

@@ -637,6 +637,29 @@ class CacheClearButtonsTests(TestCase):
         self.assertFalse(Album.objects.filter(id=album.id).exists())
         self.assertFalse(Artist.objects.filter(id=artist.id).exists())
 
+    def test_delete_music_metadata_flag_cleans_catalog_with_no_music_rows(self):
+        """Orphan cleanup runs even when only tracker rows were deleted.
+
+        The metadata checkbox promises to remove artists/albums with no
+        remaining tracked entries. When the user has stranded trackers and no
+        Music rows at all, there are no candidate Item ids, and the cleanup
+        used to be skipped entirely -- leaving exactly the orphans the option
+        said it would remove. That is the #579 library state.
+        """
+        artist = Artist.objects.create(name="Stranded Only")
+        album = Album.objects.create(title="Stranded Only Album", artist=artist)
+        ArtistTracker.objects.create(user=self.user, artist=artist)
+        AlbumTracker.objects.create(user=self.user, album=album)
+
+        response = self.client.post(
+            reverse("bulk_delete_by_media_type"),
+            {"media_type": MediaTypes.MUSIC.value, "delete_metadata": "true"},
+        )
+
+        self.assertRedirects(response, reverse("advanced"))
+        self.assertFalse(Album.objects.filter(id=album.id).exists())
+        self.assertFalse(Artist.objects.filter(id=artist.id).exists())
+
     def test_cache_clear_views_require_post(self):
         """GET requests to any clear-cache endpoint must be rejected."""
         for url_name in (
