@@ -6174,6 +6174,15 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(first.status_code, 200)
         self.assertIsNone(first.context["prev_episode_number"])
         self.assertEqual(first.context["next_episode_number"], 2)
+        first_content = first.content.decode()
+        self.assertEqual(first_content.count('aria-label="Select episode"'), 2)
+        self.assertIn('@click="open = !open"', first_content)
+        self.assertIn("Episode 1", first_content)
+        self.assertIn("Episode 2", first_content)
+        self.assertNotIn(
+            'class="flex h-11 w-full items-center justify-center space-x-2 px-4',
+            first_content,
+        )
 
         middle = get_episode_details(2)
         self.assertEqual(middle.status_code, 200)
@@ -7248,16 +7257,20 @@ class MediaDetailsViewTests(TestCase):
             r'<div class="mb-1 text-center md:text-start">\s*<div class="inline-flex items-center gap-2 md:flex md:gap-2">\s*<h1 class="text-3xl font-bold cursor-pointer hover:text-indigo-500 transition-colors duration-200">\s*<a href="[^"]+">Test TV Show</a>\s*</h1>',
         )
         self.assertIn(
-            'class="flex flex-col gap-y-4 md:flex-row md:gap-y-0 items-center justify-between mb-1"',
-            content,
-        )
-        self.assertIn('class="relative w-full md:w-auto"', content)
-        self.assertIn(
-            '<h2 class="text-sm font-medium text-[var(--color-text-muted)] md:hidden">Season 1</h2>',
+            'class="relative flex flex-col gap-y-4 md:flex-row md:gap-y-0 items-center justify-between mb-1"',
             content,
         )
         self.assertIn(
-            'class="hidden w-full flex-wrap items-center justify-start gap-y-1 text-center text-sm font-medium text-[var(--color-text-muted)] cursor-pointer md:flex md:text-start"',
+            'aria-label="Select season"',
+            content,
+        )
+        self.assertIn(
+            '@click="open = !open"',
+            content,
+        )
+        self.assertEqual(content.count('aria-label="Select season"'), 2)
+        self.assertNotIn(
+            'class="flex w-full items-center justify-center space-x-2 px-4 py-2',
             content,
         )
 
@@ -7350,9 +7363,10 @@ class MediaDetailsViewTests(TestCase):
         )
         self.assertIn('aria-label="Show alternative title"', content)
         self.assertIn(
-            '<h2 class="text-sm font-medium text-[var(--color-text-muted)]">Season 3</h2>',
+            'aria-label="Select season"',
             content,
         )
+        self.assertIn(">Season 3</span>", content)
         self.assertIn("<p>Alicization</p>", content)
 
     @patch("app.providers.services.get_media_metadata")
@@ -7455,16 +7469,26 @@ class MediaDetailsViewTests(TestCase):
             content,
         )
         self.assertIn(
-            '<h2 class="text-sm font-medium text-[var(--color-text-muted)] md:hidden">Season 1</h2>',
+            'aria-label="Select season"',
             content,
         )
-        self.assertIn(
-            'class="mt-3 flex w-full flex-wrap items-center justify-center gap-y-1 text-center text-sm font-medium text-[var(--color-text-muted)] cursor-pointer md:hidden"',
+        self.assertEqual(content.count('aria-label="Select season"'), 2)
+        history_buttons = re.findall(
+            r'<button[^>]*aria-label="View session history"[^>]*>.*?</button>',
             content,
+            flags=re.DOTALL,
         )
-        self.assertRegex(
+        self.assertEqual(len(history_buttons), 2)
+        self.assertTrue(
+            any("season-progress-desktop-" in button for button in history_buttons),
+        )
+        for button in history_buttons:
+            self.assertNotIn("Season 1", button)
+        self.assertIn("Progress: 2/8", content)
+        self.assertIn("2026-03-01 12:00 - 2026-03-12 12:00", content)
+        self.assertNotIn(
+            '<h2 class="text-sm font-medium text-[var(--color-text-muted)]">Season 1</h2>',
             content,
-            r'<button type="button"\s+aria-haspopup="dialog"\s+aria-label="View session history"\s+class="hidden w-full flex-wrap items-center justify-start gap-y-1 text-center text-sm font-medium text-\[var\(--color-text-muted\)\] cursor-pointer md:flex md:text-start"[^>]*>\s*<h2 class="text-sm font-medium text-\[var\(--color-text-muted\)\]">Season 1</h2>\s*<span class="mx-2 text-gray-600">•</span>\s*<span id="season-progress-desktop-\d+" class="text-sm font-medium text-\[var\(--color-text-muted\)\]">\s*Progress: 2/8\s*</span>\s*<span class="mx-2 text-gray-600">•</span>\s*<span class="text-sm font-medium text-\[var\(--color-text-muted\)\]">\s*2026-03-01 12:00 - 2026-03-12 12:00\s*</span>',
         )
         self.assertIn(
             'hx-get="/history/sessions?media_type=tv',

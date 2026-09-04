@@ -228,6 +228,41 @@ def local_imdb_id(item):
     return None
 
 
+def catalog_readiness(user):
+    """Return per-catalog publishable/unresolved counts for the settings page.
+
+    project_catalog() already counts the items it has to drop for want of an
+    IMDb ID, but only logs it. Surfacing the same number tells users whether a
+    thin catalog is a Floppy problem they need to wait out or a list they need
+    to fill (issue #1066).
+    """
+    readiness = []
+    for spec in CATALOG_SPECS:
+        if spec.statuses:
+            items = status_source_items(user, spec)
+        else:
+            if select_source_list(user, spec) is None:
+                continue
+            items = list_source_items(user, spec)
+        total = 0
+        publishable = 0
+        for item in items:
+            total += 1
+            if local_imdb_id(item) is not None:
+                publishable += 1
+        if total:
+            readiness.append(
+                {
+                    "noun": "movies" if spec.stremio_type == "movie" else "series",
+                    "list_name": catalog_display_name(user, spec),
+                    "total": total,
+                    "publishable": publishable,
+                    "unresolved": total - publishable,
+                },
+            )
+    return readiness
+
+
 def build_metas(items, spec, skip):
     """Return one page of publishable metas and the scanned unresolved count."""
     metas = []

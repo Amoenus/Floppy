@@ -1,6 +1,6 @@
 """Tests for Audiobookshelf importer."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock, call, patch
 
 import requests
@@ -23,6 +23,8 @@ from app.models import (
 from integrations import audiobookshelf_cover
 from integrations.imports import helpers
 from integrations.imports.audiobookshelf import (
+    BOOK_REPAIR_COOLDOWN,
+    TITLE_MATCH_THRESHOLD,
     AudiobookshelfAuthError,
     AudiobookshelfClient,
     AudiobookshelfClientError,
@@ -1171,6 +1173,392 @@ class AudiobookshelfImporterTests(TestCase):
             (str(account.id), "item-6"),
         )
 
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_repairs_cover_proxy_url_with_an_unverifiable_token(
+        self,
+        mock_me,
+        mock_item,
+    ):
+        """Rotating SECRET_KEY invalidates every stored cover token at once.
+
+        Nothing else would ever rewrite them, so every ABS poster would break
+        permanently - the same symptom as #861, from a different cause.
+        """
+        account = self.user.audiobookshelf_account
+        account.last_sync_ms = 2_000
+        account.save(update_fields=["last_sync_ms", "updated_at"])
+
+        importer = AudiobookshelfImporter(self.user)
+        media_id = importer._stable_media_id(account.base_url, "rotated-key-item")
+        stale = audiobookshelf_cover.build_cover_proxy_url(
+            account.id,
+            "rotated-key-item",
+        )
+        # Same shape, signature from another key.
+        stale = stale.rsplit(":", 1)[0] + ":signature-from-a-previous-secret"
+        item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.AUDIOBOOKSHELF.value,
+            media_type=MediaTypes.BOOK.value,
+            title="Rotated Key",
+            original_title="Rotated Key",
+            localized_title="Rotated Key",
+            image=stale,
+            authors=["Some Author"],
+            publishers="Some Publisher",
+            genres=["Thriller"],
+            release_datetime=datetime(2020, 1, 1, tzinfo=UTC),
+            format="audiobook",
+            metadata_fetched_at=timezone.now(),
+        )
+        Book.objects.create(
+            user=self.user,
+            item=item,
+            status=Status.IN_PROGRESS.value,
+            progress=60,
+        )
+
+        mock_me.return_value = {
+            "mediaProgress": [
+                {
+                    "libraryItemId": "rotated-key-item",
+                    "currentTime": 3_600,
+                    "duration": 12_000,
+                    "lastUpdate": 1_500,
+                },
+            ],
+        }
+        mock_item.return_value = {
+            "media": {
+                "duration": 12_000,
+                "coverPath": "/metadata/items/rotated-key-item/cover.jpg",
+                "metadata": {"title": "Rotated Key"},
+            },
+        }
+
+        AudiobookshelfImporter(self.user).import_data()
+
+        item.refresh_from_db()
+        self.assertNotEqual(item.image, stale)
+        self.assertEqual(
+            cover_proxy_target(item.image),
+            (str(account.id), "rotated-key-item"),
+        )
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_reads_cover_path_nested_under_media(self, mock_me, mock_item):
+        """ABS reports coverPath under media on some versions (#861)."""
+        mock_me.return_value = {
+            "mediaProgress": [
+                {
+                    "libraryItemId": "media-cover-item",
+                    "currentTime": 600,
+                    "lastUpdate": 9_000,
+                },
+            ],
+        }
+        mock_item.return_value = {
+            "media": {
+                "duration": 4_800,
+                "coverPath": "/metadata/items/media-cover-item/cover.jpg",
+                "metadata": {"title": "Nested Cover"},
+            },
+        }
+
+        AudiobookshelfImporter(self.user).import_data()
+
+        item = Book.objects.get(user=self.user).item
+        self.assertNotEqual(item.image, settings.IMG_NONE)
+        account = self.user.audiobookshelf_account
+        self.assertEqual(
+            cover_proxy_target(item.image),
+            (str(account.id), "media-cover-item"),
+        )
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_reads_cover_from_library_files(self, mock_me, mock_item):
+        """An image entry in libraryFiles is still a cover ABS can serve."""
+        mock_me.return_value = {
+            "mediaProgress": [
+                {
+                    "libraryItemId": "libfile-item",
+                    "currentTime": 600,
+                    "lastUpdate": 9_100,
+                },
+            ],
+        }
+        mock_item.return_value = {
+            "media": {"duration": 4_800, "metadata": {"title": "Library File Cover"}},
+            "libraryFiles": [
+                {"fileType": "audio", "metadata": {"path": "/books/x/track1.m4b"}},
+                {"fileType": "image", "metadata": {"path": "/books/x/cover.jpg"}},
+            ],
+        }
+
+        AudiobookshelfImporter(self.user).import_data()
+
+        item = Book.objects.get(user=self.user).item
+        account = self.user.audiobookshelf_account
+        self.assertEqual(
+            cover_proxy_target(item.image),
+            (str(account.id), "libfile-item"),
+        )
+
+    @patch("integrations.imports.audiobookshelf.services.get_media_metadata")
+    @patch("integrations.imports.audiobookshelf.services.search")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_provider_cover_does_not_override_abs_cover(
+        self,
+        mock_me,
+        mock_item,
+        mock_search,
+        mock_get_media_metadata,
+    ):
+        """The user's own ABS artwork wins over a provider cover (#861).
+
+        A provider match carrying a dead or simply wrong cover URL used to
+        replace a perfectly good Audiobookshelf cover, which is what made
+        *some* posters disappear while others were fine.
+        """
+        mock_me.return_value = {
+            "mediaProgress": [
+                {
+                    "libraryItemId": "abs-art-item",
+                    "currentTime": 600,
+                    "lastUpdate": 9_200,
+                },
+            ],
+        }
+        mock_item.return_value = {
+            "media": {
+                "duration": 4_800,
+                "metadata": {
+                    "title": "Owned Artwork",
+                    "isbn": "978-0-7653-1178-8",
+                },
+            },
+            "coverPath": "/metadata/items/abs-art-item/cover.jpg",
+        }
+        mock_search.return_value = {
+            "results": [
+                {
+                    "media_id": "600",
+                    "source": Sources.HARDCOVER.value,
+                    "title": "Owned Artwork",
+                },
+            ],
+        }
+        mock_get_media_metadata.return_value = {
+            "media_id": "600",
+            "source": Sources.HARDCOVER.value,
+            "media_type": MediaTypes.BOOK.value,
+            "title": "Owned Artwork",
+            "image": "https://covers.example/some-other-book.jpg",
+            "max_progress": 400,
+            "genres": ["Fantasy"],
+            "details": {
+                "author": "Some Author",
+                "publisher": "Tor",
+                "isbn": ["9780765311788"],
+            },
+        }
+
+        importer = AudiobookshelfImporter(self.user)
+        importer.enable_provider_enrichment = True
+        importer.import_data()
+
+        item = Book.objects.get(user=self.user).item
+        account = self.user.audiobookshelf_account
+        self.assertEqual(
+            cover_proxy_target(item.image),
+            (str(account.id), "abs-art-item"),
+        )
+        # Enrichment still ran - only the cover preference changed.
+        self.assertEqual(item.genres, ["Fantasy"])
+        self.assertEqual(item.publishers, "Tor")
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_repairs_placeholder_cover_from_before_the_fix(self, mock_me, mock_item):
+        """A row stuck on IMG_NONE heals once the cover cooldown has passed."""
+        account = self.user.audiobookshelf_account
+        account.last_sync_ms = 2_000
+        account.save(update_fields=["last_sync_ms", "updated_at"])
+
+        importer = AudiobookshelfImporter(self.user)
+        media_id = importer._stable_media_id(account.base_url, "blank-cover-item")
+        item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.AUDIOBOOKSHELF.value,
+            media_type=MediaTypes.BOOK.value,
+            title="Der Heimweg",
+            original_title="Der Heimweg",
+            localized_title="Der Heimweg",
+            image=settings.IMG_NONE,
+            authors=["Sebastian Fitzek"],
+            publishers="Audible Studios",
+            genres=["Psychothriller"],
+            release_datetime=datetime(2020, 1, 1, tzinfo=UTC),
+            format="audiobook",
+            metadata_fetched_at=timezone.now() - timedelta(days=2),
+        )
+        Book.objects.create(
+            user=self.user,
+            item=item,
+            status=Status.IN_PROGRESS.value,
+            progress=60,
+        )
+
+        mock_me.return_value = {
+            "mediaProgress": [
+                {
+                    "libraryItemId": "blank-cover-item",
+                    "currentTime": 3_600,
+                    "duration": 12_000,
+                    "lastUpdate": 1_500,
+                },
+            ],
+        }
+        mock_item.return_value = {
+            "media": {
+                "duration": 12_000,
+                "coverPath": "/metadata/items/blank-cover-item/cover.jpg",
+                "metadata": {"title": "Der Heimweg"},
+            },
+        }
+
+        AudiobookshelfImporter(self.user).import_data()
+
+        item.refresh_from_db()
+        self.assertEqual(
+            cover_proxy_target(item.image),
+            (str(account.id), "blank-cover-item"),
+        )
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_does_not_re_repair_placeholder_cover_within_cooldown(
+        self,
+        mock_me,
+        mock_item,
+    ):
+        """An item ABS has no artwork for must not re-repair on every sync."""
+        account = self.user.audiobookshelf_account
+        account.last_sync_ms = 2_000
+        account.save(update_fields=["last_sync_ms", "updated_at"])
+
+        importer = AudiobookshelfImporter(self.user)
+        media_id = importer._stable_media_id(account.base_url, "artless-item")
+        item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.AUDIOBOOKSHELF.value,
+            media_type=MediaTypes.BOOK.value,
+            title="Artless",
+            original_title="Artless",
+            localized_title="Artless",
+            image=settings.IMG_NONE,
+            authors=["Some Author"],
+            publishers="Some Publisher",
+            genres=["Thriller"],
+            release_datetime=datetime(2020, 1, 1, tzinfo=UTC),
+            format="audiobook",
+            metadata_fetched_at=timezone.now(),
+        )
+        Book.objects.create(
+            user=self.user,
+            item=item,
+            status=Status.IN_PROGRESS.value,
+            progress=60,
+        )
+
+        mock_me.return_value = {
+            "mediaProgress": [
+                {
+                    "libraryItemId": "artless-item",
+                    "currentTime": 3_600,
+                    "duration": 12_000,
+                    "lastUpdate": 1_500,
+                },
+            ],
+        }
+
+        counts, warnings = AudiobookshelfImporter(self.user).import_data()
+
+        self.assertEqual(counts, {})
+        self.assertEqual(warnings, "")
+        mock_item.assert_not_called()
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_thin_metadata_is_not_re_repaired_within_cooldown(
+        self,
+        mock_me,
+        mock_item,
+    ):
+        """Books the providers cannot match must not re-query them forever."""
+        account = self.user.audiobookshelf_account
+        account.last_sync_ms = 2_000
+        account.save(update_fields=["last_sync_ms", "updated_at"])
+
+        importer = AudiobookshelfImporter(self.user)
+        media_id = importer._stable_media_id(account.base_url, "unmatchable-item")
+        item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.AUDIOBOOKSHELF.value,
+            media_type=MediaTypes.BOOK.value,
+            title="Unmatchable",
+            original_title="Unmatchable",
+            localized_title="Unmatchable",
+            image=audiobookshelf_cover.build_cover_proxy_url(
+                account.id,
+                "unmatchable-item",
+            ),
+            authors=["Some Author"],
+            publishers="",
+            genres=[],
+            release_datetime=None,
+            format="audiobook",
+            metadata_fetched_at=timezone.now(),
+        )
+        Book.objects.create(
+            user=self.user,
+            item=item,
+            status=Status.IN_PROGRESS.value,
+            progress=60,
+        )
+
+        mock_me.return_value = {
+            "mediaProgress": [
+                {
+                    "libraryItemId": "unmatchable-item",
+                    "currentTime": 3_600,
+                    "duration": 12_000,
+                    "lastUpdate": 1_500,
+                },
+            ],
+        }
+
+        counts, warnings = AudiobookshelfImporter(self.user).import_data()
+
+        self.assertEqual(counts, {})
+        self.assertEqual(warnings, "")
+        mock_item.assert_not_called()
+
+        # ...but it is retried once the cooldown lapses.
+        item.metadata_fetched_at = timezone.now() - (BOOK_REPAIR_COOLDOWN + timedelta(days=1))
+        item.save(update_fields=["metadata_fetched_at"])
+        mock_item.return_value = {
+            "media": {"duration": 12_000, "metadata": {"title": "Unmatchable"}},
+        }
+
+        AudiobookshelfImporter(self.user).import_data()
+
+        mock_item.assert_called_once_with("unmatchable-item")
+
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
     def test_marks_connection_broken_on_auth_error(self, mock_me):
         """Auth failures should mark the account as broken and raise import error."""
@@ -1371,6 +1759,82 @@ class AudiobookshelfImporterTests(TestCase):
         self.assertEqual(counts, {})
         self.assertEqual(warnings, "")
         mock_item.assert_not_called()
+
+
+class AudiobookshelfTitleMatchingTests(TestCase):
+    """Non-ASCII titles must still be comparable against provider results.
+
+    _normalize_name used to be re.sub(r"[^a-z0-9]+", " ", value.lower()), which
+    deleted every non-ASCII character: a Cyrillic or Japanese title normalised
+    to the empty string and could never match anything (#861).
+    """
+
+    def setUp(self):
+        """Create a connected account so the importer can be constructed."""
+        self.user = get_user_model().objects.create_user(username="abs-titles")
+        AudiobookshelfAccount.objects.create(
+            user=self.user,
+            base_url="https://abs.example.com",
+            api_token=helpers.encrypt("token"),
+        )
+        self.importer = AudiobookshelfImporter(self.user)
+
+    def test_folds_accents_instead_of_dropping_them(self):
+        """German umlauts must not push a title below the match threshold."""
+        self.assertEqual(self.importer._normalize_name("Zeitbrüch"), "zeitbruch")
+        self.assertGreaterEqual(
+            self.importer._title_similarity("Zeitbrüch", "Zeitbruch"),
+            TITLE_MATCH_THRESHOLD,
+        )
+
+    def test_keeps_non_latin_scripts(self):
+        """Cyrillic and CJK titles must normalise to something comparable."""
+        for title in ("Война и мир", "ノルウェイの森"):
+            with self.subTest(title=title):
+                self.assertNotEqual(self.importer._normalize_name(title), "")
+                self.assertGreaterEqual(
+                    self.importer._title_similarity(title, title),
+                    TITLE_MATCH_THRESHOLD,
+                )
+
+    def test_keeps_marks_that_change_the_word(self):
+        """Folding marks off non-Latin scripts collapses distinct titles.
+
+        NFKD decomposes Japanese dakuten and the Cyrillic yo, so stripping
+        every combining mark scored different works as a perfect match and
+        let a provider overwrite the item with another book's metadata
+        (#1069 review).
+        """
+        collisions = (
+            ("\u3070\u3057", "\u306f\u3057"),  # ba-shi vs ha-shi
+            ("\u3071\u3057", "\u306f\u3057"),  # pa-shi vs ha-shi
+            ("\u3071\u3057", "\u3070\u3057"),  # pa-shi vs ba-shi
+            ("\u0432\u0441\u0451", "\u0432\u0441\u0435"),  # vsyo vs vse
+        )
+        for left, right in collisions:
+            with self.subTest(left=left, right=right):
+                self.assertNotEqual(
+                    self.importer._normalize_name(left),
+                    self.importer._normalize_name(right),
+                )
+                self.assertLess(
+                    self.importer._title_similarity(left, right),
+                    1.0,
+                )
+
+    def test_still_strips_punctuation_and_case(self):
+        """The normalisation the ASCII form did must keep working."""
+        self.assertEqual(
+            self.importer._normalize_name("The Hobbit: There & Back_Again!"),
+            "the hobbit there back again",
+        )
+
+    def test_unrelated_titles_still_score_low(self):
+        """Keeping more characters must not make everything match."""
+        self.assertLess(
+            self.importer._title_similarity("Война и мир", "ノルウェイの森"),
+            TITLE_MATCH_THRESHOLD,
+        )
 
 
 class AudiobookshelfClientRetryTests(TestCase):

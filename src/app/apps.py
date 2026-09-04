@@ -23,6 +23,7 @@ STARTUP_SWEEP_COUNTDOWNS = {
     "igdb_ratings": 420,
     "provider": 540,
     "podcast_website": 660,
+    "external_ids": 780,
 }
 
 
@@ -123,6 +124,7 @@ class AppConfig(AppConfig):
             self._schedule_igdb_rating_backfill_reconcile()
             self._schedule_provider_backfill_reconcile()
             self._schedule_podcast_website_backfill_reconcile()
+            self._schedule_external_ids_backfill_reconcile()
 
     def _add_startup_cache_key(
         self,
@@ -387,6 +389,47 @@ class AppConfig(AppConfig):
         except Exception as error:
             logger.warning(
                 "Failed to schedule watch provider backfill reconcile: %s", error
+            )
+
+    def _schedule_external_ids_backfill_reconcile(self):
+        """Queue the external-ID reconcile gate for a worker to evaluate.
+
+        Movies tracked while tmdb.movie() discarded the IMDb ID TMDB returned
+        have no imdb_id in provider_external_ids, so they are invisible to the
+        Stremio catalog and IMDb rating sync until something refetches them.
+        Nothing refetches them on its own, so this kicks the catch-up sweep off
+        rather than leaving every existing library to a terminal command
+        (issue #1066).
+        """
+        try:
+            from app.tasks_external_ids import (
+                EXTERNAL_IDS_BACKFILL_VERSION,
+                ensure_external_ids_backfill_reconcile,
+            )
+
+            version = EXTERNAL_IDS_BACKFILL_VERSION
+            if not self._add_startup_cache_key(
+                f"external_ids_reconcile_startup_v{version}",
+                timeout=3600,
+            ):
+                return
+
+            # The worker-side ensure task owns the durable state gate. Keeping
+            # that DB query out of ready() avoids checking out a pool
+            # connection during process startup.
+            ensure_external_ids_backfill_reconcile.apply_async(
+                kwargs={"strategy_version": version},
+                countdown=STARTUP_SWEEP_COUNTDOWNS["external_ids"],
+                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9),
+            )
+
+            logger.info(
+                "Scheduled external ID backfill reconcile (version=%s)",
+                version,
+            )
+        except Exception as error:
+            logger.warning(
+                "Failed to schedule external ID backfill reconcile: %s", error
             )
 
     def _schedule_trakt_popularity_reconcile(self):

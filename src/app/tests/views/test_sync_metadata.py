@@ -417,7 +417,12 @@ class SyncMetadataViewTests(TestCase):
             )
 
         self.assertEqual(response.status_code, 302)
-        mock_delete_many.assert_called_once_with(cache_keys)
+        mock_delete_many.assert_called_once()
+        deleted_keys = mock_delete_many.call_args.args[0]
+        # The refresh reads its TTL from the first key, so the one this request
+        # is actually about has to lead; the rest are order-independent.
+        self.assertEqual(deleted_keys[0], primary_key)
+        self.assertEqual(set(deleted_keys), set(cache_keys))
 
     @patch("app.metadata_sync_views._sync_plex_rating")
     @patch("app.views.Item.fetch_releases")

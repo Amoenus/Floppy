@@ -517,24 +517,164 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.page.get_by_role("button", name="More tracking actions").click()
         self.page.get_by_role("button", name="Add new entry").click()
         expect(create_modal).to_be_visible()
-        self.page.set_viewport_size({"width": 375, "height": 812})
 
         end_date_input = create_modal.locator('input[name="end_date"]')
-        end_time_segment = "14:25"
         start_date_input = create_modal.locator('input[name="start_date"]')
-
-        create_modal.get_by_role("button", name="End date picker").click()
-        end_date_picker = create_modal.get_by_role(
-            "dialog",
-            name="End date picker",
+        clear_buttons = create_modal.get_by_role("button", name="Clear date")
+        clear_buttons.first.click()
+        end_quick_actions = create_modal.get_by_role(
+            "group", name="End date quick actions"
         )
+        start_quick_actions = create_modal.get_by_role(
+            "group", name="Start date quick actions"
+        )
+        expect(end_quick_actions).to_be_visible()
+        expect(start_quick_actions).to_be_visible()
+        expect(create_modal.get_by_text("Select date", exact=True)).to_have_count(0)
+        expect(
+            end_quick_actions.get_by_role("button", name="Start Now", exact=True)
+        ).to_be_visible()
+        expect(
+            end_quick_actions.get_by_role("button", name="Just Finished", exact=True)
+        ).to_be_visible()
+        expect(
+            end_quick_actions.get_by_role("button", name="Release Date", exact=True)
+        ).to_be_visible()
+        end_picker_dialog = create_modal.get_by_role(
+            "dialog", name="End date picker"
+        )
+        expect(end_picker_dialog).not_to_be_visible()
+
+        before_start_action = self.page.evaluate("Date.now()")
+        start_quick_actions.get_by_role(
+            "button", name="Start Now", exact=True
+        ).click()
+        after_start_action = self.page.evaluate("Date.now()")
+        start_value_ms = self.page.evaluate(
+            "value => new Date(value).getTime()",
+            start_date_input.input_value(),
+        )
+        end_value_ms = self.page.evaluate(
+            "value => new Date(value).getTime()",
+            end_date_input.input_value(),
+        )
+        self.assertGreaterEqual(start_value_ms, before_start_action - 1000)
+        self.assertLessEqual(start_value_ms, after_start_action + 1000)
+        self.assertGreaterEqual(
+            end_value_ms,
+            before_start_action + 95 * 60 * 1000 - 1000,
+        )
+        self.assertLessEqual(
+            end_value_ms,
+            after_start_action + 95 * 60 * 1000 + 1000,
+        )
+        expect(end_picker_dialog).not_to_be_visible()
+        expect(start_quick_actions).not_to_be_visible()
+        expect(end_quick_actions).not_to_be_visible()
+        expect(create_modal.locator('select[name="status"]')).to_have_value(
+            Status.IN_PROGRESS.value
+        )
+
+        create_modal.locator(".date-picker-closed-field").first.get_by_role(
+            "button", name="Clear date"
+        ).click()
+        create_modal.locator(".date-picker-closed-field").nth(1).get_by_role(
+            "button", name="Clear date"
+        ).click()
+        expect(start_quick_actions).to_be_visible()
+        expect(end_quick_actions).to_be_visible()
+
+        before_start_now = self.page.evaluate("Date.now()")
+        end_quick_actions.get_by_role("button", name="Start Now", exact=True).click()
+        after_start_now = self.page.evaluate("Date.now()")
+        expect(end_picker_dialog).not_to_be_visible()
+        expect(end_quick_actions).not_to_be_visible()
+        end_value_ms = self.page.evaluate(
+            "value => new Date(value).getTime()",
+            end_date_input.input_value(),
+        )
+        self.assertGreaterEqual(
+            end_value_ms,
+            before_start_now + 95 * 60 * 1000 - 1000,
+        )
+        self.assertLessEqual(
+            end_value_ms,
+            after_start_now + 95 * 60 * 1000 + 1000,
+        )
+        expect(create_modal.locator('select[name="status"]')).to_have_value(
+            Status.IN_PROGRESS.value
+        )
+
+        create_modal.locator(".date-picker-closed-field").first.get_by_role(
+            "button", name="Clear date"
+        ).click()
+        create_modal.locator(".date-picker-closed-field").nth(1).get_by_role(
+            "button", name="Clear date"
+        ).click()
+        expect(start_quick_actions).to_be_visible()
+        expect(end_quick_actions).to_be_visible()
+        start_quick_actions.get_by_role(
+            "button", name="Release Date", exact=True
+        ).click()
+        expect(end_picker_dialog).not_to_be_visible()
+        expect(create_modal.locator('select[name="status"]')).to_have_value(
+            Status.COMPLETED.value
+        )
+        self.assertTrue(start_date_input.input_value().startswith("2019-11-08T"))
+        expect(start_quick_actions).not_to_be_visible()
+
+        create_modal.locator(".date-picker-closed-field").first.get_by_role(
+            "button", name="Clear date"
+        ).click()
+        expect(start_quick_actions).to_be_visible()
+        start_quick_actions.get_by_role(
+            "button", name="Just Finished", exact=True
+        ).click()
+        expect(start_quick_actions).not_to_be_visible()
+        just_finished_start_ms = self.page.evaluate(
+            "value => new Date(value).getTime()",
+            start_date_input.input_value(),
+        )
+        just_finished_end_ms = self.page.evaluate(
+            "value => new Date(value).getTime()",
+            end_date_input.input_value(),
+        )
+        just_finished_now = self.page.evaluate("Date.now()")
+        self.assertGreaterEqual(
+            just_finished_start_ms,
+            just_finished_now - 95 * 60 * 1000 - 1000,
+        )
+        self.assertLessEqual(
+            just_finished_start_ms,
+            just_finished_now - 95 * 60 * 1000 + 1000,
+        )
+        self.assertGreaterEqual(just_finished_end_ms, just_finished_now - 1000)
+        self.assertLessEqual(just_finished_end_ms, just_finished_now + 1000)
+        create_modal.locator(".date-picker-closed-field").first.get_by_role(
+            "button", name="Clear date"
+        ).click()
+        create_modal.locator(".date-picker-closed-field").nth(1).get_by_role(
+            "button", name="Clear date"
+        ).click()
+
+        self.page.set_viewport_size({"width": 375, "height": 812})
+        expect(end_quick_actions).to_be_visible()
+        expect(
+            end_quick_actions.get_by_role("button", name="Release Date", exact=True)
+        ).to_be_visible()
+
+        end_time_segment = "14:25"
+
+        create_modal.get_by_role("button", name="Open End date picker").click()
+        end_date_picker = create_modal.get_by_role("dialog", name="End date picker")
         expect(
             end_date_picker.get_by_role("button", name="None", exact=True),
         ).to_be_visible()
         time_selects = end_date_picker.locator("select")
         time_selects.nth(0).select_option("14")
         time_selects.nth(1).select_option("25")
-        create_modal.get_by_role("button", name="Release date").click()
+        time_selects.nth(2).select_option("0")
+        end_date_picker.get_by_role("button", name="Release Date", exact=True).click()
         expect(end_date_input).to_have_value(f"2019-11-08T{end_time_segment}")
         end_hour, end_minute = [int(segment) for segment in end_time_segment.split(":")]
         expected_start_date = (
@@ -546,11 +686,8 @@ class IntegrationTest(StaticLiveServerTestCase):
         end_date_picker.get_by_role("button", name="None", exact=True).click()
         expect(end_date_input).to_have_value("")
 
-        create_modal.get_by_role("button", name="Start date picker").click()
-        start_date_picker = create_modal.get_by_role(
-            "dialog",
-            name="Start date picker",
-        )
+        create_modal.get_by_role("button", name="Open Start date picker").click()
+        start_date_picker = create_modal.get_by_role("dialog", name="Start date picker")
         start_date_picker.get_by_role("button", name="None", exact=True).click()
         expect(start_date_input).to_have_value("")
 

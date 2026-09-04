@@ -12,9 +12,11 @@ if (!window.__floppyDateTimePickerBound) {
     fieldName: config.fieldName,
     trackTime: Boolean(config.trackTime),
     use12Hour: Boolean(config.use12Hour),
+    defaultNow: Boolean(config.defaultNow),
     suggestionLabel: config.suggestionLabel || "",
     suggestionDate: config.suggestionDate || "",
     suggestionRuntimeMinutes: config.suggestionRuntimeMinutes || "",
+    runtimeMinutes: config.runtimeMinutes || "",
     copyFrom: config.copyFrom || "",
     copyAvailable: false,
 
@@ -37,6 +39,9 @@ if (!window.__floppyDateTimePickerBound) {
         this.$refs.hiddenInput.value = this.value;
       }
       this.syncFromValue();
+      if (this.defaultNow && !this.value) {
+        this.applyNow();
+      }
       this.mediaQuery = window.matchMedia("(max-width: 39.99rem)");
       this.isMobile = this.mediaQuery.matches;
       this.mediaQueryHandler = (event) => {
@@ -71,7 +76,9 @@ if (!window.__floppyDateTimePickerBound) {
     },
 
     positionPopover() {
-      if (!this.$refs.trigger) {
+      const trigger = this.$refs.trigger;
+      const pickerToggle = this.$refs.pickerToggle;
+      if (!trigger && !pickerToggle) {
         this.popoverStyle = "";
         return;
       }
@@ -93,7 +100,11 @@ if (!window.__floppyDateTimePickerBound) {
       const margin = 8;
       const minHeight = 200;
 
-      const rect = this.$refs.trigger.getBoundingClientRect();
+      const triggerRect = trigger?.getBoundingClientRect();
+      const rect =
+        triggerRect?.width && triggerRect.height
+          ? triggerRect
+          : pickerToggle.getBoundingClientRect();
       const panelWidth = 352;
       let left = rect.left;
       if (left + panelWidth > viewportWidth - margin) {
@@ -175,30 +186,7 @@ if (!window.__floppyDateTimePickerBound) {
     },
 
     parts() {
-      if (!this.value) {
-        return null;
-      }
-
-      // Django renders bound DateTimeField values with a space separator,
-      // while values selected in this picker use the HTML datetime-local
-      // format with a `T` separator.
-      const [datePart, timePart] = this.value.trim().split(/[T ]/, 2);
-      const [y, m, d] = datePart.split("-").map(Number);
-      if ([y, m, d].some(Number.isNaN)) {
-        return null;
-      }
-
-      let h = 0;
-      let min = 0;
-      let s = 0;
-      if (timePart) {
-        const segments = timePart.split(":").map(Number);
-        h = segments[0] || 0;
-        min = segments[1] || 0;
-        s = segments[2] || 0;
-      }
-
-      return { y, m, d, h, min, s };
+      return this.partsFor(this.value);
     },
 
     formatValueFromParts(y, m, d, h, min, s) {
@@ -350,17 +338,138 @@ if (!window.__floppyDateTimePickerBound) {
     },
 
     applyNow() {
-      const now = new Date();
-      this.commit(
-        this.formatValueFromParts(
-          now.getFullYear(),
-          now.getMonth() + 1,
-          now.getDate(),
-          now.getHours(),
-          now.getMinutes(),
-          now.getSeconds(),
-        ),
+      this.commit(this.formatValueFromDate(new Date()));
+    },
+
+    formatValueFromDate(date) {
+      return this.formatValueFromParts(
+        date.getFullYear(),
+        date.getMonth() + 1,
+        date.getDate(),
+        date.getHours(),
+        date.getMinutes(),
+        date.getSeconds(),
       );
+    },
+
+    resolvedRuntimeMinutes() {
+      const runtimeMinutes = Number.parseInt(this.runtimeMinutes, 10);
+      return Number.isFinite(runtimeMinutes) && runtimeMinutes > 0
+        ? runtimeMinutes
+        : null;
+    },
+
+    setStatusForPreset(status) {
+      const form = this.$refs.hiddenInput.closest("form");
+      const statusField = form?.querySelector('[name="status"]');
+      if (!statusField || statusField.value === status) {
+        return;
+      }
+
+      let mediaForm = null;
+      if (window.Alpine) {
+        try {
+          mediaForm = Alpine.$data(form);
+        } catch {
+          // Ignore Alpine lookup failures and still update the status field.
+        }
+      }
+
+      if (mediaForm && "suppressStatusDateAutofill" in mediaForm) {
+        mediaForm.suppressStatusDateAutofill = true;
+      }
+      try {
+        statusField.value = status;
+        statusField.dispatchEvent(new Event("change", { bubbles: true }));
+      } finally {
+        if (mediaForm && "suppressStatusDateAutofill" in mediaForm) {
+          mediaForm.suppressStatusDateAutofill = false;
+        }
+      }
+    },
+
+    commitPairedValue(newValue) {
+      const pairedFieldName =
+        this.fieldName === "start_date"
+          ? "end_date"
+          : this.fieldName === "end_date"
+            ? "start_date"
+            : "";
+      if (!pairedFieldName) {
+        return;
+      }
+
+      const form = this.$refs.hiddenInput.closest("form");
+      const pairedInput = form?.querySelector(`[name="${pairedFieldName}"]`);
+      if (!pairedInput || pairedInput === this.$refs.hiddenInput) {
+        return;
+      }
+
+      if (window.Alpine) {
+        try {
+          const picker = Alpine.$data(pairedInput.closest("[x-data]"));
+          if (picker?.commit) {
+            picker.commit(newValue);
+            return;
+          }
+        } catch {
+          // Fall through to updating the paired hidden input directly.
+        }
+      }
+
+      pairedInput.value = newValue;
+      window.trackModalClearAutoFilledField?.(form, pairedFieldName);
+      window.trackModalDispatchInputEvents?.(pairedInput);
+    },
+
+    applyQuickAction(action) {
+      if (action === "start-now") {
+        this.setStatusForPreset("In progress");
+        const now = new Date();
+        const nowValue = this.formatValueFromDate(now);
+        const runtimeMinutes = this.resolvedRuntimeMinutes();
+        const endValue = this.formatValueFromDate(
+          new Date(now.getTime() + (runtimeMinutes || 0) * 60000),
+        );
+        if (this.fieldName === "start_date") {
+          this.commit(nowValue);
+          this.commitPairedValue(endValue);
+        } else if (this.fieldName === "end_date") {
+          this.commit(endValue);
+          this.commitPairedValue(nowValue);
+        } else {
+          this.commit(nowValue);
+        }
+        return;
+      }
+
+      if (action === "just-finished") {
+        this.setStatusForPreset("Completed");
+        const now = new Date();
+        const nowValue = this.formatValueFromDate(now);
+        const runtimeMinutes = this.resolvedRuntimeMinutes();
+        const startValue = this.formatValueFromDate(
+          new Date(now.getTime() - (runtimeMinutes || 0) * 60000),
+        );
+        if (this.fieldName === "start_date") {
+          this.commit(startValue);
+          this.commitPairedValue(nowValue);
+        } else if (this.fieldName === "end_date") {
+          this.commit(nowValue);
+          this.commitPairedValue(startValue);
+        } else {
+          this.commit(nowValue);
+        }
+        return;
+      }
+
+      if (action === "release-date") {
+        if (!this.resolvedSuggestionDate()) {
+          return;
+        }
+        this.setStatusForPreset("Completed");
+        this.applySuggestion();
+      }
     },
 
     resolvedSuggestionDate() {
@@ -399,32 +508,18 @@ if (!window.__floppyDateTimePickerBound) {
     },
 
     copyFromOther() {
-      if (!this.copyFrom) {
-        return;
-      }
-      const form = this.$refs.hiddenInput.closest("form");
-      if (!form) {
-        return;
-      }
-      const sourceInput = form.querySelector(`[name="${this.copyFrom}"]`);
-      if (!sourceInput || !sourceInput.value) {
-        return;
-      }
-      const sourceParts = this.partsFor(sourceInput.value);
+      const sourceParts = this.partsFor(this.copySourceValue());
       if (!sourceParts) {
         return;
       }
-      // The form's progress-based start-date auto-fill recomputes start_date
-      // from end_date on every end_date change. A copy is an explicit user
-      // intent, so suppress that auto-fill for this commit regardless of which
-      // field we are writing, otherwise the copied value gets overwritten.
-      if (form && window.Alpine) {
-        try {
-          Alpine.$data(form).manualStartDate = true;
-        } catch {
-          // Ignore Alpine lookup failures.
-        }
-      }
+      // No backfill on this path. The runtime-based auto-fill recomputes
+      // start_date from end_date, which would immediately overwrite a copy into
+      // start_date with end minus the runtime. commit() already marks
+      // start_date as manually set when that is the field being written, and
+      // backfillStartDateIfNeeded honours that flag, so a copy into start_date
+      // survives later edits to end_date too. A copy into end_date leaves the
+      // flag alone: the user has not touched start_date, so the auto-fill must
+      // stay armed for it.
       this.commit(
         this.formatValueFromParts(
           sourceParts.y,
@@ -435,7 +530,6 @@ if (!window.__floppyDateTimePickerBound) {
           sourceParts.s,
         ),
       );
-      this.backfillStartDateIfNeeded();
     },
 
     partsFor(value) {
@@ -460,7 +554,10 @@ if (!window.__floppyDateTimePickerBound) {
     },
 
     backfillStartDateIfNeeded() {
-      const runtimeMinutes = Number.parseInt(this.suggestionRuntimeMinutes, 10);
+      const runtimeMinutes = Number.parseInt(
+        this.suggestionRuntimeMinutes || this.runtimeMinutes,
+        10,
+      );
       if (
         this.fieldName !== "end_date" ||
         !Number.isFinite(runtimeMinutes) ||
@@ -604,7 +701,10 @@ if (!window.__floppyDateTimePickerBound) {
         return;
       }
       this.open = false;
-      this.$refs.trigger?.focus();
+      (this.$refs.trigger?.offsetParent
+        ? this.$refs.trigger
+        : this.$refs.pickerToggle
+      )?.focus();
     },
 
     togglePicker() {

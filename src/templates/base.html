@@ -4,6 +4,7 @@
 
 <!DOCTYPE html>
 <html lang="{{ LANGUAGE_CODE }}"
+      data-img-none="{{ IMG_NONE }}"
       class="{% if user.is_authenticated and user.theme == 'light' %}light{% elif user.is_authenticated and user.theme == 'dark' %}dark{% endif %} bg-[var(--color-page-bg)]">
   <head>
     {# Required meta tags #}
@@ -114,6 +115,8 @@
             src="{% static 'js/markdown-editor.js' %}{% get_static_file_mtime 'js/markdown-editor.js' %}"></script>
     <script defer src="{% static 'js/libraries/alpinejs-3.14.9.min.js' %}"></script>
     <script src="{% static 'js/libraries/lazysizes-5.3.2.min.js' %}" async></script>
+    <script defer
+            src="{% static 'js/image-fallback.js' %}{% get_static_file_mtime 'js/image-fallback.js' %}"></script>
     {# ZXing library for barcode decoding #}
     <script src="{% static 'js/libraries/zxing-library-0.21.3.min.js' %}"
             onload="console.log('ZXing library loaded');"></script>

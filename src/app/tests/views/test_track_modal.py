@@ -163,6 +163,11 @@ class TrackModalViewTests(TestCase):
         self.assertTrue(response.context["metadata_tab_available"])
         self.assertTrue(response.context["discover_tab_available"])
         self.assertFalse(response.context["is_hidden_from_discover"])
+        content = response.content.decode()
+        self.assertEqual(content.count("Start Now"), 2)
+        self.assertEqual(content.count("Just Finished"), 2)
+        self.assertEqual(content.count("Release Date"), 4)
+        self.assertEqual(content.count(':disabled="!resolvedSuggestionDate()"'), 2)
         general_field_names = [
             field.name for field in response.context["general_fields"]
         ]
@@ -1111,7 +1116,13 @@ class TrackModalViewTests(TestCase):
             response.context["episode_plays_form"]["distribution_mode"].value(),
             "air_date",
         )
-        self.assertContains(response, "Air date", count=2)
+        self.assertContains(response, "Release Date", count=6)
+        self.assertEqual(
+            response.context["episode_plays_domain"]["seasonEpisodeMap"]["1"][0][
+                "runtime_minutes"
+            ],
+            24,
+        )
 
     @patch("app.views.metadata_resolution.resolve_detail_metadata")
     @patch("app.providers.services.get_media_metadata")
