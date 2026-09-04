@@ -116,10 +116,18 @@ def calendar(request):
             ).values_list("id", f"{media_type}__status"),
         )
 
-    available_statuses = sorted(
-        {status for status in status_by_item_id.values() if status},
-        key=lambda status: Status(status).label,
-    )
+    available_statuses_by_type = {}
+    for media_type, item_ids in item_ids_by_type.items():
+        statuses = {
+            status_by_item_id[item_id]
+            for item_id in item_ids
+            if status_by_item_id.get(item_id)
+        }
+        if statuses:
+            available_statuses_by_type[media_type] = sorted(
+                statuses,
+                key=lambda status: Status(status).label,
+            )
 
     release_dict = {}
     for release in releases:
@@ -174,7 +182,7 @@ def calendar(request):
         "today": today,
         "view_type": view_type,
         "available_media_types": available_media_types,
-        "available_statuses": available_statuses,
+        "available_statuses_by_type": available_statuses_by_type,
         "days_in_month": days_in_month,
         "selected_day": selected_day,
         "weekday_headers": weekday_headers,

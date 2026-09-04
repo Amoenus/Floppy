@@ -49,10 +49,10 @@
           </span>
         </a>
 
-        <div class="relative" @click.outside="dropdownOpen = false">
+        <div class="relative" @click.outside="dropdownOpen = false; statusSubmenuType = null">
           <button type="button"
                   class="h-10 px-3 text-sm bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex items-center gap-2 cursor-pointer"
-                  @click="actionsOpen = false; statusDropdownOpen = false; dropdownOpen = !dropdownOpen"
+                  @click="actionsOpen = false; statusSubmenuType = null; dropdownOpen = !dropdownOpen"
                   :aria-expanded="dropdownOpen">
             {% include "app/icons/funnel.svg" with classes="w-4 h-4" %}
             <span class="block min-w-0 truncate max-w-[10rem] sm:max-w-[14rem]"
@@ -74,71 +74,64 @@
                x-transition:leave-start="transform opacity-100 scale-100"
                x-transition:leave-end="transform opacity-0 scale-95"
                class="absolute right-0 mt-2 w-64 rounded-md bg-[var(--color-surface-strong)] border border-[var(--color-border)] shadow-lg overflow-hidden z-40">
-            <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-[var(--color-border)]">
-              <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Media Types</div>
-              <button type="button"
-                      class="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
-                      @click="toggleAllTypes()"
-                      x-text="allTypesSelected() ? 'Hide all' : 'Show all'"></button>
-            </div>
-            <div class="max-h-64 overflow-y-auto">
-              <template x-for="type in availableMediaTypes" :key="type.value">
+            <div x-show="!statusSubmenuType" x-cloak>
+              <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-[var(--color-border)]">
+                <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Media Types</div>
                 <button type="button"
-                        class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
-                        @click="toggleMediaType(type.value)">
-                  <span x-text="type.label"></span>
-                  <span class="ml-auto" x-show="isTypeSelected(type.value)">
-                    {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
-                  </span>
-                </button>
-              </template>
+                        class="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
+                        @click="toggleAllTypes()"
+                        x-text="allTypesSelected() ? 'Hide all' : 'Show all'"></button>
+              </div>
+              <div class="max-h-64 overflow-y-auto">
+                <template x-for="type in availableMediaTypes" :key="type.value">
+                  <div class="flex items-center w-full text-sm text-[var(--color-text-secondary)]">
+                    <button type="button"
+                            class="flex items-center flex-1 min-w-0 px-4 py-2 text-left transition-colors cursor-pointer hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                            @click="toggleMediaType(type.value)">
+                      <span x-text="type.label"></span>
+                      <span class="ml-auto" x-show="isTypeSelected(type.value)">
+                        {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                      </span>
+                    </button>
+                    <button type="button"
+                            class="shrink-0 p-2 mr-2 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                            x-show="hasStatusOptions(type.value)"
+                            x-cloak
+                            @click="openStatusSubmenu(type.value)"
+                            :aria-label="`Filter ${type.label} by status`">
+                      {% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}
+                    </button>
+                  </div>
+                </template>
+              </div>
             </div>
-          </div>
-        </div>
-
-        <div class="relative" @click.outside="statusDropdownOpen = false">
-          <button type="button"
-                  class="h-10 px-3 text-sm bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex items-center gap-2 cursor-pointer"
-                  @click="actionsOpen = false; dropdownOpen = false; statusDropdownOpen = !statusDropdownOpen"
-                  :aria-expanded="statusDropdownOpen">
-            {% include "app/icons/circle-check.svg" with classes="w-4 h-4" %}
-            <span class="block min-w-0 truncate max-w-[10rem] sm:max-w-[14rem]"
-                  x-text="statusDropdownLabel()"></span>
-            <svg xmlns="http://www.w3.org/2000/svg"
-                 viewBox="0 0 20 20"
-                 class="w-4 h-4 ml-1"
-                 aria-hidden="true">
-              <path d="M10 14 L4.5 7 H15.5 Z" fill="currentColor"></path>
-            </svg>
-          </button>
-
-          <div x-cloak
-               x-show="statusDropdownOpen"
-               x-transition:enter="transition ease-out duration-100"
-               x-transition:enter-start="transform opacity-0 scale-95"
-               x-transition:enter-end="transform opacity-100 scale-100"
-               x-transition:leave="transition ease-in duration-75"
-               x-transition:leave-start="transform opacity-100 scale-100"
-               x-transition:leave-end="transform opacity-0 scale-95"
-               class="absolute right-0 mt-2 w-64 rounded-md bg-[var(--color-surface-strong)] border border-[var(--color-border)] shadow-lg overflow-hidden z-40">
-            <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-[var(--color-border)]">
-              <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Status</div>
-              <button type="button"
-                      class="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
-                      @click="toggleAllStatuses()"
-                      x-text="allStatusesSelected() ? 'Hide all' : 'Show all'"></button>
-            </div>
-            <div class="max-h-64 overflow-y-auto">
-              <template x-for="status in availableStatuses" :key="status.value">
+            <div x-show="!!statusSubmenuType" x-cloak>
+              <div class="flex items-center gap-2 px-2 py-1 border-b border-[var(--color-border)]">
                 <button type="button"
-                        class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
-                        @click="toggleStatus(status.value)">
-                  <span x-text="status.label"></span>
-                  <span class="ml-auto" x-show="isStatusSelected(status.value)">
-                    {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
-                  </span>
+                        class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                        @click="closeStatusSubmenu()"
+                        aria-label="Back to media types">
+                  {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
                 </button>
-              </template>
+                <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]"
+                     x-text="submenuTypeLabel() + ' Status'"></div>
+                <button type="button"
+                        class="ml-auto text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
+                        @click="toggleAllStatusesForType(statusSubmenuType)"
+                        x-text="allStatusesSelectedForType(statusSubmenuType) ? 'Hide all' : 'Show all'"></button>
+              </div>
+              <div class="max-h-64 overflow-y-auto">
+                <template x-for="status in (availableStatusesByType[statusSubmenuType] || [])" :key="status.value">
+                  <button type="button"
+                          class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                          @click="toggleStatus(statusSubmenuType, status.value)">
+                    <span x-text="status.label"></span>
+                    <span class="ml-auto" x-show="isStatusSelected(statusSubmenuType, status.value)">
+                      {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                    </span>
+                  </button>
+                </template>
+              </div>
             </div>
           </div>
         </div>
@@ -148,7 +141,7 @@
                   aria-label="Calendar Actions"
                   title="Calendar Actions"
                   class="w-10 h-10 text-sm bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex items-center justify-center cursor-pointer"
-                  @click="dropdownOpen = false; statusDropdownOpen = false; actionsOpen = !actionsOpen"
+                  @click="dropdownOpen = false; actionsOpen = !actionsOpen"
                   :aria-expanded="actionsOpen">
             {% include "app/icons/settings.svg" with classes="w-4 h-4" %}
           </button>
@@ -314,7 +307,7 @@
     function calendarFilters() {
       return {
         dropdownOpen: false,
-        statusDropdownOpen: false,
+        statusSubmenuType: null,
         actionsOpen: false,
         availableMediaTypes: [
           {% for media_type in available_media_types %}
@@ -326,27 +319,40 @@
             '{{ media_type }}'{% if not forloop.last %},{% endif %}
           {% endfor %}
         ],
-        availableStatuses: [
-          {% for status in available_statuses %}
-            { value: '{{ status }}', label: '{{ status|media_status_readable|escapejs }}' }{% if not forloop.last %},{% endif %}
+        availableStatusesByType: {
+          {% for media_type, statuses in available_statuses_by_type.items %}
+            '{{ media_type }}': [
+              {% for status in statuses %}
+                { value: '{{ status }}', label: '{{ status|media_status_readable|escapejs }}' }{% if not forloop.last %},{% endif %}
+              {% endfor %}
+            ]{% if not forloop.last %},{% endif %}
           {% endfor %}
-        ],
-        selectedStatuses: [
-          {% for status in available_statuses %}
-            '{{ status }}'{% if not forloop.last %},{% endif %}
+        },
+        selectedStatusesByType: {
+          {% for media_type, statuses in available_statuses_by_type.items %}
+            '{{ media_type }}': [
+              {% for status in statuses %}
+                '{{ status }}'{% if not forloop.last %},{% endif %}
+              {% endfor %}
+            ]{% if not forloop.last %},{% endif %}
           {% endfor %}
-        ],
+        },
         mobileSelectedDay: null,
         filteredGridHtml: '',
         filteredListHtml: '',
         init() {
           this.$watch('selectedMediaTypes', () => this.applyFilter());
-          this.$watch('selectedStatuses', () => this.applyFilter());
+          this.$watch('selectedStatusesByType', () => this.applyFilter());
           this.applyFilter();
         },
         dropdownLabel() {
+          const statusFiltered = this.selectedMediaTypes.some(
+            mediaType => this.hasStatusOptions(mediaType)
+              && !this.allStatusesSelectedForType(mediaType),
+          );
+          const statusMarker = statusFiltered ? ' ·' : '';
           if (this.allTypesSelected()) {
-            return 'All Types';
+            return `All Types${statusMarker}`;
           }
           if (this.selectedMediaTypes.length === 0) {
             return 'No Types';
@@ -355,9 +361,9 @@
             const selectedType = this.availableMediaTypes.find(
               type => type.value === this.selectedMediaTypes[0],
             );
-            return selectedType ? selectedType.label : '1 Type';
+            return selectedType ? `${selectedType.label}${statusMarker}` : '1 Type';
           }
-          return `${this.selectedMediaTypes.length} Types`;
+          return `${this.selectedMediaTypes.length} Types${statusMarker}`;
         },
         allTypesSelected() {
           return (
@@ -393,45 +399,55 @@
           this.selectedMediaTypes = [];
           this.applyFilter();
         },
-        statusDropdownLabel() {
-          if (this.allStatusesSelected()) {
-            return 'All Statuses';
-          }
-          if (this.selectedStatuses.length === 0) {
-            return 'No Statuses';
-          }
-          if (this.selectedStatuses.length === 1) {
-            const selectedStatus = this.availableStatuses.find(
-              status => status.value === this.selectedStatuses[0],
-            );
-            return selectedStatus ? selectedStatus.label : '1 Status';
-          }
-          return `${this.selectedStatuses.length} Statuses`;
-        },
-        allStatusesSelected() {
+        hasStatusOptions(mediaType) {
           return (
-            this.availableStatuses.length > 0
-            && this.selectedStatuses.length === this.availableStatuses.length
+            Array.isArray(this.availableStatusesByType[mediaType])
+            && this.availableStatusesByType[mediaType].length > 0
           );
         },
-        isStatusSelected(status) {
-          return this.selectedStatuses.includes(status);
+        openStatusSubmenu(mediaType) {
+          if (this.hasStatusOptions(mediaType)) {
+            this.statusSubmenuType = mediaType;
+          }
         },
-        toggleStatus(status) {
-          if (this.isStatusSelected(status)) {
-            this.selectedStatuses = this.selectedStatuses.filter(
+        closeStatusSubmenu() {
+          this.statusSubmenuType = null;
+        },
+        submenuTypeLabel() {
+          const selectedType = this.availableMediaTypes.find(
+            type => type.value === this.statusSubmenuType,
+          );
+          return selectedType ? selectedType.label : '';
+        },
+        isStatusSelected(mediaType, status) {
+          return (this.selectedStatusesByType[mediaType] || []).includes(status);
+        },
+        toggleStatus(mediaType, status) {
+          const selectedStatuses = this.selectedStatusesByType[mediaType] || [];
+          if (this.isStatusSelected(mediaType, status)) {
+            this.selectedStatusesByType[mediaType] = selectedStatuses.filter(
               selectedStatus => selectedStatus !== status,
             );
           } else {
-            this.selectedStatuses = [...this.selectedStatuses, status];
+            this.selectedStatusesByType[mediaType] = [...selectedStatuses, status];
           }
           this.applyFilter();
         },
-        toggleAllStatuses() {
-          if (this.allStatusesSelected()) {
-            this.selectedStatuses = [];
+        allStatusesSelectedForType(mediaType) {
+          const availableStatuses = this.availableStatusesByType[mediaType] || [];
+          const selectedStatuses = this.selectedStatusesByType[mediaType] || [];
+          return (
+            availableStatuses.length > 0
+            && selectedStatuses.length === availableStatuses.length
+          );
+        },
+        toggleAllStatusesForType(mediaType) {
+          if (this.allStatusesSelectedForType(mediaType)) {
+            this.selectedStatusesByType[mediaType] = [];
           } else {
-            this.selectedStatuses = this.availableStatuses.map(status => status.value);
+            this.selectedStatusesByType[mediaType] = (
+              this.availableStatusesByType[mediaType] || []
+            ).map(status => status.value);
           }
           this.applyFilter();
         },
@@ -446,15 +462,15 @@
         },
         filterReleaseMarkup(html) {
           const selectedTypes = new Set(this.selectedMediaTypes);
-          const selectedStatuses = new Set(this.selectedStatuses);
           const container = document.createElement('div');
           container.innerHTML = html;
 
           container.querySelectorAll('[data-release-media-type]').forEach(el => {
             const type = el.dataset.releaseMediaType;
             const status = el.dataset.releaseStatus;
+            const selectedForType = this.selectedStatusesByType[type] || [];
             const typeHidden = !selectedTypes.has(type);
-            const statusHidden = status && !selectedStatuses.has(status);
+            const statusHidden = status && !selectedForType.includes(status);
             if (typeHidden || statusHidden) {
               el.remove();
             }

@@ -1183,7 +1183,26 @@ def carousel_media(media_type, media_id, season_number=None, language=None):
             params=params,
         )
     except requests.exceptions.HTTPError as error:
-        handle_error(error)
+        try:
+            handle_error(error)
+        except services.ProviderAPIError as provider_error:
+            if provider_error.status_code != requests.codes.not_found:
+                raise
+            # A 404 here just means this season/movie has no TMDB entry (or
+            # was removed) - expected, not worth a warning. Cache the empty
+            # result so repeated fragment loads don't keep re-hitting TMDB.
+            logger.info(
+                "TMDB carousel source not found, treating as empty: %s",
+                provider_error,
+                extra={
+                    "media_type": media_type,
+                    "media_id": media_id,
+                    "season_number": season_number,
+                },
+            )
+            data = {"video": None, "photos": []}
+            cache.set(cache_key, data, CAROUSEL_CACHE_TTL_ABSENT)
+            return data
 
     data = {
         "video": _parse_carousel_video(response),

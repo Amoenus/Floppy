@@ -144,6 +144,7 @@ from app.tasks_credits import (  # noqa: E402
     populate_credits_backfill_queue,
     populate_credits_data_for_items,
 )
+from app.tasks_db_backup import write_database_snapshot  # noqa: E402
 from app.tasks_discover import (  # noqa: E402
     refresh_discover_profiles,
     refresh_discover_rows,
@@ -1225,4 +1226,5 @@ __all__ = [
     "warm_discover_api_cache",
     "warm_discover_startup_tabs",
     "warm_history_day_cache_coverage",
+    "write_database_snapshot",
 ]
