@@ -19,8 +19,8 @@
          plexLibrariesLoading: {% if plex_account %}true{% else %}false{% endif %},
          plexLiveError: '',
          plexWatchlistSyncEnabled: {% if plex_account and plex_account.watchlist_sync_enabled %}true{% else %}false{% endif %},
-         plexLibrary: 'all',
-         plexContentKind: 'auto',
+         plexLibraries: ['all'],
+         plexContentKinds: {},
          activeModal: null,
          openModal(slug) {
            this.activeModal = slug;
@@ -50,6 +50,9 @@
          },
          plexSubmitDisabled() {
            if (this.plexConnectionState === 'error') {
+             return true;
+           }
+           if (!this.isWatchlistMode() && !this.plexLibraries.length) {
              return true;
            }
            return !this.isWatchlistMode() && !this.hasPlexSections;
@@ -87,27 +90,65 @@
            }
            return 'Disconnected';
          },
-         selectedPlexSection() {
-           return this.plexSections.find(
-             (section) => `${section.machine_identifier}::${section.id}` === this.plexLibrary
-           ) || null;
+         libraryKey(section) {
+           return `${section.machine_identifier}::${section.id}`;
          },
-         showPlexContentKind() {
-           const section = this.selectedPlexSection();
-           return !!(section && section.is_music);
+         isAllSelected() {
+           return this.plexLibraries.includes('all');
          },
-         syncPlexContentKind() {
-           const section = this.selectedPlexSection();
-           if (!section || !section.is_music) {
-             this.plexContentKind = 'auto';
+         isLibrarySelected(key) {
+           return this.plexLibraries.includes(key);
+         },
+         defaultContentKind(section) {
+           if (section.content_kind && section.content_kind !== 'auto') {
+             return section.content_kind;
+           }
+           return section.audiobook_hint ? 'audiobook' : 'auto';
+         },
+         selectAllLibraries() {
+           this.plexLibraries = ['all'];
+           this.plexContentKinds = {};
+         },
+         toggleLibrary(section) {
+           const key = this.libraryKey(section);
+           if (this.isAllSelected()) {
+             this.plexLibraries = [key];
+           } else if (this.isLibrarySelected(key)) {
+             this.plexLibraries = this.plexLibraries.filter((value) => value !== key);
+             delete this.plexContentKinds[key];
+             return;
+           } else {
+             this.plexLibraries = [...this.plexLibraries, key];
+           }
+           if (section.is_music && !(key in this.plexContentKinds)) {
+             this.plexContentKinds[key] = this.defaultContentKind(section);
+           }
+         },
+         selectedLibraryLabel() {
+           if (this.isAllSelected()) {
+             return 'All libraries';
+           }
+           if (!this.plexLibraries.length) {
+             return 'No libraries selected';
+           }
+           if (this.plexLibraries.length === 1) {
+             const section = this.plexSections.find(
+               (candidate) => this.libraryKey(candidate) === this.plexLibraries[0]
+             );
+             return section ? this.plexLibraryLabel(section) : this.plexLibraries[0];
+           }
+           return `${this.plexLibraries.length} libraries selected`;
+         },
+         reconcileLibrarySelection() {
+           if (this.isAllSelected()) {
              return;
            }
-           if (section.content_kind && section.content_kind !== 'auto') {
-             this.plexContentKind = section.content_kind;
-           } else if (section.audiobook_hint) {
-             this.plexContentKind = 'audiobook';
-           } else {
-             this.plexContentKind = 'auto';
+           const availableKeys = new Set(this.plexSections.map((section) => this.libraryKey(section)));
+           this.plexLibraries = this.plexLibraries.filter((key) => availableKeys.has(key));
+           for (const key of Object.keys(this.plexContentKinds)) {
+             if (!availableKeys.has(key)) {
+               delete this.plexContentKinds[key];
+             }
            }
          },
          plexLibraryLabel(section) {
@@ -180,7 +221,7 @@
 
              if (Array.isArray(data.sections)) {
                this.plexSections = data.sections;
-               this.syncPlexContentKind();
+               this.reconcileLibrarySelection();
                this.hasPlexSections = data.sections.length > 0;
              }
 
@@ -751,22 +792,82 @@
               <input type="hidden" name="mode" x-model="importMode">
               <input type="hidden" name="next" value="import_data">
 
-              <div x-show="!isWatchlistMode()">
-                <label class="block text-sm text-[var(--color-text-secondary)] mb-2">Library</label>
-                <div class="relative">
-                  <select name="library"
-                          x-model="plexLibrary"
-                          @change="syncPlexContentKind()"
-                          class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none disabled:opacity-50"
+              <div x-show="!isWatchlistMode()" x-data="{ dropdownOpen: false, contentKindSubmenu: null }">
+                <label class="block text-sm text-[var(--color-text-secondary)] mb-2">Libraries</label>
+                <div class="relative" @click.outside="dropdownOpen = false; contentKindSubmenu = null">
+                  <button type="button"
+                          class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                          @click="contentKindSubmenu = null; dropdownOpen = !dropdownOpen"
+                          :aria-expanded="dropdownOpen"
                           :disabled="plexSubmitDisabled()">
-                    <option value="all">All libraries</option>
-                    <template x-for="section in plexSections"
-                              :key="`${section.machine_identifier}::${section.id}`">
-                      <option :value="`${section.machine_identifier}::${section.id}`"
-                              x-text="plexLibraryLabel(section)"></option>
-                    </template>
-                  </select>
-                  {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
+                    <span class="block min-w-0 truncate" x-text="selectedLibraryLabel()"></span>
+                    {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 ml-auto shrink-0 text-[var(--color-text-muted)]" %}
+                  </button>
+
+                  <div x-cloak
+                       x-show="dropdownOpen"
+                       x-transition:enter="transition ease-out duration-100"
+                       x-transition:enter-start="transform opacity-0 scale-95"
+                       x-transition:enter-end="transform opacity-100 scale-100"
+                       x-transition:leave="transition ease-in duration-75"
+                       x-transition:leave-start="transform opacity-100 scale-100"
+                       x-transition:leave-end="transform opacity-0 scale-95"
+                       class="absolute left-0 mt-2 w-full rounded-md bg-[var(--color-surface-strong)] border border-gray-700 shadow-lg overflow-hidden z-40">
+                    <div x-show="!contentKindSubmenu" x-cloak>
+                      <div class="max-h-72 overflow-y-auto">
+                        <button type="button"
+                                class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                                @click="selectAllLibraries()">
+                          <span class="block min-w-0 truncate">All libraries</span>
+                          <span class="ml-auto" x-show="isAllSelected()">
+                            {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                          </span>
+                        </button>
+                        <template x-for="section in plexSections" :key="libraryKey(section)">
+                          <div class="flex items-center w-full text-sm text-[var(--color-text-secondary)] border-t border-gray-700/60">
+                            <button type="button"
+                                    class="flex items-center flex-1 min-w-0 px-4 py-2 text-left transition-colors cursor-pointer hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                                    @click="toggleLibrary(section)">
+                              <span class="block min-w-0 truncate" x-text="plexLibraryLabel(section)"></span>
+                              <span class="ml-auto" x-show="isLibrarySelected(libraryKey(section))">
+                                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                              </span>
+                            </button>
+                            <button type="button"
+                                    class="shrink-0 p-2 mr-2 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                                    x-show="section.is_music && isLibrarySelected(libraryKey(section))"
+                                    x-cloak
+                                    @click="contentKindSubmenu = libraryKey(section)"
+                                    :aria-label="`Set content type for ${plexLibraryLabel(section)}`">
+                              {% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}
+                            </button>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                    <div x-show="!!contentKindSubmenu" x-cloak>
+                      <div class="flex items-center gap-2 px-2 py-1 border-b border-gray-700">
+                        <button type="button"
+                                class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                                @click="contentKindSubmenu = null"
+                                aria-label="Back to libraries">
+                          {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
+                        </button>
+                        <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Content Type</div>
+                      </div>
+                      <template x-for="kind in [['auto', 'Auto-detect'], ['music', 'Music'], ['audiobook', 'Audiobooks']]"
+                                :key="kind[0]">
+                        <button type="button"
+                                class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                                @click="plexContentKinds[contentKindSubmenu] = kind[0]">
+                          <span x-text="kind[1]"></span>
+                          <span class="ml-auto" x-show="plexContentKinds[contentKindSubmenu] === kind[0]">
+                            {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                          </span>
+                        </button>
+                      </template>
+                    </div>
+                  </div>
                 </div>
                 <p x-cloak x-show="!plexSections.length && plexLibrariesLoading" class="text-xs text-[var(--color-warning-text)] mt-1">
                   Checking Plex libraries...
@@ -781,27 +882,19 @@
                    class="text-xs text-[var(--color-text-muted)] mt-1">
                   No libraries detected yet. Reconnect Plex to refresh.
                 </p>
-              </div>
-
-              <div x-cloak x-show="!isWatchlistMode() && showPlexContentKind()">
-                <label class="block text-sm text-[var(--color-text-secondary)] mb-2">Content type</label>
-                <div class="relative">
-                  <select name="content_kind"
-                          x-model="plexContentKind"
-                          class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none disabled:opacity-50"
-                          :disabled="plexSubmitDisabled()">
-                    <option value="auto">Auto-detect</option>
-                    <option value="music">Music</option>
-                    <option value="audiobook">Audiobooks</option>
-                  </select>
-                  {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
-                </div>
                 <p class="text-xs text-[var(--color-text-muted)] mt-1">
                   Audiobooks kept in a Plex Music library are tracked as books instead of
-                  music. Auto-detect decides per album; choose Audiobooks to import the whole
-                  library as books.
+                  music. Select a music library above and use its arrow to choose Auto-detect,
+                  Music, or Audiobooks.
                 </p>
               </div>
+
+              <template x-for="lib in plexLibraries" :key="`library-${lib}`">
+                <input type="hidden" name="library" :value="lib">
+              </template>
+              <template x-for="[key, kind] in Object.entries(plexContentKinds)" :key="`content-kind-${key}`">
+                <input type="hidden" name="library_content_kind" :value="`${key}::${kind}`">
+              </template>
 
               <div class="flex w-full">
                 <input name="plex_usernames"

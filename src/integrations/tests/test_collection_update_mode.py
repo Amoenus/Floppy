@@ -123,3 +123,41 @@ class CollectionUpdateModeTest(TestCase):
             entry = CollectionEntry.objects.get(user=self.user, item=self.item)
             self.assertEqual(entry.resolution, "1080p")
             self.assertEqual(entry.audio_codec, "DTS")
+
+    @patch("integrations.tasks._plex_collection.plex_api.list_resources")
+    @patch("integrations.tasks._plex_collection.plex_api.fetch_section_all_items")
+    def test_update_collection_metadata_from_plex_filters_to_selected_libraries(
+        self,
+        mock_fetch_section_all_items,
+        mock_list_resources,
+    ):
+        """A multi-library selection only scans the chosen sections."""
+        self.plex_account.sections = [
+            *self.plex_account.sections,
+            {
+                "id": "2",
+                "title": "TV Shows",
+                "type": "show",
+                "uri": "http://plex.example.com",
+                "machine_identifier": "test_machine",
+            },
+        ]
+        self.plex_account.save(update_fields=["sections"])
+
+        mock_list_resources.return_value = [
+            {
+                "machine_identifier": "test_machine",
+                "connections": [{"uri": "http://plex.example.com"}],
+            }
+        ]
+        mock_fetch_section_all_items.return_value = ([], 0)
+
+        update_collection_metadata_from_plex(
+            library=["test_machine::1"],
+            user_id=self.user.id,
+        )
+
+        # Only the "Movies" section (id 1) is selected; the added "TV Shows"
+        # section (id 2) must never be scanned.
+        mock_fetch_section_all_items.assert_called_once()
+        self.assertEqual(mock_fetch_section_all_items.call_args.args[2], "1")

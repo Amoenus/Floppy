@@ -815,7 +815,7 @@ def plex_callback(request):
     if return_to:
         # Arrived from the setup wizard: queue a sensible default import
         # rather than requiring a second visit to pick a library/mode.
-        tasks.import_plex.delay(user_id=request.user.id, mode="new", library="all")
+        tasks.import_plex.delay(user_id=request.user.id, mode="new", library=["all"])
 
     return _integration_redirect(request, connected_slug="plex", next_url=return_to)
 
@@ -830,19 +830,24 @@ def plex_disconnect(request):
     return redirect("import_data")
 
 
-def _save_plex_content_kind(plex_account, library, content_kind):
-    """Persist how a Plex library should be imported (auto/music/audiobook).
+def _save_plex_content_kind(plex_account, library_content_kinds):
+    """Persist per-library content-kind choices (auto/music/audiobook).
 
     Stored on the account rather than passed per-run so scheduled imports and
-    the live webhook honor the same choice.
+    the live webhook honor the same choice. Each entry is a
+    "machine_identifier::section_id::content_kind" string.
     """
-    if not content_kind or library in (None, "", "all"):
-        return
-    try:
-        machine_identifier, section_id = library.split("::", 1)
-    except ValueError:
-        return
-    if plex_account.set_content_kind(machine_identifier, section_id, content_kind):
+    changed = False
+    for entry in library_content_kinds:
+        try:
+            machine_identifier, section_id, content_kind = entry.split("::", 2)
+        except ValueError:
+            continue
+        changed = (
+            plex_account.set_content_kind(machine_identifier, section_id, content_kind)
+            or changed
+        )
+    if changed:
         plex_account.save(update_fields=["section_settings"])
 
 
@@ -854,15 +859,15 @@ def import_plex(request):
         messages.error(request, "Connect Plex before importing.")
         return redirect("import_data")
 
-    library = request.POST.get("library") or "all"
+    library = request.POST.getlist("library") or ["all"]
     mode = request.POST.get("mode", "new")
     frequency = request.POST.get("frequency", "once")
     import_time = request.POST.get("time", "00:00")
     raw_usernames = request.POST.get("plex_usernames", "")
-    content_kind = request.POST.get("content_kind")
+    library_content_kinds = request.POST.getlist("library_content_kind")
 
     _save_plex_usernames(request.user, raw_usernames)
-    _save_plex_content_kind(plex_account, library, content_kind)
+    _save_plex_content_kind(plex_account, library_content_kinds)
 
     if mode == "watchlist":
         _ensure_plex_watchlist_schedule(request.user, plex_account)

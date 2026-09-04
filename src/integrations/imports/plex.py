@@ -72,7 +72,9 @@ class PlexHistoryImporter:
         self.user = user
         self.account = account
         self.mode = mode
-        self.library = library
+        # Accept a bare string for backward compatibility with already-scheduled
+        # PeriodicTask rows (and existing callers) predating multi-library support.
+        self.library = [library] if isinstance(library, str) else library
         self.fast_mode = fast_mode
         self.processor = PlexWebhookProcessor()
         self.existing_media = helpers.get_existing_media(user)
@@ -391,20 +393,17 @@ class PlexHistoryImporter:
             self.account.sections_refreshed_at = timezone.now()
             self.account.save(update_fields=["sections", "sections_refreshed_at"])
 
-        if self.library == "all":
+        if "all" in self.library:
             return sections
 
-        try:
-            machine_id, section_id = self.library.split("::", 1)
-        except ValueError:
-            msg = "Invalid Plex library selection."
-            raise MediaImportError(msg) from None
-
+        target_keys = set(self.library)
         filtered = [
             section
             for section in sections
-            if section.get("machine_identifier") == machine_id
-            and str(section.get("id")) == str(section_id)
+            if self.account.library_key(
+                section.get("machine_identifier"), str(section.get("id"))
+            )
+            in target_keys
         ]
 
         if not filtered:
