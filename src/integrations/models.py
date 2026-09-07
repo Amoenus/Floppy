@@ -1264,9 +1264,11 @@ class IntegrationToken(models.Model):
 
     def is_valid(self) -> bool:
         """Return True if the token is not revoked and not expired."""
-        return self.revoked_at is None and (
-            self.expires_at is None or self.expires_at > timezone.now()
-        )
+        return self.revoked_at is None and not self.is_expired()
+
+    def is_expired(self) -> bool:
+        """Return True if the token has passed its expiry."""
+        return self.expires_at is not None and self.expires_at <= timezone.now()
 
     def has_scope(self, scope: str) -> bool:
         """Return True if '*' is in scopes or the specific scope is in scopes."""

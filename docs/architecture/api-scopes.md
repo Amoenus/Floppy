@@ -79,6 +79,23 @@ Do not describe Floppy as fully scope-gated until those are addressed.
 | `exports:read` | Download exports |
 | `user:read` / `user:write` | Preferences, sidebar, notification settings |
 
+## Creating a token
+
+Settings → Integrations → **App tokens** → *Create an app token*.
+
+The form takes a name, an optional expiry, and a permission set pre-ticked with
+the tracking preset. The secret is shown once on the redirect and never again —
+Floppy stores only the SHA-256 digest, so there is nothing to show later. The
+list afterwards identifies each token by its `flp_` prefix, its permissions,
+when it was created, and when it was last used.
+
+Revoking one token leaves the others working. That is the point of named
+tokens: the account token at the top of the same page is all-or-nothing, and
+rotating it breaks every webhook and integration at once.
+
+An expired token stays in the list, labelled `Expired`, rather than
+disappearing — otherwise an app stops working with no visible reason.
+
 ## The tracking preset
 
 A token minted without an explicit scope list gets

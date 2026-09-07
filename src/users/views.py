@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import uuid
+from datetime import timedelta
 from io import BytesIO
 from itertools import batched
 from pathlib import Path
@@ -27,6 +28,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from django_celery_beat.models import PeriodicTask
 
+from api import scopes as api_scopes
 from app import helpers as app_helpers
 from app import history_cache, image_cache, statistics_cache
 from app.discover.feeds import get_external_row_definitions
@@ -48,7 +50,9 @@ from app.templatetags import app_tags
 from integrations import exports, plex, stremio_catalog, tasks
 from integrations.imports import trakt as trakt_imports
 from integrations.models import (
+    DEFAULT_INTEGRATION_SCOPES,
     ImportRun,
+    IntegrationToken,
     LastFMAccount,
     PlexAccount,
     PlexWebhookShare,
@@ -104,6 +108,13 @@ except ModuleNotFoundError:  # pragma: no cover - optional dependency guard
 
 
 logger = logging.getLogger(__name__)
+
+# Carries a freshly minted token secret across the create redirect, so a refresh
+# cannot mint a second token. The session backend is ``cached_db``, so the secret
+# does sit in the cache and session table for that one request cycle; it is
+# popped on the next render and the database only ever holds the digest.
+NEW_TOKEN_SESSION_KEY = "new_integration_token"  # noqa: S105 - session key, not a secret
+MAX_TOKEN_NAME_LENGTH = 255
 
 
 class CustomSignupView(SignupView):
@@ -1410,6 +1421,12 @@ def integrations(request):
             "jellyfin_pull_interval_minutes": tasks.JELLYFIN_PULL_INTERVAL_MINUTES,
             "seerr_global_webhook_enabled": bool(settings.SEERR_GLOBAL_WEBHOOK_SECRET),
             "stremio_catalog_readiness": stremio_catalog.catalog_readiness(user),
+            # Popped, not read: the secret is shown once and never again.
+            "new_integration_token": request.session.pop(
+                NEW_TOKEN_SESSION_KEY,
+                None,
+            ),
+            **integration_token_context(user),
         },
     )
 
@@ -2476,6 +2493,84 @@ def delete_export_schedule(request):
     except PeriodicTask.DoesNotExist:
         messages.error(request, "Backup schedule not found.")
     return redirect("export_data")
+
+
+def integration_token_context(user):
+    """Return the named-token context for the integrations page."""
+    return {
+        "integration_tokens": list(
+            IntegrationToken.objects.filter(user=user, revoked_at__isnull=True)
+            .order_by("-created_at"),
+        ),
+        "integration_scope_choices": [
+            {
+                "value": scope,
+                "description": description,
+                "default": scope in DEFAULT_INTEGRATION_SCOPES,
+            }
+            for scope, description in sorted(api_scopes.SCOPE_DESCRIPTIONS.items())
+        ],
+        "integration_tracking_preset_json": json.dumps(
+            list(DEFAULT_INTEGRATION_SCOPES),
+        ),
+    }
+
+
+@require_POST
+def create_integration_token(request):
+    """Mint a named, scoped API token and show its secret once."""
+    name = (request.POST.get("name") or "").strip()[:MAX_TOKEN_NAME_LENGTH]
+    if not name:
+        messages.error(request, "Give the token a name so you can recognise it later.")
+        return redirect("integrations")
+
+    requested = request.POST.getlist("scopes")
+    scopes = [scope for scope in requested if scope in api_scopes.ALL_SCOPES]
+    if not scopes:
+        messages.error(request, "Select at least one permission for the token.")
+        return redirect("integrations")
+
+    expires_at = None
+    raw_expiry = (request.POST.get("expires_in_days") or "").strip()
+    if raw_expiry:
+        try:
+            days = int(raw_expiry)
+        except ValueError:
+            messages.error(request, "Expiry must be a number of days.")
+            return redirect("integrations")
+        if days < 1:
+            messages.error(request, "Expiry must be at least one day.")
+            return redirect("integrations")
+        expires_at = timezone.now() + timedelta(days=days)
+
+    token, raw_token = IntegrationToken.generate(
+        user=request.user,
+        name=name,
+        scopes=scopes,
+        expires_at=expires_at,
+    )
+    # Never logged and never stored: the session is the one delivery channel.
+    request.session[NEW_TOKEN_SESSION_KEY] = {
+        "name": token.name,
+        "secret": raw_token,
+    }
+    messages.success(request, f"Created token '{token.name}'.")
+    return redirect("integrations")
+
+
+@require_POST
+def revoke_integration_token(request, token_id):
+    """Revoke one of the user's named tokens."""
+    token = get_object_or_404(
+        IntegrationToken,
+        pk=token_id,
+        user=request.user,
+        revoked_at__isnull=True,
+    )
+    token.revoked_at = timezone.now()
+    token.save(update_fields=["revoked_at"])
+    messages.success(request, f"Revoked token '{token.name}'.")
+    return redirect("integrations")
 
 
 @require_POST
