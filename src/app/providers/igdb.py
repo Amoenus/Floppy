@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from app import helpers
 from app.models import MediaTypes, Sources
-from app.providers import services
+from app.providers import credentials, services
 
 logger = logging.getLogger(__name__)
 base_url = "https://api.igdb.com/v4"
@@ -45,7 +45,7 @@ class ExternalGameSource(IntEnum):
     GAMEJOLT = 55
 
 
-def handle_error(error):
+def handle_error(error, user=None):
     """Handle IGDB API errors."""
     error_resp = error.response
     status_code = error_resp.status_code
@@ -56,7 +56,13 @@ def handle_error(error):
             "%s: Invalid access token, refreshing",
             Sources.IGDB.label,
         )
-        cache.delete(f"{Sources.IGDB.value}_access_token")
+        suffix = credentials.cache_suffix(
+            "igdb",
+            "client_id",
+            "client_secret",
+            user=user,
+        )
+        cache.delete(f"{Sources.IGDB.value}_access_token_{suffix}")
         return {"retry": True}
 
     try:
@@ -82,14 +88,16 @@ def handle_error(error):
     raise services.ProviderAPIError(Sources.IGDB.value, error)
 
 
-def get_access_token():
+def get_access_token(user=None):
     """Return the access token for the IGDB API."""
-    access_token = cache.get(f"{Sources.IGDB.value}_access_token")
+    suffix = credentials.cache_suffix("igdb", "client_id", "client_secret", user=user)
+    cache_key = f"{Sources.IGDB.value}_access_token_{suffix}"
+    access_token = cache.get(cache_key)
     if access_token is None:
         url = "https://id.twitch.tv/oauth2/token"
         json = {
-            "client_id": settings.IGDB_ID,
-            "client_secret": settings.IGDB_SECRET,
+            "client_id": credentials.get("igdb", "client_id", user=user),
+            "client_secret": credentials.get("igdb", "client_secret", user=user),
             "grant_type": "client_credentials",
         }
 
@@ -105,7 +113,7 @@ def get_access_token():
 
         access_token = response["access_token"]
         cache.set(
-            f"{Sources.IGDB.value}_access_token",
+            cache_key,
             access_token,
             response["expires_in"] - 60,
         )  # 1 min buffer to avoid using an expired token
@@ -133,7 +141,7 @@ def external_game(external_id, source=ExternalGameSource.STEAM):
             f"external_game_source = {source};"
         )
         headers = {
-            "Client-ID": settings.IGDB_ID,
+            "Client-ID": credentials.get("igdb", "client_id"),
             "Authorization": f"Bearer {access_token}",
         }
 
@@ -196,7 +204,7 @@ def search(query, page):
         access_token = get_access_token()
         url = f"{base_url}/multiquery"
         headers = {
-            "Client-ID": settings.IGDB_ID,
+            "Client-ID": credentials.get("igdb", "client_id"),
             "Authorization": f"Bearer {access_token}",
         }
 
@@ -399,7 +407,7 @@ def game(media_id):
             f"where id = {media_id};"
         )
         headers = {
-            "Client-ID": settings.IGDB_ID,
+            "Client-ID": credentials.get("igdb", "client_id"),
             "Authorization": f"Bearer {access_token}",
         }
 
@@ -503,7 +511,7 @@ def company_profile(company_id):
             f"where id = {company_id};"
         )
         headers = {
-            "Client-ID": settings.IGDB_ID,
+            "Client-ID": credentials.get("igdb", "client_id"),
             "Authorization": f"Bearer {access_token}",
         }
 
@@ -630,7 +638,7 @@ def _fetch_games_by_ids(game_ids, *, access_token=None):
 
     access_token = access_token or get_access_token()
     headers = {
-        "Client-ID": settings.IGDB_ID,
+        "Client-ID": credentials.get("igdb", "client_id"),
         "Authorization": f"Bearer {access_token}",
     }
     game_rows = []

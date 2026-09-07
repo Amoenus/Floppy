@@ -414,3 +414,24 @@ class DiscoverWarmupMiddleware:
 
         accept = request.headers.get("Accept", "")
         return not accept or "text/html" in accept or "*/*" in accept
+
+
+class ProviderCredentialUserMiddleware:
+    """Publish the request's user so their personal provider keys apply.
+
+    Provider modules read credentials deep inside call chains that have no user
+    argument. Rather than thread one through ~150 signatures, the user is
+    published for the life of the request; Celery runs no middleware, so
+    background jobs keep resolving the instance key.
+    """
+
+    def __init__(self, get_response):
+        """Initialize the middleware."""
+        self.get_response = get_response
+
+    def __call__(self, request):
+        """Scope the request's user to provider credential lookups."""
+        from app.providers import credentials
+
+        with credentials.current_user_scope(getattr(request, "user", None)):
+            return self.get_response(request)

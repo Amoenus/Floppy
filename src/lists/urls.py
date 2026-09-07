@@ -99,6 +99,16 @@ urlpatterns = [
         name="trakt_lists_callback",
     ),
     path(
+        "lists/import/trakt/device",
+        views_trakt.trakt_lists_device_verify,
+        name="trakt_lists_device_verify",
+    ),
+    path(
+        "lists/import/trakt/device/poll",
+        views_trakt.trakt_lists_device_poll,
+        name="trakt_lists_device_poll",
+    ),
+    path(
         "lists/import/mdblist/connect",
         views_mdblist.mdblist_connect,
         name="mdblist_connect",

@@ -66,11 +66,16 @@ class GenericScrobbleProcessor(BaseWebhookProcessor):
         return payload.get("title") or payload.get("series_title")
 
     def _extract_external_ids(self, payload):
+        # `anidb` is optional and rides alongside the required franchise id.
+        # It lets `BaseWebhookProcessor._process_tv` resolve the exact MAL cour
+        # directly, the same way the Plex/HAMA path already does, instead of
+        # inferring one from a TVDB season and episode number.
         ids = payload.get("ids") or {}
         return {
             "tmdb_id": ids.get("tmdb"),
             "imdb_id": ids.get("imdb"),
             "tvdb_id": ids.get("tvdb"),
+            "anidb_id": ids.get("anidb"),
         }
 
     def _extract_season_episode_from_payload(self, payload):

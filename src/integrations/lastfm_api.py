@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from typing import Any
 
 import requests
-from django.conf import settings
+
+from app.providers import credentials
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ class LastFMRecentTracksResult:
 
 def _make_api_request(method: str, params: dict[str, Any]) -> dict[str, Any]:
     """Make a request to Last.fm API with rate limit handling."""
-    api_key = getattr(settings, "LASTFM_API_KEY", None)
+    api_key = credentials.get("lastfm", "api_key")
     if not api_key:
         msg = "LASTFM_API_KEY not configured in settings"
         raise LastFMAPIError(msg)

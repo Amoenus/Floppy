@@ -2430,8 +2430,13 @@ class PlexWebhookTests(TestCase):
         self.assertEqual(Movie.objects.count(), 1)
         self.assertEqual(Movie.objects.first().item.title, "Dummy Movie")
 
-    def test_repeated_watch(self):
-        """Test webhook handles repeated watches."""
+    def test_repeated_scrobble_is_one_play(self):
+        """Two identical scrobbles are one play, not a rewatch.
+
+        Neither payload carries a viewedAt, so both land on the same minute.
+        The episode path has skipped repeated webhook fires since #689; the
+        movie path used to create a second row unconditionally (#642).
+        """
         payload = {
             "event": "media.scrobble",
             "Account": {
@@ -2474,9 +2479,8 @@ class PlexWebhookTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         movie = Movie.objects.filter(item__media_id="603")
-        self.assertEqual(movie.count(), 2)
+        self.assertEqual(movie.count(), 1)
         self.assertEqual(movie[0].status, Status.COMPLETED.value)
-        self.assertEqual(movie[1].status, Status.COMPLETED.value)
 
     @patch("integrations.webhooks.plex.music_scrobble.record_music_playback")
     def test_music_play_event(self, mock_scrobble):

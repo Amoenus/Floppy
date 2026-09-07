@@ -386,6 +386,69 @@ class ProgressEditTV(TestCase):
             ).exists(),
         )
 
+    def test_progress_increase_resumes_a_paused_season(self):
+        """Quick update advances a paused season and resumes it (#634)."""
+        from app.templatetags import app_tags
+        from events.models import Event
+
+        for episode_number in (1, 2):
+            Event.objects.create(
+                item=self.item_season,
+                content_number=episode_number,
+                datetime=datetime.datetime.now(datetime.UTC),
+            )
+        Season.objects.filter(pk=self.season.pk).update(status=Status.PAUSED.value)
+
+        next_ep_url = app_tags.next_episode_url(self.item_tv, self.tv)
+        self.assertIn("/season/1/episode/2", next_ep_url)
+
+        self.client.post(
+            reverse(
+                "progress_edit",
+                kwargs={
+                    "media_type": MediaTypes.TV.value,
+                    "instance_id": self.tv.id,
+                },
+            ),
+            {"operation": "increase"},
+        )
+
+        self.assertTrue(
+            Episode.objects.filter(
+                related_season=self.season,
+                item__episode_number=2,
+            ).exists(),
+        )
+        # The fixture season has two episodes, so watching the second one both
+        # lifts the pause and completes the season. The point is that Paused
+        # did not survive the watch.
+        self.season.refresh_from_db()
+        self.assertNotEqual(self.season.status, Status.PAUSED.value)
+        self.assertEqual(self.season.status, Status.COMPLETED.value)
+
+    def test_watching_an_episode_does_not_resume_a_dropped_season(self):
+        """Dropped is the one status a new watch does not lift (#634)."""
+        Season.objects.filter(pk=self.season.pk).update(status=Status.DROPPED.value)
+        self.season.refresh_from_db()
+
+        item_ep = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Friends",
+            image="http://example.com/image.jpg",
+            season_number=1,
+            episode_number=2,
+        )
+        Episode.objects.create(
+            item=item_ep,
+            related_season=self.season,
+            end_date=datetime.datetime(2023, 6, 1, 0, 0, tzinfo=datetime.UTC),
+        )
+
+        self.season.refresh_from_db()
+        self.assertEqual(self.season.status, Status.DROPPED.value)
+
     def test_progress_decrease(self):
         """Test the decrease of progress for a TV show."""
         self.client.post(

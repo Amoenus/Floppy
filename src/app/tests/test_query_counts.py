@@ -65,10 +65,15 @@ TV_LIST_TIME_LEFT_SORT_MAX_QUERIES = (
     26  # pinned after Fix 4 bulk runtime load (was ~400+ per-season queries)
 )
 MOVIE_LIST_DEFAULT_SORT_MAX_QUERIES = 14
-ANIME_LIST_DEFAULT_SORT_MAX_QUERIES = 20
+ANIME_LIST_DEFAULT_SORT_MAX_QUERIES = (
+    22  # +2 over the pre-credential-registry pin: resolving the MAL/TMDB
+    # credentials reads the instance credential table and the viewer's personal
+    # one, each once per cold cache (an hour in production, every test here).
+)
 ANIME_LIST_GROUPED_MAX_QUERIES = (
-    22  # grouped (TV-backed) anime adds no per-show runtime queries (24 when broken);
-    # +4 from the Genres/Tags column Prefetch("item__item_tags") added in #457
+    23  # grouped (TV-backed) anime adds no per-show runtime queries (24 when broken);
+    # +4 from the Genres/Tags column Prefetch("item__item_tags") added in #457;
+    # +2 from the instance and personal provider-credential reads
 )
 MANGA_LIST_DEFAULT_SORT_MAX_QUERIES = 14
 MANGA_LIST_NO_STATUS_MAX_QUERIES = 18
@@ -78,7 +83,9 @@ GAME_LIST_START_DATE_SORT_MAX_QUERIES = (
     15  # pinned after the SQL pushdown fast path (#1004) — was scanning the
     # entire status-filtered library before slicing to the page
 )
-HOME_ROW_FRAGMENT_MAX_QUERIES = 122  # +2 from the Tags column Prefetch (#457)
+HOME_ROW_FRAGMENT_MAX_QUERIES = (
+    123  # +2 from the Tags column Prefetch (#457); +1 from the provider-credential read
+)
 CUSTOM_LIST_DETAIL_MAX_QUERIES = 33  # +3 from prefilled release-year metadata
 SEASON_PAGE_FIRST_VIEW_EPISODE_COUNT = 18
 SEASON_PAGE_FIRST_VIEW_MAX_QUERIES = 46  # +1 from the per-item metadata language override lookup (#1009)

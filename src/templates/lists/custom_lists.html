@@ -261,7 +261,11 @@
 
             <div>
               <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">
-                Redirect URI to add in Trakt:
+                {% if trakt_device_flow %}
+                  Redirect URI to add in Trakt (this instance uses Trakt's device code flow):
+                {% else %}
+                  Redirect URI to add in Trakt:
+                {% endif %}
               </label>
               <div class="bg-[var(--color-surface-strong)] rounded-lg p-4 relative">
                 <div class="flex items-center gap-2">
@@ -281,9 +285,16 @@
             </div>
 
             <div class="bg-blue-900/20 border border-blue-700/50 rounded-lg p-4 space-y-2">
-              <p class="text-sm text-blue-200">
-                <strong>Note:</strong> Each URI should be on a new line in Trakt's settings. No query strings, just the full URI path.
-              </p>
+              {% if trakt_device_flow %}
+                <p class="text-sm text-blue-200">
+                  <strong>Note:</strong> This instance is not served over HTTPS, and Trakt only accepts
+                  HTTPS redirects, so Floppy will show you a code to enter at trakt.tv/activate instead.
+                </p>
+              {% else %}
+                <p class="text-sm text-blue-200">
+                  <strong>Note:</strong> Each URI should be on a new line in Trakt's settings. No query strings, just the full URI path.
+                </p>
+              {% endif %}
               <p class="text-sm text-blue-200">
                 After creating your application, click <strong>"Save"</strong> on Trakt to store your settings.
               </p>

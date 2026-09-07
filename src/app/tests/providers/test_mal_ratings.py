@@ -11,6 +11,9 @@ from app.providers.services import ProviderAPIError
 
 
 class MalRatingProviderTests(SimpleTestCase):
+    # Provider credentials resolve through the database (Settings > Metadata).
+    databases = {"default"}
+
     def setUp(self):
         cache.clear()
 

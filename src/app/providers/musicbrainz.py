@@ -14,7 +14,7 @@ from django.core.cache import cache
 from app import helpers
 from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources
-from app.providers import services
+from app.providers import credentials, services
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +178,7 @@ def get_lastfm_bio(mbid):
     Returns the bio text, or None if unavailable (no API key configured,
     artist not found, empty bio, or a request error).
     """
-    api_key = getattr(settings, "LASTFM_API_KEY", None)
+    api_key = credentials.get("lastfm", "api_key")
     if not api_key or not mbid:
         return None
 

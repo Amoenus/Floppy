@@ -14,11 +14,7 @@ from django.utils import timezone
 from app import statistics as stats
 from app.metadata_utils import ANIME_SUPPLEMENT_GENRE, genre_list_has_name
 from app.models import MediaTypes, Sources
-
-# Partial-init safe: all of these are defined in statistics_cache before the
-# re-export block, so they exist on the partial module object when this module
-# is first imported (which happens at the bottom of statistics_cache.py).
-from app.statistics_cache import (
+from app.statistics_day_cache import (
     STATISTICS_DAY_CACHE_TIMEOUT,
     _day_cache_key,
     _get_history_version,

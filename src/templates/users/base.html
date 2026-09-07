@@ -60,6 +60,14 @@
               <span>Integrations</span>
             </a>
 
+            {% url 'metadata_settings' as metadata_url %}
+            <a href="{{ metadata_url }}"
+               {% if request.path == metadata_url %}aria-current="page"{% endif %}
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == metadata_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+              {% include "app/icons/key.svg" with classes="w-5 h-5" %}
+              <span>Metadata</span>
+            </a>
+
             {% url 'rss_settings' as rss_url %}
             <a href="{{ rss_url }}"
                {% if request.path == rss_url %}aria-current="page"{% endif %}

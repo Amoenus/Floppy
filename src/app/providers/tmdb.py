@@ -12,7 +12,7 @@ from django.utils.html import strip_tags
 from app import helpers
 from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources
-from app.providers import services
+from app.providers import credentials, services
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ CAROUSEL_CACHE_TTL_ABSENT = 60 * 60 * 24
 def base_params(language=None):
     """Return the base TMDB request params for the given (or default) language."""
     return {
-        "api_key": settings.TMDB_API,
+        "api_key": credentials.get("tmdb", "api_key"),
         "language": language or settings.TMDB_LANG,
     }
 

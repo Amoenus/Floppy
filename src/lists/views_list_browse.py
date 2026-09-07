@@ -19,6 +19,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
 from app import helpers
+from integrations.imports import trakt as trakt_imports
 from integrations.models import MDBListAccount, TraktAccount
 from lists.forms import CustomListForm
 from lists.models import CustomList, CustomListItem
@@ -282,7 +283,12 @@ def lists(request):
         user=request.user,
         available_tags=available_tags,
     )
+    # Trakt refuses non-HTTPS redirect URIs, so this instance may only be able to
+    # connect through the device code flow, which registers the OOB value (#681).
     trakt_redirect_uri = request.build_absolute_uri(reverse("trakt_lists_callback"))
+    trakt_device_flow = not helpers.supports_oauth_redirect(trakt_redirect_uri)
+    if trakt_device_flow:
+        trakt_redirect_uri = trakt_imports.TRAKT_OOB_REDIRECT_URI
     trakt_account = TraktAccount.objects.filter(user=request.user).first()
     mdblist_account = MDBListAccount.objects.filter(user=request.user).first()
 
@@ -298,6 +304,7 @@ def lists(request):
             "media_types": enabled_media_types,
             "current_media_type": selected_media_type,
             "trakt_redirect_uri": trakt_redirect_uri,
+            "trakt_device_flow": trakt_device_flow,
             "trakt_account": trakt_account,
             "trakt_has_credentials": bool(
                 trakt_account and trakt_account.is_configured

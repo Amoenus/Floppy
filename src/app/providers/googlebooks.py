@@ -9,7 +9,7 @@ from django.core.cache import cache
 
 from app import helpers
 from app.models import MediaTypes, Sources
-from app.providers import services
+from app.providers import credentials, services
 
 BASE_URL = "https://www.googleapis.com/books/v1/volumes"
 IMAGE_LINK_KEYS = (
@@ -25,7 +25,7 @@ YEAR_RE = re.compile(r"\b(\d{4})\b")
 
 def enabled():
     """Return whether the instance has a Google Books API key."""
-    return bool(settings.GOOGLE_BOOKS_API_KEY)
+    return credentials.is_configured("googlebooks")
 
 
 def handle_error(error):
@@ -33,7 +33,7 @@ def handle_error(error):
     raise services.ProviderAPIError(Sources.GOOGLEBOOKS.value, error)
 
 
-def search(query, page, language=None):
+def search(query, page, language=None, user=None):
     """Search Google Books volumes."""
     language_key = language or "all"
     cache_key = (
@@ -48,7 +48,7 @@ def search(query, page, language=None):
             "startIndex": max(0, (page - 1) * settings.PER_PAGE),
             "maxResults": min(settings.PER_PAGE, 40),
             "printType": "books",
-            "key": settings.GOOGLE_BOOKS_API_KEY,
+            "key": credentials.get("googlebooks", "api_key", user=user),
         }
         if language:
             params["langRestrict"] = language
@@ -79,7 +79,7 @@ def search(query, page, language=None):
     return data
 
 
-def book(media_id):
+def book(media_id, user=None):
     """Return normalized metadata for a Google Books volume."""
     cache_key = f"{Sources.GOOGLEBOOKS.value}_{MediaTypes.BOOK.value}_{media_id}"
     data = cache.get(cache_key)
@@ -90,7 +90,7 @@ def book(media_id):
                 Sources.GOOGLEBOOKS.value,
                 "GET",
                 f"{BASE_URL}/{media_id}",
-                params={"key": settings.GOOGLE_BOOKS_API_KEY},
+                params={"key": credentials.get("googlebooks", "api_key", user=user)},
             )
         except requests.RequestException as error:
             handle_error(error)

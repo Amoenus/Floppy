@@ -93,6 +93,10 @@ SOURCES_CONFIG = {
         "name": "Storyteller",
         "logo": static("img/storyteller-logo.svg"),
     },
+    "koreader": {
+        "name": "KOReader",
+        "logo": static("img/koreader-logo.svg"),
+    },
     "stremio": {
         "name": "Stremio",
         "logo": static("img/stremio-logo.svg"),
@@ -112,6 +116,18 @@ SOURCES_CONFIG = {
     "koito": {
         "name": "Koito",
         "logo": static("img/koito-logo.svg"),
+    },
+    "tmdb": {
+        "name": "TMDB",
+        "logo": static("img/tmdb-logo.png"),
+    },
+    "tvdb": {
+        "name": "TheTVDB",
+        "logo": static("img/tvdb-logo.png"),
+    },
+    "igdb": {
+        "name": "IGDB",
+        "logo": static("img/igdb-logo.png"),
     },
     "hardcover": {
         "name": "Hardcover",

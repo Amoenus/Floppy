@@ -516,6 +516,9 @@ class MusicBrainzWikipediaDataTests(SimpleTestCase):
 class MusicBrainzLastFmBioTests(SimpleTestCase):
     """Test get_lastfm_bio, the new primary (MBID-resolved) bio source."""
 
+    # The Last.fm key resolves through the database (Settings > Metadata).
+    databases = {"default"}
+
     @override_settings(LASTFM_API_KEY="")
     def test_returns_none_without_configured_api_key(self):
         with patch("app.providers.musicbrainz.requests.get") as mock_get:

@@ -8,7 +8,7 @@ from app.models import MediaTypes
 from integrations.imports import helpers as import_helpers
 from integrations.models import MDBListAccount
 from lists.imports import mdblist
-from lists.models import CustomList
+from lists.models import CustomList, CustomListItem
 
 
 def _make_account(user, **overrides):
@@ -150,6 +150,161 @@ class MDBListImportTests(TestCase):
         account = MDBListAccount.objects.get(user=self.user)
         self.assertIsNotNone(account.last_sync_at)
         self.assertFalse(account.connection_broken)
+
+    def _ordered_media_ids(self, custom_list):
+        """Return list media_ids in the order the list detail renders them."""
+        return list(
+            CustomListItem.objects.filter(custom_list=custom_list)
+            .order_by("date_added", "id")
+            .values_list("item__media_id", flat=True),
+        )
+
+    @staticmethod
+    def _entries(*tmdb_ids):
+        """Build movie entries in the given upstream order."""
+        return [
+            {
+                "title": f"Movie {tmdb_id}",
+                "mediatype": "movie",
+                "ids": {"tmdb": tmdb_id},
+            }
+            for tmdb_id in tmdb_ids
+        ]
+
+    @patch("lists.imports.mdblist._get_metadata")
+    @patch("lists.imports.mdblist._get_list_items")
+    @patch("lists.imports.mdblist._request")
+    def test_import_preserves_upstream_order(
+        self,
+        mock_request,
+        mock_get_list_items,
+        mock_get_metadata,
+    ):
+        """A first import must keep MDBList's ranking, not hash order."""
+        _make_account(self.user)
+        mock_request.return_value = [{"id": 11, "name": "Up Next"}]
+        mock_get_metadata.side_effect = lambda _media_type, _tmdb_id, title: {
+            "title": title,
+            "image": "http://example.com/img.jpg",
+        }
+        mock_get_list_items.return_value = self._entries(305, 101, 887, 42, 500)
+
+        mdblist.import_mdblist_lists(self.user)
+
+        imported = CustomList.objects.get(owner=self.user, source_id="11")
+        self.assertEqual(
+            self._ordered_media_ids(imported),
+            ["305", "101", "887", "42", "500"],
+        )
+        list_item_ids = list(
+            CustomListItem.objects.filter(custom_list=imported)
+            .order_by("date_added", "id")
+            .values_list("list_item_id", flat=True),
+        )
+        self.assertEqual(list_item_ids, sorted(list_item_ids))
+
+    @patch("lists.imports.mdblist._get_metadata")
+    @patch("lists.imports.mdblist._get_list_items")
+    @patch("lists.imports.mdblist._request")
+    def test_resync_mirrors_reranked_upstream_order(
+        self,
+        mock_request,
+        mock_get_list_items,
+        mock_get_metadata,
+    ):
+        """Re-ranking upstream must re-order locally without recreating rows."""
+        _make_account(self.user)
+        mock_request.return_value = [{"id": 11, "name": "Up Next"}]
+        mock_get_metadata.side_effect = lambda _media_type, _tmdb_id, title: {
+            "title": title,
+            "image": "http://example.com/img.jpg",
+        }
+
+        mock_get_list_items.return_value = self._entries(100, 101, 102)
+        mdblist.import_mdblist_lists(self.user)
+        imported = CustomList.objects.get(owner=self.user, source_id="11")
+        original_pks = set(
+            CustomListItem.objects.filter(custom_list=imported).values_list(
+                "pk",
+                flat=True,
+            ),
+        )
+
+        mock_get_list_items.return_value = self._entries(102, 100, 101)
+        mdblist.import_mdblist_lists(self.user)
+
+        self.assertEqual(self._ordered_media_ids(imported), ["102", "100", "101"])
+        self.assertEqual(
+            set(
+                CustomListItem.objects.filter(custom_list=imported).values_list(
+                    "pk",
+                    flat=True,
+                ),
+            ),
+            original_pks,
+        )
+
+    @patch("lists.imports.mdblist._get_metadata")
+    @patch("lists.imports.mdblist._get_list_items")
+    @patch("lists.imports.mdblist._request")
+    def test_resync_orders_added_and_removed_items(
+        self,
+        mock_request,
+        mock_get_list_items,
+        mock_get_metadata,
+    ):
+        """New items land at their upstream position, not appended at the end."""
+        _make_account(self.user)
+        mock_request.return_value = [{"id": 11, "name": "Up Next"}]
+        mock_get_metadata.side_effect = lambda _media_type, _tmdb_id, title: {
+            "title": title,
+            "image": "http://example.com/img.jpg",
+        }
+
+        mock_get_list_items.return_value = self._entries(100, 101, 102)
+        mdblist.import_mdblist_lists(self.user)
+        imported = CustomList.objects.get(owner=self.user, source_id="11")
+
+        # 100 dropped, 200 inserted in the middle.
+        mock_get_list_items.return_value = self._entries(101, 200, 102)
+        mdblist.import_mdblist_lists(self.user)
+
+        self.assertEqual(self._ordered_media_ids(imported), ["101", "200", "102"])
+
+    @patch("lists.imports.mdblist._get_metadata")
+    @patch("lists.imports.mdblist._get_list_items")
+    @patch("lists.imports.mdblist._request")
+    def test_noop_resync_does_not_rewrite_date_added(
+        self,
+        mock_request,
+        mock_get_list_items,
+        mock_get_metadata,
+    ):
+        """An unchanged list must not churn date_added on every sync."""
+        _make_account(self.user)
+        mock_request.return_value = [{"id": 11, "name": "Up Next"}]
+        mock_get_metadata.side_effect = lambda _media_type, _tmdb_id, title: {
+            "title": title,
+            "image": "http://example.com/img.jpg",
+        }
+        mock_get_list_items.return_value = self._entries(100, 101, 102)
+
+        mdblist.import_mdblist_lists(self.user)
+        imported = CustomList.objects.get(owner=self.user, source_id="11")
+        before = list(
+            CustomListItem.objects.filter(custom_list=imported)
+            .order_by("pk")
+            .values_list("date_added", flat=True),
+        )
+
+        mdblist.import_mdblist_lists(self.user)
+
+        after = list(
+            CustomListItem.objects.filter(custom_list=imported)
+            .order_by("pk")
+            .values_list("date_added", flat=True),
+        )
+        self.assertEqual(before, after)
 
     @patch("lists.imports.mdblist._get_metadata")
     @patch("lists.imports.mdblist._get_list_items")

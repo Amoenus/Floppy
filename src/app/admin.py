@@ -127,6 +127,8 @@ SpecialModels = [
     "DeletedMedia",
     "PlaybackProgress",
     "ApplicationSettings",
+    "InstanceProviderCredential",
+    "UserProviderCredential",
 ]
 for model in app_models:
     if (
@@ -423,3 +425,31 @@ admin.site.register(DiscoverFeedback, DiscoverFeedbackAdmin)
 admin.site.register(DiscoverApiCache, DiscoverApiCacheAdmin)
 admin.site.register(DiscoverTasteProfile, DiscoverTasteProfileAdmin)
 admin.site.register(DiscoverRowCache, DiscoverRowCacheAdmin)
+
+
+class ProviderCredentialAdmin(admin.ModelAdmin):
+    """Admin for stored provider credentials.
+
+    The encrypted value is deliberately not listed or searchable.
+    """
+
+    list_display = ["provider", "field", "updated_at"]
+    list_filter = ["provider"]
+    search_fields = ["provider", "field"]
+
+
+class UserProviderCredentialAdmin(ProviderCredentialAdmin):
+    """Admin for personal provider credentials."""
+
+    list_display = ["user", "provider", "field", "updated_at"]
+    search_fields = ["user__username", "provider", "field"]
+    raw_id_fields = ["user"]
+
+
+from app.models import (  # noqa: E402
+    InstanceProviderCredential,
+    UserProviderCredential,
+)
+
+admin.site.register(InstanceProviderCredential, ProviderCredentialAdmin)
+admin.site.register(UserProviderCredential, UserProviderCredentialAdmin)

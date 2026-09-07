@@ -18,9 +18,9 @@ from app import statistics as stats
 from app.models import Item, MediaTypes, Status
 from app.statistics_day_builder import (
     _day_boundary_datetime,
-    _day_cache_key,
     build_stats_for_day,
 )
+from app.statistics_day_cache import _day_cache_key
 from app.statistics_highlights import (
     _get_history_day_payload,
     _get_range_history_boundary_days,
@@ -437,6 +437,114 @@ def _empty_reading_consumption(unit_name="Unit", completion_label="Items Finishe
             "average_rating": None,
         },
     }
+
+
+def _build_platform_breakdown(game_data, collection_platform_map, item_info_map):
+    """Summarize game time using collection choices before unambiguous metadata."""
+    platform_hours = defaultdict(float)
+    platform_game_ids = defaultdict(set)
+    for item in game_data:
+        item_id = item.get("item_id")
+        if item_id is None:
+            continue
+        hours = item["hours"]
+        # Priority 1: collection entry resolution
+        platform = collection_platform_map.get(item_id)
+        # Priority 2: single IGDB platform from Item.platforms
+        if not platform:
+            raw_platforms = item_info_map.get(item_id, {}).get("platforms") or []
+            if isinstance(raw_platforms, list):
+                cleaned = [str(p).strip() for p in raw_platforms if str(p).strip()]
+            else:
+                cleaned = []
+            if len(cleaned) == 1:
+                platform = cleaned[0]
+        if not platform:
+            continue
+        platform_hours[platform] += hours
+        platform_game_ids[platform].add(item_id)
+
+    return sorted(
+        [
+            {
+                "name": name,
+                "games": len(platform_game_ids[name]),
+                "hours": hours,
+                "formatted_hours": helpers.minutes_to_hhmm(hours * 60),
+            }
+            for name, hours in platform_hours.items()
+        ],
+        key=lambda x: x["hours"],
+        reverse=True,
+    )
+
+
+def _build_weekday_hour_charts(weekday_hour_counts):
+    """Build per-type and combined heatmaps from already aggregated activity."""
+
+    def _build_weekday_hour_matrix(wh_counts):
+        return [[wh_counts[wd][h] for h in range(24)] for wd in range(7)]
+
+    all_wh: defaultdict = defaultdict(lambda: defaultdict(int))
+    for mt_counts in weekday_hour_counts.values():
+        for wd, hours in mt_counts.items():
+            for h, count in hours.items():
+                all_wh[wd][h] += count
+
+    weekday_hour_chart_data = {"all": _build_weekday_hour_matrix(all_wh)}
+    for mt, wh in weekday_hour_counts.items():
+        weekday_hour_chart_data[mt] = _build_weekday_hour_matrix(wh)
+
+    return weekday_hour_chart_data
+
+
+def _build_combined_hours_charts(day_minutes_by_type, hour_minutes):
+    """Prepare comparable hour charts for media measured in elapsed time."""
+    combined_hours_media_types = (
+        MediaTypes.MOVIE.value,
+        MediaTypes.TV.value,
+        MediaTypes.ANIME.value,
+        MediaTypes.MUSIC.value,
+        MediaTypes.PODCAST.value,
+    )
+
+    merged_day_minutes: defaultdict = defaultdict(float)
+    merged_hour_minutes: defaultdict = defaultdict(float)
+    per_type_hours_charts = {}
+    for media_type in combined_hours_media_types:
+        type_day_minutes = day_minutes_by_type.get(media_type, {})
+        type_hour_minutes = hour_minutes.get(media_type, {})
+        per_type_hours_charts[media_type] = _build_media_charts_from_counts(
+            type_day_minutes,
+            type_hour_minutes,
+            config.get_stats_color(media_type),
+            "Hours",
+            to_hours=True,
+        )
+        for day_str, minutes in type_day_minutes.items():
+            merged_day_minutes[day_str] += minutes or 0
+        for hour, minutes in type_hour_minutes.items():
+            merged_hour_minutes[hour] += minutes or 0
+
+    all_hours_chart = _build_media_charts_from_counts(
+        dict(merged_day_minutes),
+        dict(merged_hour_minutes),
+        "#6366f1",
+        "Hours",
+        to_hours=True,
+    )
+
+    combined_hours_charts = {
+        "by_month": {"all": all_hours_chart["by_month"]},
+        "by_weekday": {"all": all_hours_chart["by_weekday"]},
+        "by_time_of_day": {"all": all_hours_chart["by_time_of_day"]},
+    }
+    for media_type, chart in per_type_hours_charts.items():
+        combined_hours_charts["by_month"][media_type] = chart["by_month"]
+        combined_hours_charts["by_weekday"][media_type] = chart["by_weekday"]
+        combined_hours_charts["by_time_of_day"][media_type] = chart["by_time_of_day"]
+
+    return combined_hours_charts
 
 
 def _aggregate_statistics_from_days(
@@ -1547,42 +1655,8 @@ def _aggregate_statistics_from_days(
             }
         )
 
-    # --- Platform breakdown ---
-    platform_hours = defaultdict(float)
-    platform_game_ids = defaultdict(set)
-    for item in game_data:
-        item_id = item.get("item_id")
-        if item_id is None:
-            continue
-        hours = item["hours"]
-        # Priority 1: collection entry resolution
-        platform = collection_platform_map.get(item_id)
-        # Priority 2: single IGDB platform from Item.platforms
-        if not platform:
-            raw_platforms = item_info_map.get(item_id, {}).get("platforms") or []
-            if isinstance(raw_platforms, list):
-                cleaned = [str(p).strip() for p in raw_platforms if str(p).strip()]
-            else:
-                cleaned = []
-            if len(cleaned) == 1:
-                platform = cleaned[0]
-        if not platform:
-            continue
-        platform_hours[platform] += hours
-        platform_game_ids[platform].add(item_id)
-
-    platform_breakdown = sorted(
-        [
-            {
-                "name": name,
-                "games": len(platform_game_ids[name]),
-                "hours": hours,
-                "formatted_hours": helpers.minutes_to_hhmm(hours * 60),
-            }
-            for name, hours in platform_hours.items()
-        ],
-        key=lambda x: x["hours"],
-        reverse=True,
+    platform_breakdown = _build_platform_breakdown(
+        game_data, collection_platform_map, item_info_map
     )
 
     game_consumption = {
@@ -2018,62 +2092,11 @@ def _aggregate_statistics_from_days(
         )
     )
 
-    def _build_weekday_hour_matrix(wh_counts):
-        return [[wh_counts[wd][h] for h in range(24)] for wd in range(7)]
+    weekday_hour_chart_data = _build_weekday_hour_charts(weekday_hour_counts)
 
-    all_wh: defaultdict = defaultdict(lambda: defaultdict(int))
-    for mt_counts in weekday_hour_counts.values():
-        for wd, hours in mt_counts.items():
-            for h, count in hours.items():
-                all_wh[wd][h] += count
-
-    weekday_hour_chart_data = {"all": _build_weekday_hour_matrix(all_wh)}
-    for mt, wh in weekday_hour_counts.items():
-        weekday_hour_chart_data[mt] = _build_weekday_hour_matrix(wh)
-
-    combined_hours_media_types = (
-        MediaTypes.MOVIE.value,
-        MediaTypes.TV.value,
-        MediaTypes.ANIME.value,
-        MediaTypes.MUSIC.value,
-        MediaTypes.PODCAST.value,
+    combined_hours_charts = _build_combined_hours_charts(
+        day_minutes_by_type, hour_minutes
     )
-
-    merged_day_minutes: defaultdict = defaultdict(float)
-    merged_hour_minutes: defaultdict = defaultdict(float)
-    per_type_hours_charts = {}
-    for media_type in combined_hours_media_types:
-        type_day_minutes = day_minutes_by_type.get(media_type, {})
-        type_hour_minutes = hour_minutes.get(media_type, {})
-        per_type_hours_charts[media_type] = _build_media_charts_from_counts(
-            type_day_minutes,
-            type_hour_minutes,
-            config.get_stats_color(media_type),
-            "Hours",
-            to_hours=True,
-        )
-        for day_str, minutes in type_day_minutes.items():
-            merged_day_minutes[day_str] += minutes or 0
-        for hour, minutes in type_hour_minutes.items():
-            merged_hour_minutes[hour] += minutes or 0
-
-    all_hours_chart = _build_media_charts_from_counts(
-        dict(merged_day_minutes),
-        dict(merged_hour_minutes),
-        "#6366f1",
-        "Hours",
-        to_hours=True,
-    )
-
-    combined_hours_charts = {
-        "by_month": {"all": all_hours_chart["by_month"]},
-        "by_weekday": {"all": all_hours_chart["by_weekday"]},
-        "by_time_of_day": {"all": all_hours_chart["by_time_of_day"]},
-    }
-    for media_type, chart in per_type_hours_charts.items():
-        combined_hours_charts["by_month"][media_type] = chart["by_month"]
-        combined_hours_charts["by_weekday"][media_type] = chart["by_weekday"]
-        combined_hours_charts["by_time_of_day"][media_type] = chart["by_time_of_day"]
 
     def _pack_metric(breakdown, label, unit, icon, *, total_decimals=1):
         if not breakdown:

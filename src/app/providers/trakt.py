@@ -7,7 +7,7 @@ from typing import Any
 from django.conf import settings
 
 from app.models import MediaTypes
-from app.providers import services
+from app.providers import credentials, services
 
 TRAKT_BASE_URL = "https://api.trakt.tv"
 TRAKT_API_PROVIDER = "TRAKT"
@@ -23,7 +23,7 @@ TRAKT_SEARCH_TYPES = {
 
 def is_configured() -> bool:
     """Return whether Trakt API access is configured."""
-    return bool(getattr(settings, "TRAKT_API", ""))
+    return bool(credentials.get("trakt", "client_id"))
 
 
 def _headers() -> dict[str, str]:
@@ -32,7 +32,7 @@ def _headers() -> dict[str, str]:
         "Content-Type": "application/json",
         "User-Agent": f"Floppy/{settings.VERSION}",
         "trakt-api-version": TRAKT_API_VERSION,
-        "trakt-api-key": settings.TRAKT_API,
+        "trakt-api-key": credentials.get("trakt", "client_id"),
     }
 
 

@@ -22,7 +22,6 @@ from app.statistics_aggregator import _aggregate_statistics_from_days
 from app.statistics_cache import (
     PREDEFINED_RANGES,
     STATISTICS_ALL_TIME_REFRESH_DELAY,
-    STATISTICS_DAY_CACHE_TIMEOUT,
     STATISTICS_REFRESH_LOCK_PREFIX,
     STATISTICS_SCHEDULE_DEDUPE_TTL,
     STATISTICS_TASK_PRIORITY_BACKGROUND,
@@ -33,7 +32,6 @@ from app.statistics_cache import (
     _collect_stale_reading_score_days,
     _dirty_days_key,
     _get_empty_statistics_data,
-    _get_history_version,
     _load_dirty_days,
     _lock_is_stale,
     _maybe_clear_metadata_refresh,
@@ -41,16 +39,21 @@ from app.statistics_cache import (
     _preferred_range_for_user,
     _refresh_lock_key,
     _schedule_dedupe_key,
-    _set_history_version,
     _store_dirty_days,
     cache_statistics_data,
+    is_statistics_cache_stale,
 )
 from app.statistics_day_builder import (
     _build_prefetch_for_range,
-    _day_cache_key,
     _iter_day_range,
-    _normalize_day_value,
     build_stats_for_day,
+)
+from app.statistics_day_cache import (
+    STATISTICS_DAY_CACHE_TIMEOUT,
+    _day_cache_key,
+    _get_history_version,
+    _normalize_day_value,
+    _set_history_version,
 )
 from app.statistics_highlights import _normalize_history_highlight_images
 
@@ -92,6 +95,8 @@ def _has_covering_range_cache(
         if not isinstance(cache_entry, dict):
             continue
         if cache_entry.get("history_version") != history_version:
+            continue
+        if is_statistics_cache_stale(cache_entry, user_id):
             continue
         if _range_cache_covers_days(candidate_range, start_day, end_day):
             return True
@@ -159,39 +164,20 @@ def invalidate_all_statistics_days(user_id: int, reason: str | None = None) -> i
 
 
 def invalidate_statistics_cache(user_id: int, range_name: str | None = None):
-    """Remove cached statistics for a user.
+    """Mark statistics stale while retaining the last usable result.
 
-    If a refresh is in progress, keep the old cache so users can see it
-    while the refresh completes. Otherwise, delete the cache.
-
-    Args:
-        user_id: User ID
-        range_name: Specific range to invalidate, or None to invalidate all ranges
+    Readers compare the history version and schedule a background refresh. Keep
+    the payload even before a worker starts, so invalidation cannot turn a warm
+    page into a cold one. The shared version also invalidates derived fragments.
     """
-    if range_name:
-        if range_name in PREDEFINED_RANGES:
-            # Check if refresh is in progress
-            refresh_lock = cache.get(_refresh_lock_key(user_id, range_name))
-            if refresh_lock is None:
-                # No refresh in progress, safe to delete cache
-                cache.delete(_cache_key(user_id, range_name))
-                logger.debug(
-                    "Invalidated statistics cache for user %s, range %s",
-                    user_id,
-                    range_name,
-                )
-            # If refresh is in progress, keep the old cache - it will be replaced when refresh completes
-            _set_history_version(user_id)
-    else:
-        # Invalidate all predefined ranges
-        for range_name_item in PREDEFINED_RANGES:
-            # Check if refresh is in progress for this range
-            refresh_lock = cache.get(_refresh_lock_key(user_id, range_name_item))
-            if refresh_lock is None:
-                # No refresh in progress, safe to delete cache
-                cache.delete(_cache_key(user_id, range_name_item))
-        logger.debug("Invalidated all statistics caches for user %s", user_id)
-        _set_history_version(user_id)
+    if range_name and range_name not in PREDEFINED_RANGES:
+        return
+    _set_history_version(user_id)
+    logger.debug(
+        "Marked statistics stale for user %s, range %s",
+        user_id,
+        range_name or "all",
+    )
 
 
 def _get_predefined_range_dates(range_name: str):
@@ -695,7 +681,7 @@ def schedule_statistics_refresh(
 
     history_version = _get_history_version(user_id)
     cache_entry = cache.get(_cache_key(user_id, range_name))
-    if cache_entry and cache_entry.get("history_version") == history_version:
+    if not is_statistics_cache_stale(cache_entry, user_id):
         return False
 
     lock_key = _refresh_lock_key(user_id, range_name)

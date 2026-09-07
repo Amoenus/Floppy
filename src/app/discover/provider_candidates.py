@@ -13,7 +13,16 @@ from app.discover import cache_repo
 from app.discover.adapters import TRAKT_ADAPTER
 from app.discover.schemas import CandidateItem
 from app.models import MediaTypes, Sources
-from app.providers import bgg, comicvine, igdb, mal, musicbrainz, openlibrary, services
+from app.providers import (
+    bgg,
+    comicvine,
+    credentials,
+    igdb,
+    mal,
+    musicbrainz,
+    openlibrary,
+    services,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -354,7 +363,7 @@ def _comicvine_volume_candidates(
 ) -> list[CandidateItem]:
     endpoint = "/volumes/"
     params = {
-        "api_key": settings.COMICVINE_API,
+        "api_key": credentials.get("comicvine", "api_key"),
         "format": "json",
         "field_list": "id,name,image,start_year,count_of_issues,date_last_updated",
         "sort": sort,
@@ -423,7 +432,7 @@ def _comicvine_coming_soon_volume_candidates(
         timezone.localdate() + timedelta(days=PROVIDER_COMING_SOON_WINDOW_DAYS)
     ).isoformat()
     params = {
-        "api_key": settings.COMICVINE_API,
+        "api_key": credentials.get("comicvine", "api_key"),
         "format": "json",
         "field_list": "id,name,issue_number,store_date,cover_date,image,volume",
         "filter": f"store_date:{start_date}|{end_date}",
@@ -514,7 +523,7 @@ def _bgg_hot_candidates(
 ) -> list[CandidateItem]:
     endpoint = "/xmlapi2/hot"
     params = {"type": "boardgame"}
-    headers = {"Authorization": f"Bearer {settings.BGG_API_TOKEN}"}
+    headers = {"Authorization": f"Bearer {credentials.get("bgg", "token")}"}
 
     def fetcher() -> list[dict]:
         root = services.api_request(
@@ -751,13 +760,13 @@ def _lastfm_top_tracks_candidates(
     source_reason: str,
     limit: int = 100,
 ) -> list[CandidateItem]:
-    if not settings.LASTFM_API_KEY:
+    if not credentials.get("lastfm", "api_key"):
         return []
 
     endpoint = "/2.0/chart.gettoptracks"
     params = {
         "method": "chart.gettoptracks",
-        "api_key": settings.LASTFM_API_KEY,
+        "api_key": credentials.get("lastfm", "api_key"),
         "format": "json",
         "limit": min(max(limit, 1), 200),
     }
@@ -851,7 +860,7 @@ def _mal_ranking_candidates(
             "GET",
             f"{mal.base_url}{endpoint}",
             params=params,
-            headers={"X-MAL-CLIENT-ID": settings.MAL_API},
+            headers={"X-MAL-CLIENT-ID": credentials.get("mal", "client_id")},
         )
         return [
             entry for entry in (payload.get("data") or []) if isinstance(entry, dict)
@@ -984,7 +993,7 @@ def _igdb_games_candidates(
             f"{igdb.base_url}/games",
             data=query,
             headers={
-                "Client-ID": settings.IGDB_ID,
+                "Client-ID": credentials.get("igdb", "client_id"),
                 "Authorization": f"Bearer {access_token}",
             },
         )

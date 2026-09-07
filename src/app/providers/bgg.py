@@ -12,7 +12,7 @@ from django.core.cache import cache
 
 from app import helpers
 from app.models import MediaTypes, Sources
-from app.providers import services
+from app.providers import credentials, services
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ def search(query, page):
                     "GET",
                     f"{base_url}/search",
                     params={"query": query, "type": "boardgame"},
-                    headers={"Authorization": f"Bearer {settings.BGG_API_TOKEN}"},
+                    headers={"Authorization": f"Bearer {credentials.get("bgg", "token")}"},
                     response_format="xml",
                 )
             except requests.exceptions.HTTPError as error:
@@ -125,7 +125,7 @@ def _fetch_thumbnails(game_ids):
                 Sources.BGG.value,
                 "GET",
                 f"{base_url}/thing?id={','.join(batch)}",
-                headers={"Authorization": f"Bearer {settings.BGG_API_TOKEN}"},
+                headers={"Authorization": f"Bearer {credentials.get("bgg", "token")}"},
                 response_format="xml",
             )
         except (requests.exceptions.HTTPError, services.ProviderAPIError):
@@ -157,7 +157,7 @@ def boardgame(media_id):
                 "GET",
                 f"{base_url}/thing",
                 params={"id": media_id, "stats": "1"},
-                headers={"Authorization": f"Bearer {settings.BGG_API_TOKEN}"},
+                headers={"Authorization": f"Bearer {credentials.get("bgg", "token")}"},
                 response_format="xml",
             )
         except requests.exceptions.HTTPError as error:

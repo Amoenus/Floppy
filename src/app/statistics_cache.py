@@ -37,6 +37,18 @@ from app.models import (
     Sources,
     Status,
 )
+from app.statistics_day_cache import (
+    DAY_KEY_LENGTH,
+    STATISTICS_DAY_CACHE_TIMEOUT,
+    STATISTICS_DAY_CACHE_VERSION,
+    STATISTICS_DAY_PREFIX,
+    STATISTICS_HISTORY_VERSION_PREFIX,
+    _day_cache_key,
+    _get_history_version,
+    _history_version_key,
+    _normalize_day_value,
+    _set_history_version,
+)
 from app.statistics_highlights import (
     _cached_horizontal_backdrop,
     _get_history_day_payload,
@@ -71,18 +83,14 @@ logger = logging.getLogger(__name__)
 STATISTICS_CACHE_VERSION = 15
 STATISTICS_CACHE_PREFIX = f"statistics_page_v{STATISTICS_CACHE_VERSION}"
 STATISTICS_CACHE_TIMEOUT = 60 * 60 * 6  # 6 hours
+# Retain page snapshots between visits; freshness is checked independently.
+STATISTICS_RANGE_CACHE_TIMEOUT = 60 * 60 * 24 * 7
 STATISTICS_STALE_AFTER = timedelta(minutes=15)
 STATISTICS_REFRESH_LOCK_PREFIX = f"{STATISTICS_CACHE_PREFIX}_refresh_lock"
-STATISTICS_DAY_CACHE_VERSION = 7
-STATISTICS_DAY_PREFIX = f"stats:day:v{STATISTICS_DAY_CACHE_VERSION}"
 STATISTICS_DAY_DIRTY_PREFIX = "stats:dirty"
-STATISTICS_HISTORY_VERSION_PREFIX = "stats:history_version"
 STATISTICS_SCHEDULE_DEDUPE_PREFIX = "stats:refresh:scheduled"
 STATISTICS_METADATA_REFRESH_PREFIX = "stats:metadata_refresh"
 STATISTICS_METADATA_REFRESH_BUILT_PREFIX = "stats:metadata_refresh_built"
-STATISTICS_DAY_CACHE_TIMEOUT = getattr(
-    settings, "STATISTICS_DAY_CACHE_TIMEOUT", 60 * 60 * 24 * 30
-)
 STATISTICS_WARM_DAYS = getattr(settings, "STATISTICS_CACHE_WARM_DAYS", 2)
 STATISTICS_SCHEDULE_DEDUPE_TTL = getattr(
     settings, "STATISTICS_SCHEDULE_DEDUPE_TTL", 60 * 10
@@ -109,7 +117,6 @@ STATISTICS_ALL_TIME_REFRESH_DELAY = getattr(
     settings, "STATISTICS_ALL_TIME_REFRESH_DELAY", 45
 )
 
-DAY_KEY_LENGTH = 8  # length of a YYYYMMDD day key string
 SCORE_COMPARISON_EPSILON = 1e-6  # tolerance for float score equality checks
 
 # Predefined ranges that can be cached
@@ -191,19 +198,8 @@ def _preferred_range_for_user(user_id: int) -> str:
     return preferred_range
 
 
-def _day_cache_key(user_id: int, day_value: date | datetime | str) -> str:
-    day = _normalize_day_value(day_value)
-    if not day:
-        return ""
-    return f"{STATISTICS_DAY_PREFIX}:{user_id}:{day.isoformat()}"
-
-
 def _dirty_days_key(user_id: int) -> str:
     return f"{STATISTICS_DAY_DIRTY_PREFIX}:{user_id}"
-
-
-def _history_version_key(user_id: int) -> str:
-    return f"{STATISTICS_HISTORY_VERSION_PREFIX}:{user_id}"
 
 
 def _range_cache_component(value: datetime | date | str | None) -> str:
@@ -321,6 +317,24 @@ def _parse_cached_datetime(value):
     return None
 
 
+def is_statistics_cache_stale(cache_entry, user_id: int) -> bool:
+    """Use the same freshness rule when serving, polling, and scheduling."""
+    if not cache_entry:
+        return True
+    built_at = _parse_cached_datetime(cache_entry.get("built_at"))
+    if not built_at:
+        return True
+    if timezone.is_naive(built_at):
+        built_at = timezone.make_aware(built_at, timezone.get_current_timezone())
+    now = timezone.now()
+    if timezone.localdate(built_at) != timezone.localdate(now):
+        return True
+    history_version = cache_entry.get("history_version")
+    if history_version:
+        return history_version != _get_history_version(user_id)
+    return now - built_at > STATISTICS_STALE_AFTER
+
+
 def mark_metadata_refreshing(user_id: int, reason: str | None = None) -> None:
     payload = {"started_at": timezone.now().isoformat(), "reason": reason or ""}
     cache.set(
@@ -366,24 +380,6 @@ def _maybe_clear_metadata_refresh(user_id: int) -> None:
         clear_metadata_refreshing(user_id)
 
 
-def _normalize_day_value(value):
-    if value is None:
-        return None
-    if isinstance(value, date) and not isinstance(value, datetime):
-        return value
-    if isinstance(value, datetime):
-        localized = timezone.localtime(value) if timezone.is_aware(value) else value
-        return localized.date()
-    if isinstance(value, str):
-        try:
-            if value.isdigit() and len(value) == DAY_KEY_LENGTH:
-                return datetime.strptime(value, "%Y%m%d").date()  # noqa: DTZ007  # date-only value; no timezone applies
-            return datetime.strptime(value, "%Y-%m-%d").date()  # noqa: DTZ007  # date-only value; no timezone applies
-        except ValueError:
-            return None
-    return None
-
-
 def _normalize_hours_display(value):
     if not isinstance(value, str):
         return value
@@ -409,17 +405,6 @@ def _normalize_hours_per_media_type(hours_per_media_type):
     return hours_per_media_type
 
 
-def _get_history_version(user_id: int) -> str:
-    version = cache.get(_history_version_key(user_id))
-    if version:
-        return version
-    version = timezone.now().isoformat()
-    cache.set(
-        _history_version_key(user_id), version, timeout=STATISTICS_DAY_CACHE_TIMEOUT
-    )
-    return version
-
-
 def get_history_version(user_id: int) -> str:
     """Public accessor for the per-user history version token.
 
@@ -427,14 +412,6 @@ def get_history_version(user_id: int) -> str:
     value, so cache keys embedding it self-invalidate without extra wiring.
     """
     return _get_history_version(user_id)
-
-
-def _set_history_version(user_id: int, value: str | None = None) -> str:
-    version = value or timezone.now().isoformat()
-    cache.set(
-        _history_version_key(user_id), version, timeout=STATISTICS_DAY_CACHE_TIMEOUT
-    )
-    return version
 
 
 def _load_dirty_days(user_id: int) -> set[str]:
@@ -822,7 +799,7 @@ def cache_statistics_data(
         "built_at": timezone.now(),
         "history_version": history_version or _get_history_version(user_id),
     }
-    cache.set(cache_key, cache_entry, timeout=STATISTICS_CACHE_TIMEOUT)
+    cache.set(cache_key, cache_entry, timeout=STATISTICS_RANGE_CACHE_TIMEOUT)
     logger.debug("Cached statistics data for user %s, range %s", user_id, range_name)
 
 
@@ -876,6 +853,8 @@ def get_top_talent_data(user, start_date, end_date, range_name=None):
     if range_name in PREDEFINED_RANGES:
         cache_entry = cache.get(_cache_key(user.id, range_name))
         if isinstance(cache_entry, dict):
+            if is_statistics_cache_stale(cache_entry, user.id):
+                schedule_statistics_refresh(user.id, range_name, allow_inline=False)
             data = cache_entry.get("data") or {}
             top_talent = data.get("top_talent")
             if (
@@ -893,6 +872,8 @@ def get_statistics_media_count(user, start_date, end_date, range_name=None):
     if range_name in PREDEFINED_RANGES:
         cache_entry = cache.get(_cache_key(user.id, range_name))
         if isinstance(cache_entry, dict):
+            if is_statistics_cache_stale(cache_entry, user.id):
+                schedule_statistics_refresh(user.id, range_name, allow_inline=False)
             data = cache_entry.get("data") or {}
             media_count = data.get("media_count")
             if isinstance(media_count, dict):
@@ -1020,6 +1001,8 @@ def get_statistics_minutes_by_type(user, start_date, end_date, range_name=None):
     if range_name in PREDEFINED_RANGES:
         cache_entry = cache.get(_cache_key(user.id, range_name))
         if isinstance(cache_entry, dict):
+            if is_statistics_cache_stale(cache_entry, user.id):
+                schedule_statistics_refresh(user.id, range_name, allow_inline=False)
             data = cache_entry.get("data") or {}
             minutes_per_type = data.get("minutes_per_media_type")
             if isinstance(minutes_per_type, dict):
@@ -1087,10 +1070,7 @@ def get_statistics_data(user, start_date, end_date, range_name=None):
     if cache_entry:
         # Always return cached data if it exists (even if stale)
         # This prevents timeouts while background refresh is in progress
-        built_at = cache_entry.get("built_at")
-        history_version = cache_entry.get("history_version")
-        current_version = _get_history_version(user.id)
-        if history_version and history_version != current_version:
+        if is_statistics_cache_stale(cache_entry, user.id):
             if eager_mode:
                 data = refresh_statistics_cache(user.id, range_name)
                 if data:
@@ -1101,22 +1081,6 @@ def get_statistics_data(user, start_date, end_date, range_name=None):
                     )
                     return data
             schedule_statistics_refresh(user.id, range_name, allow_inline=False)
-        elif not history_version:
-            if not built_at or timezone.now() - built_at > STATISTICS_STALE_AFTER:
-                if eager_mode:
-                    data = refresh_statistics_cache(user.id, range_name)
-                    if data:
-                        _normalize_hours_per_media_type(
-                            data.get("hours_per_media_type")
-                        )
-                        _normalize_history_highlight_images(
-                            data.get("history_highlights")
-                        )
-                        _normalize_history_highlights_by_type(
-                            data.get("history_highlights_by_type")
-                        )
-                        return data
-                schedule_statistics_refresh(user.id, range_name, allow_inline=False)
         data = cache_entry.get("data", {})
         _normalize_hours_per_media_type(data.get("hours_per_media_type"))
         _normalize_history_highlight_images(data.get("history_highlights"))
@@ -1219,6 +1183,11 @@ from app.statistics_refresh import (  # noqa: E402
 )
 
 __all__ = [
+    "DAY_KEY_LENGTH",
+    "STATISTICS_DAY_CACHE_TIMEOUT",
+    "STATISTICS_DAY_CACHE_VERSION",
+    "STATISTICS_DAY_PREFIX",
+    "STATISTICS_HISTORY_VERSION_PREFIX",
     "STATISTICS_TOP_N",
     "STATISTICS_TOP_RATED_OVERALL",
     "Counter",
@@ -1246,12 +1215,14 @@ __all__ = [
     "_compute_metric_breakdown_for_range",
     "_day_boundary_datetime",
     "_day_bounds",
+    "_day_cache_key",
     "_empty_reading_consumption",
     "_empty_top_talent_payload",
     "_fetch_media_objects",
     "_get_activity_bounds",
     "_get_history_day_payload",
     "_get_history_index_days",
+    "_get_history_version",
     "_get_horizontal_history_image",
     "_get_predefined_range_dates",
     "_get_range_history_boundary_days",
@@ -1259,9 +1230,11 @@ __all__ = [
     "_get_today_history_entries",
     "_get_today_release_entry",
     "_history_entry_card_payload",
+    "_history_version_key",
     "_is_director_credit",
     "_is_writer_credit",
     "_iter_day_range",
+    "_normalize_day_value",
     "_overlap_day_filter",
     "_parse_activity_dt",
     "_range_cache_covers_days",
@@ -1269,6 +1242,7 @@ __all__ = [
     "_resolve_missing_credit_item_ids",
     "_safe_runtime_minutes",
     "_select_history_entry_for_day",
+    "_set_history_version",
     "_tv_episode_play_rows",
     "app_tags",
     "build_stats_for_day",

@@ -15,7 +15,7 @@ from django.utils import timezone
 
 from app import helpers
 from app.models import Item, MediaTypes, Sources
-from app.providers import igdb
+from app.providers import credentials, igdb
 from app.providers import services as provider_services
 
 if TYPE_CHECKING:
@@ -438,7 +438,7 @@ def fetch_igdb_time_to_beat(igdb_id: int | str) -> dict[str, Any]:
             f" where game_id = {game_id};"
         ),
         headers={
-            "Client-ID": settings.IGDB_ID,
+            "Client-ID": credentials.get("igdb", "client_id"),
             "Authorization": f"Bearer {access_token}",
         },
     )

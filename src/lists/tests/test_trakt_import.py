@@ -1,11 +1,15 @@
 from unittest.mock import call, patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
+from django.urls import reverse
 
 from app.models import MediaTypes
+from integrations.imports import helpers as import_helpers
+from integrations.models import TraktAccount
 from lists.imports import trakt
 from lists.models import CustomList
+from lists.views_trakt import TRAKT_LISTS_DEVICE_SESSION_KEY
 
 
 class TraktListImportTests(TestCase):
@@ -108,3 +112,87 @@ class TraktListImportTests(TestCase):
             season_number=2,
             episode_number=3,
         )
+
+
+@override_settings(URLS=["http://192.168.1.50:8000"])
+class TraktListsDeviceFlowTests(TestCase):
+    """List imports fall back to Trakt's device code flow over plain HTTP (#681)."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="trakt-device-user",
+            password="device-password",
+        )
+        self.client.force_login(self.user)
+        TraktAccount.objects.update_or_create(
+            user=self.user,
+            defaults={
+                "client_id": import_helpers.encrypt("client-id"),
+                "client_secret": import_helpers.encrypt("client-secret"),
+            },
+        )
+        self.device = {
+            "device_code": "device-code",
+            "user_code": "5055CC52",
+            "verification_url": "https://trakt.tv/activate",
+            "expires_in": 600,
+            "interval": 5,
+        }
+
+    def _start(self):
+        with patch(
+            "lists.views_trakt.trakt_imports.request_device_code",
+            return_value=self.device,
+        ):
+            return self.client.post(reverse("trakt_lists_oauth"))
+
+    def test_start_redirects_to_the_code_screen_without_storing_the_secret(self):
+        response = self._start()
+
+        self.assertRedirects(
+            response,
+            reverse("trakt_lists_device_verify"),
+            fetch_redirect_response=False,
+        )
+        state = self.client.session[TRAKT_LISTS_DEVICE_SESSION_KEY]
+        self.assertEqual(state["device_code"], "device-code")
+        self.assertNotIn("client_secret", state)
+        self.assertNotIn("client-secret", str(state))
+
+    def test_poll_success_queues_the_list_import(self):
+        self._start()
+        with (
+            patch(
+                "lists.views_trakt.trakt_imports.poll_device_token",
+                return_value={
+                    "access_token": "access",
+                    "refresh_token": "refresh",
+                    "username": "trakt-user",
+                },
+            ),
+            patch(
+                "lists.views_trakt.list_tasks.import_trakt_lists_task.delay",
+            ) as import_task,
+        ):
+            response = self.client.get(reverse("trakt_lists_device_poll"))
+
+        import_task.assert_called_once_with(
+            self.user.id,
+            "access",
+            client_id="client-id",
+        )
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response["HX-Redirect"], reverse("lists"))
+        self.assertNotIn(TRAKT_LISTS_DEVICE_SESSION_KEY, self.client.session)
+
+    def test_poll_while_pending_keeps_the_session(self):
+        self._start()
+        with patch(
+            "lists.views_trakt.trakt_imports.poll_device_token",
+            return_value=None,
+        ):
+            response = self.client.get(reverse("trakt_lists_device_poll"))
+
+        self.assertEqual(response.status_code, 204)
+        self.assertNotIn("HX-Redirect", response)
+        self.assertIn(TRAKT_LISTS_DEVICE_SESSION_KEY, self.client.session)

@@ -135,7 +135,8 @@ class ScrobbleView(drf_views.APIView):
         description=(
             "Record a playback start/pause/stop event from a third-party "
             "client. Movies are identified by tmdb/imdb id; episodes "
-            "additionally require season_number/episode_number. "
+            "additionally require season_number/episode_number. Anime "
+            "clients may add an anidb id to pin the exact MyAnimeList cour. "
             "'start'/'pause' only update the live Now Playing card; "
             "'stop' persists a durable watch/progress update."
         ),
@@ -159,6 +160,18 @@ class ScrobbleView(drf_views.APIView):
                             "tmdb": {"type": "string", "nullable": True},
                             "imdb": {"type": "string", "nullable": True},
                             "tvdb": {"type": "string", "nullable": True},
+                            "anidb": {
+                                "type": "string",
+                                "nullable": True,
+                                "description": "Optional, and never sufficient "
+                                "on its own. When the user's Anime library "
+                                "stores flat MyAnimeList rows, this names the "
+                                "exact cour instead of inferring one from the "
+                                "season and episode numbers. It selects the "
+                                "entry, not the library shape: that follows "
+                                "the user's Anime Provider and stays with the "
+                                "show once it is tracked.",
+                            },
                         },
                     },
                     "title": {"type": "string", "nullable": True},

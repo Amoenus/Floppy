@@ -6,7 +6,9 @@ from datetime import datetime
 from django.conf import settings
 from django.contrib.auth.decorators import login_not_required
 from django.db.models import Case, DateTimeField, Value, When
+from django.http import HttpResponse
 from django.shortcuts import render
+from django.template.loader import render_to_string
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
@@ -73,8 +75,11 @@ def season_details(
 ):
     """Return the details page for a season."""
     if request.GET.get("fragment") == DETAIL_CAROUSEL_FRAGMENT:
-        return render(
-            request,
+        # .strip() matters: an empty carousel must render as a truly empty
+        # string, not whitespace, so input.css's #detail-carousel-wrap:not(:empty)
+        # rule (a whitespace-only text node still counts as a child for :empty)
+        # correctly falls back to the non-carousel layout.
+        html = render_to_string(
             "app/components/detail_carousel_fragment.html",
             {
                 "carousel": carousel_media.resolve_carousel_media(
@@ -84,7 +89,9 @@ def season_details(
                     season_number=season_number,
                 ),
             },
-        )
+            request=request,
+        ).strip()
+        return HttpResponse(html)
 
     detail_view_started_at = time.perf_counter()
     carousel_supported = carousel_media.carousel_supported(

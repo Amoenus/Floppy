@@ -38,10 +38,10 @@ from app.media_list_filters import (
     get_next_episode_map,
     parse_media_list_filters,
 )
-from app.metadata_sync_views import _sync_podcast_show_from_rss, enrich_synced_item
 from app.models import BasicMedia, Item, MediaTypes, Sources
 from app.providers import services, tmdb
 from app.services import metadata_resolution
+from app.services.metadata_sync import enrich_synced_item, sync_podcast_show_from_rss
 from app.statistics import (
     get_activity_data,
     get_media_type_distribution,
@@ -148,6 +148,7 @@ def _resolve_api_episode_coordinate(
             },
             status=HTTP.INTERNAL_SERVER_ERROR,
         )
+
 
 # TODO!: check sorters and filters in paginate_data since data is not serialized yet. Maybe data should be serialized first and then sorted/paginated later?? Sorting/filtering should occur at db search level, pagination should be done right after, always at the db search level, then the data should be serialized.
 
@@ -870,7 +871,11 @@ def _media_list_response(request, media_type=None):
     try:
         filters = parse_media_list_filters(request)
         entries, total = get_media_list_entries(
-            request.user, media_type, filters, limit=limit, offset=offset,
+            request.user,
+            media_type,
+            filters,
+            limit=limit,
+            offset=offset,
         )
     except MediaListFilterError as error:
         return Response(
@@ -879,7 +884,12 @@ def _media_list_response(request, media_type=None):
         )
 
     paginated_data = paginate_data(
-        request, entries, limit, offset, total=total, already_sliced=total is not None,
+        request,
+        entries,
+        limit,
+        offset,
+        total=total,
+        already_sliced=total is not None,
     )
     page_entries = paginated_data["results"]
     _rehydrate_deferred_items(page_entries)
@@ -2301,7 +2311,7 @@ class MediaSyncView(drf_views.APIView):
             # A podcast show's provider is its RSS feed, and it has no Item row
             # of its own (Items are per-episode), so it never reaches the
             # generic path below without minting a bogus one.
-            synced_show = _sync_podcast_show_from_rss(media_id, source)
+            synced_show = sync_podcast_show_from_rss(media_id, source)
             if synced_show is not None:
                 return Response(
                     {"detail": "Metadata synced successfully."},

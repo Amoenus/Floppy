@@ -1,10 +1,11 @@
+import json
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import call, patch
 
 import requests
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from requests import Response
 
 from app.models import (
@@ -21,7 +22,7 @@ from app.models import (
 )
 from app.providers import services
 from app.services.grouped_anime import GroupedAnimeMatch
-from integrations.imports import helpers
+from integrations.imports import helpers, trakt
 from integrations.imports.helpers import MediaImportError
 from integrations.imports.trakt import TraktImporter, importer
 
@@ -2803,3 +2804,98 @@ class ImportTraktAnimeRouting(TestCase):
                 importer_instance._anime_bucket_for_show("1396", self.tv_metadata)
 
         self.assertEqual(mock_classify.call_count, 1)
+
+
+class TraktDeviceFlow(TestCase):
+    """Trakt's device code flow, used when the callback URL cannot be HTTPS (#681)."""
+
+    @staticmethod
+    def _response(status_code, payload=None):
+        response = Response()
+        response.status_code = status_code
+        response._content = json.dumps(payload or {}).encode()
+        return response
+
+    @patch("integrations.imports.trakt.services.api_request")
+    def test_request_device_code_clamps_interval(self, mock_api_request):
+        mock_api_request.return_value = {
+            "device_code": "device-code",
+            "user_code": "5055CC52",
+            "verification_url": "https://trakt.tv/activate",
+            "expires_in": 600,
+            "interval": 1,
+        }
+        device = trakt.request_device_code(client_id="client")
+        self.assertEqual(device["user_code"], "5055CC52")
+        self.assertEqual(device["interval"], trakt.TRAKT_DEVICE_MIN_INTERVAL)
+
+    @patch("integrations.imports.trakt.services.api_request")
+    def test_request_device_code_failure_is_actionable(self, mock_api_request):
+        mock_api_request.side_effect = services.ProviderAPIError(
+            "TRAKT",
+            requests.RequestException("boom"),
+        )
+        with self.assertRaises(MediaImportError) as ctx:
+            trakt.request_device_code(client_id="client")
+        self.assertIn("Could not start Trakt authorization", str(ctx.exception))
+
+    @patch("integrations.imports.trakt.get_username_from_oauth", return_value="floppy")
+    @patch("integrations.imports.trakt.services.session.post")
+    def test_poll_returns_tokens_on_success(self, mock_post, _mock_username):
+        mock_post.return_value = self._response(
+            200,
+            {"access_token": "access", "refresh_token": "refresh"},
+        )
+        result = trakt.poll_device_token("device-code", "client", "secret")
+        self.assertEqual(
+            result,
+            {
+                "access_token": "access",
+                "refresh_token": "refresh",
+                "username": "floppy",
+            },
+        )
+
+    @patch("integrations.imports.trakt.services.session.post")
+    def test_poll_pending_statuses_return_none(self, mock_post):
+        for status_code in (400, 429):
+            with self.subTest(status_code=status_code):
+                mock_post.return_value = self._response(status_code)
+                self.assertIsNone(
+                    trakt.poll_device_token("device-code", "client", "secret"),
+                )
+
+    @patch("integrations.imports.trakt.services.session.post")
+    def test_poll_terminal_statuses_raise(self, mock_post):
+        expected = {
+            404: "no longer valid",
+            409: "already used",
+            410: "expired",
+            418: "denied",
+            500: "Trakt authorization failed.",
+        }
+        for status_code, fragment in expected.items():
+            with self.subTest(status_code=status_code):
+                mock_post.return_value = self._response(status_code)
+                with self.assertRaises(MediaImportError) as ctx:
+                    trakt.poll_device_token("device-code", "client", "secret")
+                self.assertIn(fragment, str(ctx.exception))
+
+
+class TraktRefreshRedirectUri(TestCase):
+    """The refresh grant needs a redirect URI Trakt will accept (#681)."""
+
+    @override_settings(URLS=[], BASE_URL=None)
+    def test_falls_back_to_out_of_band_uri(self):
+        self.assertEqual(trakt._refresh_redirect_uri(), trakt.TRAKT_OOB_REDIRECT_URI)
+
+    @override_settings(URLS=["http://192.168.1.50:8000"])
+    def test_plain_http_lan_url_falls_back_to_out_of_band_uri(self):
+        self.assertEqual(trakt._refresh_redirect_uri(), trakt.TRAKT_OOB_REDIRECT_URI)
+
+    @override_settings(URLS=["https://floppy.example.com"])
+    def test_https_url_is_used_directly(self):
+        self.assertEqual(
+            trakt._refresh_redirect_uri(),
+            "https://floppy.example.com/import/trakt/private",
+        )

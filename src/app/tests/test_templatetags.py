@@ -1608,8 +1608,12 @@ class NextEpisodeUrlTests(TestCase):
             ),
         )
 
-    def _create_issue_567_tv(self, media_id, title, seasons):
-        """Create the watched/released episode shape from issue #567."""
+    def _create_issue_567_tv(self, media_id, title, seasons, statuses=None):
+        """Create the watched/released episode shape from issue #567.
+
+        `statuses` overrides the derived season status per season number, for
+        the paused-season shapes reported in issue #634.
+        """
         from app.models import TV, Episode, Season, Status
         from app.providers.services import ProviderAPIError
         from events.models import Event
@@ -1672,6 +1676,10 @@ class NextEpisodeUrlTests(TestCase):
                     status=Status.COMPLETED.value,
                 )
 
+            override = (statuses or {}).get(season_number)
+            if override is not None:
+                Season.objects.filter(pk=season.pk).update(status=override)
+
         return tv_item, tv
 
     def test_issue_567_examples_resolve_to_expected_next_episode(self):
@@ -1713,3 +1721,150 @@ class NextEpisodeUrlTests(TestCase):
                         },
                     ),
                 )
+
+    def test_issue_634_paused_season_is_the_next_episode_target(self):
+        """A paused season the user is partway through is still watchable next."""
+        from app.models import Status
+
+        cases = (
+            # Freaks and Geeks: the only season is paused at 5 of 18.
+            (
+                "2382",
+                "Freaks and Geeks",
+                {1: (5, 18)},
+                {1: Status.PAUSED.value},
+                (1, 6),
+            ),
+            # Big Boys: completed S1, paused S2 at 1 of 6, planned S3.
+            (
+                "202851",
+                "Big Boys",
+                {1: (6, 6), 2: (1, 6), 3: (0, 6)},
+                {2: Status.PAUSED.value},
+                (2, 2),
+            ),
+        )
+
+        for media_id, title, seasons, statuses, expected in cases:
+            with self.subTest(title=title):
+                tv_item, tv = self._create_issue_567_tv(
+                    media_id,
+                    title,
+                    seasons,
+                    statuses=statuses,
+                )
+                season_number, episode_number = expected
+
+                self.assertEqual(
+                    app_tags.next_episode_url(tv_item, tv),
+                    reverse(
+                        "episode_details",
+                        kwargs={
+                            "source": Sources.TMDB.value,
+                            "media_id": media_id,
+                            "title": title.lower().replace(" ", "-"),
+                            "season_number": season_number,
+                            "episode_number": episode_number,
+                        },
+                    ),
+                )
+
+    def test_paused_season_does_not_outrank_later_in_progress_season(self):
+        """Pausing a season and moving on keeps the later season as the target."""
+        from app.models import Status
+
+        tv_item, tv = self._create_issue_567_tv(
+            "69050",
+            "Riverdale",
+            {1: (3, 6), 2: (2, 6)},
+            statuses={1: Status.PAUSED.value},
+        )
+
+        self.assertEqual(
+            app_tags.next_episode_url(tv_item, tv),
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "69050",
+                    "title": "riverdale",
+                    "season_number": 2,
+                    "episode_number": 3,
+                },
+            ),
+        )
+
+    def test_paused_season_does_not_hand_off_to_next_planned_season(self):
+        """A paused season blocks the planning continuation that follows it."""
+        from app.models import Status
+
+        tv_item, tv = self._create_issue_567_tv(
+            "90282",
+            "The Morning Show",
+            {1: (10, 10), 2: (3, 6), 3: (0, 6)},
+            statuses={2: Status.PAUSED.value},
+        )
+
+        self.assertEqual(
+            app_tags.next_episode_url(tv_item, tv),
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "90282",
+                    "title": "the-morning-show",
+                    "season_number": 2,
+                    "episode_number": 4,
+                },
+            ),
+        )
+
+    def test_fully_watched_paused_season_still_starts_next_planned_season(self):
+        """A caught-up paused season hands off like any other finished season."""
+        from app.models import Status
+
+        tv_item, tv = self._create_issue_567_tv(
+            "18202",
+            "Cougar Town",
+            {1: (6, 6), 2: (0, 6)},
+            statuses={1: Status.PAUSED.value},
+        )
+
+        self.assertEqual(
+            app_tags.next_episode_url(tv_item, tv),
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "18202",
+                    "title": "cougar-town",
+                    "season_number": 2,
+                    "episode_number": 1,
+                },
+            ),
+        )
+
+    def test_dropped_season_is_still_skipped(self):
+        """Dropped seasons stay transparent to the next-episode target."""
+        from app.models import Status
+
+        tv_item, tv = self._create_issue_567_tv(
+            "2352",
+            "The Nanny",
+            {1: (6, 6), 2: (2, 6), 3: (0, 6)},
+            statuses={2: Status.DROPPED.value},
+        )
+
+        self.assertEqual(
+            app_tags.next_episode_url(tv_item, tv),
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "2352",
+                    "title": "the-nanny",
+                    "season_number": 3,
+                    "episode_number": 1,
+                },
+            ),
+        )

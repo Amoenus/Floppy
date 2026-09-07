@@ -19,8 +19,8 @@
          plexLibrariesLoading: {% if plex_account %}true{% else %}false{% endif %},
          plexLiveError: '',
          plexWatchlistSyncEnabled: {% if plex_account and plex_account.watchlist_sync_enabled %}true{% else %}false{% endif %},
-         plexLibrary: 'all',
-         plexContentKind: 'auto',
+         plexLibraries: ['all'],
+         plexContentKinds: {},
          activeModal: null,
          openModal(slug) {
            this.activeModal = slug;
@@ -50,6 +50,9 @@
          },
          plexSubmitDisabled() {
            if (this.plexConnectionState === 'error') {
+             return true;
+           }
+           if (!this.isWatchlistMode() && !this.plexLibraries.length) {
              return true;
            }
            return !this.isWatchlistMode() && !this.hasPlexSections;
@@ -87,27 +90,65 @@
            }
            return 'Disconnected';
          },
-         selectedPlexSection() {
-           return this.plexSections.find(
-             (section) => `${section.machine_identifier}::${section.id}` === this.plexLibrary
-           ) || null;
+         libraryKey(section) {
+           return `${section.machine_identifier}::${section.id}`;
          },
-         showPlexContentKind() {
-           const section = this.selectedPlexSection();
-           return !!(section && section.is_music);
+         isAllSelected() {
+           return this.plexLibraries.includes('all');
          },
-         syncPlexContentKind() {
-           const section = this.selectedPlexSection();
-           if (!section || !section.is_music) {
-             this.plexContentKind = 'auto';
+         isLibrarySelected(key) {
+           return this.plexLibraries.includes(key);
+         },
+         defaultContentKind(section) {
+           if (section.content_kind && section.content_kind !== 'auto') {
+             return section.content_kind;
+           }
+           return section.audiobook_hint ? 'audiobook' : 'auto';
+         },
+         selectAllLibraries() {
+           this.plexLibraries = ['all'];
+           this.plexContentKinds = {};
+         },
+         toggleLibrary(section) {
+           const key = this.libraryKey(section);
+           if (this.isAllSelected()) {
+             this.plexLibraries = [key];
+           } else if (this.isLibrarySelected(key)) {
+             this.plexLibraries = this.plexLibraries.filter((value) => value !== key);
+             delete this.plexContentKinds[key];
+             return;
+           } else {
+             this.plexLibraries = [...this.plexLibraries, key];
+           }
+           if (section.is_music && !(key in this.plexContentKinds)) {
+             this.plexContentKinds[key] = this.defaultContentKind(section);
+           }
+         },
+         selectedLibraryLabel() {
+           if (this.isAllSelected()) {
+             return 'All libraries';
+           }
+           if (!this.plexLibraries.length) {
+             return 'No libraries selected';
+           }
+           if (this.plexLibraries.length === 1) {
+             const section = this.plexSections.find(
+               (candidate) => this.libraryKey(candidate) === this.plexLibraries[0]
+             );
+             return section ? this.plexLibraryLabel(section) : this.plexLibraries[0];
+           }
+           return `${this.plexLibraries.length} libraries selected`;
+         },
+         reconcileLibrarySelection() {
+           if (this.isAllSelected()) {
              return;
            }
-           if (section.content_kind && section.content_kind !== 'auto') {
-             this.plexContentKind = section.content_kind;
-           } else if (section.audiobook_hint) {
-             this.plexContentKind = 'audiobook';
-           } else {
-             this.plexContentKind = 'auto';
+           const availableKeys = new Set(this.plexSections.map((section) => this.libraryKey(section)));
+           this.plexLibraries = this.plexLibraries.filter((key) => availableKeys.has(key));
+           for (const key of Object.keys(this.plexContentKinds)) {
+             if (!availableKeys.has(key)) {
+               delete this.plexContentKinds[key];
+             }
            }
          },
          plexLibraryLabel(section) {
@@ -180,7 +221,7 @@
 
              if (Array.isArray(data.sections)) {
                this.plexSections = data.sections;
-               this.syncPlexContentKind();
+               this.reconcileLibrarySelection();
                this.hasPlexSections = data.sections.length > 0;
              }
 
@@ -429,6 +470,18 @@
         </button>
 
         <button type="button"
+                @click="openModal('koreader')"
+                x-show="sourceSupports(['reading'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            {% source_display "koreader" %}
+            {% if koreader_account and koreader_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+          </div>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Sync book reading progress from a KOReader sync server.</p>
+        </button>
+
+        <button type="button"
                 @click="openModal('pocketcasts')"
                 x-show="sourceSupports(['podcasts'])"
                 x-transition.opacity.duration.150ms
@@ -647,7 +700,7 @@
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">
             {% source_display "hardcover" %}
-            {% if user.hardcover_api_key %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Configured">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+            {% if hardcover_personal_key %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Configured">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
           <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import an export from Hardcover.</p>
         </button>
@@ -751,22 +804,82 @@
               <input type="hidden" name="mode" x-model="importMode">
               <input type="hidden" name="next" value="import_data">
 
-              <div x-show="!isWatchlistMode()">
-                <label class="block text-sm text-[var(--color-text-secondary)] mb-2">Library</label>
-                <div class="relative">
-                  <select name="library"
-                          x-model="plexLibrary"
-                          @change="syncPlexContentKind()"
-                          class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none disabled:opacity-50"
+              <div x-show="!isWatchlistMode()" x-data="{ dropdownOpen: false, contentKindSubmenu: null }">
+                <label class="block text-sm text-[var(--color-text-secondary)] mb-2">Libraries</label>
+                <div class="relative" @click.outside="dropdownOpen = false; contentKindSubmenu = null">
+                  <button type="button"
+                          class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                          @click="contentKindSubmenu = null; dropdownOpen = !dropdownOpen"
+                          :aria-expanded="dropdownOpen"
                           :disabled="plexSubmitDisabled()">
-                    <option value="all">All libraries</option>
-                    <template x-for="section in plexSections"
-                              :key="`${section.machine_identifier}::${section.id}`">
-                      <option :value="`${section.machine_identifier}::${section.id}`"
-                              x-text="plexLibraryLabel(section)"></option>
-                    </template>
-                  </select>
-                  {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
+                    <span class="block min-w-0 truncate" x-text="selectedLibraryLabel()"></span>
+                    {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 ml-auto shrink-0 text-[var(--color-text-muted)]" %}
+                  </button>
+
+                  <div x-cloak
+                       x-show="dropdownOpen"
+                       x-transition:enter="transition ease-out duration-100"
+                       x-transition:enter-start="transform opacity-0 scale-95"
+                       x-transition:enter-end="transform opacity-100 scale-100"
+                       x-transition:leave="transition ease-in duration-75"
+                       x-transition:leave-start="transform opacity-100 scale-100"
+                       x-transition:leave-end="transform opacity-0 scale-95"
+                       class="absolute left-0 mt-2 w-full rounded-md bg-[var(--color-surface-strong)] border border-gray-700 shadow-lg overflow-hidden z-40">
+                    <div x-show="!contentKindSubmenu" x-cloak>
+                      <div class="max-h-72 overflow-y-auto">
+                        <button type="button"
+                                class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                                @click="selectAllLibraries()">
+                          <span class="block min-w-0 truncate">All libraries</span>
+                          <span class="ml-auto" x-show="isAllSelected()">
+                            {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                          </span>
+                        </button>
+                        <template x-for="section in plexSections" :key="libraryKey(section)">
+                          <div class="flex items-center w-full text-sm text-[var(--color-text-secondary)] border-t border-gray-700/60">
+                            <button type="button"
+                                    class="flex items-center flex-1 min-w-0 px-4 py-2 text-left transition-colors cursor-pointer hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                                    @click="toggleLibrary(section)">
+                              <span class="block min-w-0 truncate" x-text="plexLibraryLabel(section)"></span>
+                              <span class="ml-auto" x-show="isLibrarySelected(libraryKey(section))">
+                                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                              </span>
+                            </button>
+                            <button type="button"
+                                    class="shrink-0 p-2 mr-2 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                                    x-show="section.is_music && isLibrarySelected(libraryKey(section))"
+                                    x-cloak
+                                    @click="contentKindSubmenu = libraryKey(section)"
+                                    :aria-label="`Set content type for ${plexLibraryLabel(section)}`">
+                              {% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}
+                            </button>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                    <div x-show="!!contentKindSubmenu" x-cloak>
+                      <div class="flex items-center gap-2 px-2 py-1 border-b border-gray-700">
+                        <button type="button"
+                                class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                                @click="contentKindSubmenu = null"
+                                aria-label="Back to libraries">
+                          {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
+                        </button>
+                        <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Content Type</div>
+                      </div>
+                      <template x-for="kind in [['auto', 'Auto-detect'], ['music', 'Music'], ['audiobook', 'Audiobooks']]"
+                                :key="kind[0]">
+                        <button type="button"
+                                class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                                @click="plexContentKinds[contentKindSubmenu] = kind[0]">
+                          <span x-text="kind[1]"></span>
+                          <span class="ml-auto" x-show="plexContentKinds[contentKindSubmenu] === kind[0]">
+                            {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                          </span>
+                        </button>
+                      </template>
+                    </div>
+                  </div>
                 </div>
                 <p x-cloak x-show="!plexSections.length && plexLibrariesLoading" class="text-xs text-[var(--color-warning-text)] mt-1">
                   Checking Plex libraries...
@@ -781,27 +894,19 @@
                    class="text-xs text-[var(--color-text-muted)] mt-1">
                   No libraries detected yet. Reconnect Plex to refresh.
                 </p>
-              </div>
-
-              <div x-cloak x-show="!isWatchlistMode() && showPlexContentKind()">
-                <label class="block text-sm text-[var(--color-text-secondary)] mb-2">Content type</label>
-                <div class="relative">
-                  <select name="content_kind"
-                          x-model="plexContentKind"
-                          class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none disabled:opacity-50"
-                          :disabled="plexSubmitDisabled()">
-                    <option value="auto">Auto-detect</option>
-                    <option value="music">Music</option>
-                    <option value="audiobook">Audiobooks</option>
-                  </select>
-                  {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
-                </div>
                 <p class="text-xs text-[var(--color-text-muted)] mt-1">
                   Audiobooks kept in a Plex Music library are tracked as books instead of
-                  music. Auto-detect decides per album; choose Audiobooks to import the whole
-                  library as books.
+                  music. Select a music library above and use its arrow to choose Auto-detect,
+                  Music, or Audiobooks.
                 </p>
               </div>
+
+              <template x-for="lib in plexLibraries" :key="`library-${lib}`">
+                <input type="hidden" name="library" :value="lib">
+              </template>
+              <template x-for="[key, kind] in Object.entries(plexContentKinds)" :key="`content-kind-${key}`">
+                <input type="hidden" name="library_content_kind" :value="`${key}::${kind}`">
+              </template>
 
               <div class="flex w-full">
                 <input name="plex_usernames"
@@ -1320,6 +1425,186 @@
           </div>
         </div>
 
+        {# KOReader #}
+        <div x-show="activeModal === 'koreader'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer p-1 rounded-md hover:bg-[var(--color-surface-hover)] bg-[var(--color-surface)]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">{% source_display "koreader" %}</div>
+            {% if koreader_account and koreader_account.is_connected %}
+              <form method="post" action="{% url 'koreader_disconnect' %}">
+                {% csrf_token %}
+                <button type="submit"
+                        title="{{ koreader_account.server_url }}"
+                        class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors cursor-pointer">
+                  Connected
+                </button>
+              </form>
+            {% else %}
+              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">Disconnected</span>
+            {% endif %}
+          </div>
+
+          {% if koreader_account and koreader_account.is_connected %}
+            <p class="text-sm text-[var(--color-text-muted)]">
+              Sync reading progress using your import schedule above.
+              {% if koreader_link_count %}
+                {{ koreader_link_count }} linked document{{ koreader_link_count|pluralize }}.
+              {% else %}
+                Link document IDs on each book's track modal to sync from official servers.
+              {% endif %}
+            </p>
+            <div class="text-sm text-[var(--color-text-muted)] space-y-1">
+              <div>{{ koreader_account.server_url }}</div>
+              {% if koreader_account.last_sync_at %}
+                <div>Last sync: {{ koreader_account.last_sync_at|user_datetime_format:user }}</div>
+              {% endif %}
+            </div>
+            {% if koreader_account.last_error_message %}
+              <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
+                <strong>Error:</strong> {{ koreader_account.last_error_message }}
+              </div>
+            {% endif %}
+            <div class="space-y-3">
+              <form method="post" action="{% url 'koreader_settings' %}" class="space-y-3 border border-gray-600 rounded-md p-3">
+                {% csrf_token %}
+                <p class="text-sm font-medium text-[var(--color-text-secondary)]">Settings</p>
+                <div>
+                  <label class="block text-sm text-[var(--color-text-muted)] mb-2">Server URL</label>
+                  <input type="url" name="server_url" required
+                         value="{{ koreader_account.server_url }}"
+                         class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                </div>
+                <div>
+                  <label class="block text-sm text-[var(--color-text-muted)] mb-2">Username</label>
+                  <input type="text" name="username" required autocomplete="username"
+                         value="{{ koreader_account.username }}"
+                         class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                </div>
+                <div>
+                  <label class="block text-sm text-[var(--color-text-muted)] mb-2">Password</label>
+                  <input type="password" name="password" autocomplete="current-password"
+                         placeholder="Leave blank to keep current password"
+                         class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                </div>
+                <label class="flex items-center text-sm text-[var(--color-text-secondary)]">
+                  <input type="checkbox" name="verify_ssl"
+                         {% if koreader_account.verify_ssl %}checked{% endif %}
+                         class="mr-2 rounded bg-[var(--color-surface)] border-gray-600 text-indigo-600 focus:outline-none focus:ring-indigo-500 focus:ring-offset-0">
+                  Verify TLS certificate
+                </label>
+                <label class="flex items-center text-sm text-[var(--color-text-secondary)]">
+                  <input type="checkbox" name="create_missing"
+                         {% if koreader_account.create_missing %}checked{% endif %}
+                         class="mr-2 rounded bg-[var(--color-surface)] border-gray-600 text-indigo-600 focus:outline-none focus:ring-indigo-500 focus:ring-offset-0">
+                  Add matched books that are not already in my library
+                </label>
+                <label class="flex items-center text-sm text-[var(--color-text-secondary)]">
+                  <input type="checkbox" name="skip_finished_books"
+                         {% if koreader_account.skip_finished_books %}checked{% endif %}
+                         class="mr-2 rounded bg-[var(--color-surface)] border-gray-600 text-indigo-600 focus:outline-none focus:ring-indigo-500 focus:ring-offset-0">
+                  Skip books already marked completed (fewer server requests)
+                </label>
+                <div>
+                  <label class="block text-sm text-[var(--color-text-muted)] mb-2">Mark completed at (%)</label>
+                  <input type="number" name="finished_threshold_percent" min="1" max="100" step="1" required
+                         value="{% widthratio koreader_account.finished_threshold 1 100 %}"
+                         class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                  <p class="text-xs text-[var(--color-text-muted)] mt-1">Synced progress at or above this percentage is marked completed.</p>
+                </div>
+                <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-[var(--color-surface-strong)] text-[var(--color-text)] border border-gray-600 hover:bg-[var(--color-surface-hover)]">
+                  Save settings
+                </button>
+              </form>
+              <form method="post" action="{% url 'import_koreader' %}">
+                {% csrf_token %}
+                <input type="hidden" name="frequency" x-model="importFrequency">
+                <input type="hidden" name="time" x-model="importTime">
+                <input type="hidden" name="mode" x-model="importMode">
+                <button type="submit"
+                        class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700"
+                        :disabled="standardImportsDisabled()"
+                        :class="standardImportsDisabled() ? 'opacity-50 cursor-not-allowed' : ''">
+                  Sync now
+                </button>
+              </form>
+              <form method="post" action="{% url 'koreader_disconnect' %}">
+                {% csrf_token %}
+                <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
+                  Disconnect
+                </button>
+              </form>
+            </div>
+          {% else %}
+            <p class="text-sm text-[var(--color-text-muted)]">
+              Connect your self-hosted KOReader sync server. Enable <strong>Send document metadata</strong> in KOReader for automatic matching on supported servers.
+            </p>
+            <form method="post" action="{% url 'koreader_connect' %}" class="space-y-3">
+              {% csrf_token %}
+              <input type="hidden" name="frequency" x-model="importFrequency">
+              <input type="hidden" name="time" x-model="importTime">
+              <input type="hidden" name="mode" x-model="importMode">
+              <div>
+                <label class="block text-sm text-[var(--color-text-muted)] mb-2">Server URL</label>
+                <input type="url" name="server_url" required
+                       class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                       placeholder="https://kosync.example.com:7200">
+              </div>
+              <div>
+                <label class="block text-sm text-[var(--color-text-muted)] mb-2">Username</label>
+                <input type="text" name="username" required autocomplete="username"
+                       class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+              </div>
+              <div>
+                <label class="block text-sm text-[var(--color-text-muted)] mb-2">Password</label>
+                <input type="password" name="password" required autocomplete="current-password"
+                       class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+              </div>
+              <label class="flex items-center text-sm text-[var(--color-text-secondary)]">
+                <input type="checkbox" name="verify_ssl" checked
+                       class="mr-2 rounded bg-[var(--color-surface)] border-gray-600 text-indigo-600 focus:outline-none focus:ring-indigo-500 focus:ring-offset-0">
+                Verify TLS certificate
+              </label>
+              <label class="flex items-center text-sm text-[var(--color-text-secondary)]">
+                <input type="checkbox" name="create_missing"
+                       class="mr-2 rounded bg-[var(--color-surface)] border-gray-600 text-indigo-600 focus:outline-none focus:ring-indigo-500 focus:ring-offset-0">
+                Add matched books that are not already in my library
+              </label>
+              <label class="flex items-center text-sm text-[var(--color-text-secondary)]">
+                <input type="checkbox" name="skip_finished_books" checked
+                       class="mr-2 rounded bg-[var(--color-surface)] border-gray-600 text-indigo-600 focus:outline-none focus:ring-indigo-500 focus:ring-offset-0">
+                Skip books already marked completed (fewer server requests)
+              </label>
+              <div>
+                <label class="block text-sm text-[var(--color-text-muted)] mb-2">Mark completed at (%)</label>
+                <input type="number" name="finished_threshold_percent" min="1" max="100" step="1" required
+                       value="100"
+                       class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                <p class="text-xs text-[var(--color-text-muted)] mt-1">Synced progress at or above this percentage is marked completed.</p>
+              </div>
+              <button type="submit"
+                      class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      :disabled="standardImportsDisabled()"
+                      :class="standardImportsDisabled() ? 'opacity-50 cursor-not-allowed' : ''">
+                Connect &amp; Import
+              </button>
+            </form>
+          {% endif %}
+        </div>
+          </div>
+        </div>
+
         {# Pocket Casts #}
         <div x-show="activeModal === 'pocketcasts'"
              x-cloak
@@ -1779,7 +2064,7 @@
 
           {% else %}
             <p class="text-sm text-[var(--color-text-muted)] mb-3">
-              Connect a self-hosted Koito server to import your full listening history and sync new listens every 15 minutes. Generate an API key in Koito under Settings &rarr; API Keys. Floppy only reads from Koito and never sends listens back.
+              Connect a self-hosted Koito server to import your full listening history and sync new listens every 15 minutes. Generate an API key in Koito under Settings → API Keys. Floppy only reads from Koito and never sends listens back.
             </p>
             <form method="post" action="{% url 'koito_connect' %}">
               {% csrf_token %}
@@ -1863,12 +2148,21 @@
                      target="_blank"
                      class="text-[var(--color-link)] underline hover:text-indigo-200">Trakt API Apps</a>.
                 </li>
-                <li>Set the Redirect URI to <code class="text-indigo-200 break-all">{{ request.scheme }}://{{ request.get_host }}{% url 'import_trakt_private' %}</code>.</li>
+                <li>Set the Redirect URI to <code class="text-indigo-200 break-all">{{ trakt_redirect_uri }}</code>.</li>
                 <li>Set <code class="text-indigo-200">TRAKT_API</code> and <code class="text-indigo-200">TRAKT_API_SECRET</code> in your environment.</li>
               </ol>
-              <p class="text-[var(--color-text-muted)]">
-                Behind reverse proxies, also set <code class="text-indigo-200">URLS=https://your_domain.com</code> so Floppy builds the correct callback URL.
-              </p>
+              {% if trakt_redirect_capable %}
+                <p class="text-[var(--color-text-muted)]">
+                  Behind reverse proxies, also set <code class="text-indigo-200">URLS=https://your_domain.com</code> so Floppy builds the correct callback URL.
+                </p>
+              {% else %}
+                <p class="text-[var(--color-text-muted)]">
+                  This instance is not served over HTTPS, and Trakt only accepts HTTPS redirects, so
+                  Floppy will show you a code to enter at <code class="text-indigo-200">trakt.tv/activate</code>
+                  instead. Set <code class="text-indigo-200">URLS=https://your_domain.com</code> if you would
+                  rather use the one-click browser flow.
+                </p>
+              {% endif %}
             </div>
 
             <form class="flex items-center"
@@ -2743,7 +3037,7 @@
             <label class="block text-sm text-[var(--color-text-muted)] mb-2">Hardcover API Key</label>
             <input type="password"
                    name="hardcover_api_key"
-                   placeholder="Optional — a default key is already configured"
+                   placeholder="Optional — also settable in Settings &gt; Metadata"
                    class="w-full py-2 px-3 mb-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                    :disabled="standardImportsDisabled()">
             <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors mb-3"

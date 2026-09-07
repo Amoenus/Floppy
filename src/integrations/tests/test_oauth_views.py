@@ -1,12 +1,17 @@
+from datetime import timedelta
 from unittest.mock import patch
 from urllib.parse import parse_qs, unquote, urlencode, urlparse
 
 from django.contrib.auth import get_user_model
+from django.contrib.messages import get_messages
 from django.contrib.sessions.backends.cached_db import SessionStore
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
+from integrations.imports.helpers import MediaImportError
 from integrations.models import PlexAccount
+from integrations.views import TRAKT_DEVICE_SESSION_KEY
 
 
 class OAuthStateViewTests(TestCase):
@@ -80,6 +85,7 @@ class OAuthStateViewTests(TestCase):
         self.assertContains(replay, "Invalid or expired SIMKL authorization request.")
         self.assertNotIn(state_token, "\n".join(logs.output))
 
+    @override_settings(URLS=["https://floppy.example.com"])
     def test_trakt_state_is_consumed_and_replay_is_rejected(self):
         state_token = self._start_oauth("trakt_oauth")
         callback_url = self._callback_url("import_trakt_private", state_token)
@@ -226,3 +232,120 @@ class OAuthStateViewTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, "/")
+
+
+@override_settings(URLS=["http://192.168.1.50:8000"])
+class TraktDeviceFlowViewTests(TestCase):
+    """Trakt cannot redirect to a plain-HTTP LAN address, so use device codes (#681)."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="device-user",
+            password="device-password",
+        )
+        self.client.force_login(self.user)
+        self.device = {
+            "device_code": "device-code",
+            "user_code": "5055CC52",
+            "verification_url": "https://trakt.tv/activate",
+            "expires_in": 600,
+            "interval": 5,
+        }
+
+    def _start(self, next_url=None):
+        data = {"mode": "new", "frequency": "once", "time": "00:00"}
+        if next_url:
+            data["next"] = next_url
+        with patch(
+            "integrations.views.trakt.request_device_code",
+            return_value=self.device,
+        ):
+            return self.client.post(reverse("trakt_oauth"), data=data)
+
+    def test_start_stores_state_and_redirects_to_the_code_screen(self):
+        response = self._start(next_url="/onboarding/")
+
+        self.assertRedirects(
+            response,
+            reverse("trakt_device_verify"),
+            fetch_redirect_response=False,
+        )
+        state = self.client.session[TRAKT_DEVICE_SESSION_KEY]
+        self.assertEqual(state["device_code"], "device-code")
+        self.assertEqual(state["mode"], "new")
+        self.assertEqual(state["frequency"], "once")
+        self.assertEqual(state["time"], "00:00")
+        self.assertEqual(state["return_to"], "/onboarding/")
+
+    def test_verify_screen_shows_the_code(self):
+        self._start()
+        response = self.client.get(reverse("trakt_device_verify"))
+
+        self.assertContains(response, "5055CC52")
+        self.assertContains(response, reverse("trakt_device_poll"))
+
+    def test_poll_while_pending_keeps_the_session(self):
+        self._start()
+        with patch(
+            "integrations.views.trakt.poll_device_token",
+            return_value=None,
+        ) as poll:
+            response = self.client.get(reverse("trakt_device_poll"))
+
+        poll.assert_called_once_with("device-code")
+        self.assertEqual(response.status_code, 204)
+        self.assertNotIn("HX-Redirect", response)
+        self.assertIn(TRAKT_DEVICE_SESSION_KEY, self.client.session)
+
+    def test_poll_success_queues_the_import(self):
+        self._start()
+        with (
+            patch(
+                "integrations.views.trakt.poll_device_token",
+                return_value={
+                    "access_token": "access",
+                    "refresh_token": "refresh",
+                    "username": "trakt-user",
+                },
+            ),
+            patch("integrations.views.helpers.encrypt", return_value="encrypted-token"),
+            patch("integrations.views.tasks.import_trakt.delay") as import_task,
+        ):
+            response = self.client.get(reverse("trakt_device_poll"))
+
+        import_task.assert_called_once()
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response["HX-Redirect"], reverse("import_data"))
+        self.assertNotIn(TRAKT_DEVICE_SESSION_KEY, self.client.session)
+
+    def test_poll_surfaces_a_denied_authorization(self):
+        self._start()
+        with patch(
+            "integrations.views.trakt.poll_device_token",
+            side_effect=MediaImportError("Trakt authorization was denied."),
+        ):
+            response = self.client.get(reverse("trakt_device_poll"))
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response["HX-Redirect"], reverse("import_data"))
+        self.assertNotIn(TRAKT_DEVICE_SESSION_KEY, self.client.session)
+        messages = [str(m) for m in get_messages(response.wsgi_request)]
+        self.assertIn("Trakt authorization was denied.", messages)
+
+    def test_expired_state_never_calls_trakt(self):
+        self._start()
+        session = self.client.session
+        state = session[TRAKT_DEVICE_SESSION_KEY]
+        state["expires_at"] = (timezone.now() - timedelta(seconds=1)).isoformat()
+        session[TRAKT_DEVICE_SESSION_KEY] = state
+        session.save()
+
+        with patch("integrations.views.trakt.poll_device_token") as poll:
+            response = self.client.get(reverse("trakt_device_poll"))
+
+        poll.assert_not_called()
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response["HX-Redirect"], reverse("import_data"))
+        self.assertNotIn(TRAKT_DEVICE_SESSION_KEY, self.client.session)
+        messages = [str(m) for m in get_messages(response.wsgi_request)]
+        self.assertIn("The Trakt authorization code expired. Start again.", messages)

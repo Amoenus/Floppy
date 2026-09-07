@@ -4,14 +4,13 @@ from datetime import UTC
 
 import requests
 from django.apps import apps
-from django.conf import settings
 from django.urls import reverse
 from django.utils import timezone
 
 import app
 from app import helpers as app_helpers
 from app.models import MediaTypes, Sources, Status
-from app.providers import services
+from app.providers import credentials, services
 from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
@@ -26,8 +25,8 @@ def get_token(request, redirect_uri=None):
     url = "https://anilist.co/api/v2/oauth/token"
 
     params = {
-        "client_id": settings.ANILIST_ID,
-        "client_secret": settings.ANILIST_SECRET,
+        "client_id": credentials.get("anilist", "client_id"),
+        "client_secret": credentials.get("anilist", "client_secret"),
         "code": code,
         "grant_type": "authorization_code",
         "redirect_uri": redirect_uri

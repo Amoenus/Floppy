@@ -329,6 +329,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "app.middleware.ProviderCredentialUserMiddleware",
     "app.middleware.UserLanguageMiddleware",
     "app.middleware.DiscoverWarmupMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -1057,11 +1058,27 @@ MUSICBRAINZ_URL = config(
     default="https://musicbrainz.org/ws/2",
 )
 
+# Provider credentials that ship with a shared, baked-in token. The value is a
+# single quota shared by every Floppy install, so Settings > Metadata lets an
+# operator or user supply their own. Keeping the literals here is what lets
+# app.providers.credentials tell "supplied by the environment" apart from
+# "still on the bundled default" - a plain bool(setting) cannot.
+SHARED_DEFAULT_CREDENTIALS = {
+    "TMDB_API": "61572be02f0a068658828f6396aacf60",
+    "MAL_API": "25b5581dafd15b3e7d583bb79e9a1691",
+    "IGDB_ID": "8wqmm7x1n2xxtnz94lb8mthadhtgrt",
+    "IGDB_SECRET": "ovbq0hwscv58hu46yxn50hovt4j8kj",
+    "BGG_API_TOKEN": "92f43ab1-d1d5-4e18-8b82-d1f56dc12927",
+    "COMICVINE_API": "cdab0706269e4bca03a096fbc39920dadf7e4992",
+    "SIMKL_ID": "a973e57e85d94068315d5ac29669d85da8abc0fb7aff1d22e00e04bdf1882578",
+    "SIMKL_SECRET": "1b548a88ac7884a757cc58a552842913a9337f3cab3a4905836c6dc305dda316",
+}
+
 TMDB_API = config(
     "TMDB_API",
     default=secret(
         "TMDB_API_FILE",
-        "61572be02f0a068658828f6396aacf60",
+        SHARED_DEFAULT_CREDENTIALS["TMDB_API"],
     ),
 )
 TMDB_NSFW = config("TMDB_NSFW", default=False, cast=bool)
@@ -1091,7 +1108,7 @@ MAL_API = config(
     "MAL_API",
     default=secret(
         "MAL_API_FILE",
-        "25b5581dafd15b3e7d583bb79e9a1691",
+        SHARED_DEFAULT_CREDENTIALS["MAL_API"],
     ),
 )
 MAL_NSFW = config("MAL_NSFW", default=False, cast=bool)
@@ -1102,14 +1119,14 @@ IGDB_ID = config(
     "IGDB_ID",
     default=secret(
         "IGDB_ID_FILE",
-        "8wqmm7x1n2xxtnz94lb8mthadhtgrt",
+        SHARED_DEFAULT_CREDENTIALS["IGDB_ID"],
     ),
 )
 IGDB_SECRET = config(
     "IGDB_SECRET",
     default=secret(
         "IGDB_SECRET_FILE",
-        "ovbq0hwscv58hu46yxn50hovt4j8kj",
+        SHARED_DEFAULT_CREDENTIALS["IGDB_SECRET"],
     ),
 )
 IGDB_NSFW = config("IGDB_NSFW", default=False, cast=bool)
@@ -1119,7 +1136,7 @@ BGG_API_TOKEN = config(
     "BGG_API_TOKEN",
     default=secret(
         "BGG_API_TOKEN_FILE",
-        "92f43ab1-d1d5-4e18-8b82-d1f56dc12927",
+        SHARED_DEFAULT_CREDENTIALS["BGG_API_TOKEN"],
     ),
 )
 
@@ -1150,7 +1167,7 @@ COMICVINE_API = config(
     "COMICVINE_API",
     default=secret(
         "COMICVINE_API_FILE",
-        "cdab0706269e4bca03a096fbc39920dadf7e4992",
+        SHARED_DEFAULT_CREDENTIALS["COMICVINE_API"],
     ),
 )
 
@@ -1190,14 +1207,14 @@ SIMKL_ID = config(
     "SIMKL_ID",
     default=secret(
         "SIMKL_ID_FILE",
-        "a973e57e85d94068315d5ac29669d85da8abc0fb7aff1d22e00e04bdf1882578",
+        SHARED_DEFAULT_CREDENTIALS["SIMKL_ID"],
     ),
 )
 SIMKL_SECRET = config(
     "SIMKL_SECRET",
     default=secret(
         "SIMKL_SECRET_FILE",
-        "1b548a88ac7884a757cc58a552842913a9337f3cab3a4905836c6dc305dda316",
+        SHARED_DEFAULT_CREDENTIALS["SIMKL_SECRET"],
     ),
 )
 

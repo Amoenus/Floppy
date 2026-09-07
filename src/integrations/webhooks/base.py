@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from django.utils import timezone
 
 import app
+from app import fork_services_play_dedupe as play_dedupe
 from app.log_safety import exception_summary
 from app.models import MediaTypes, ProviderMetadataStatus, Sources, Status
 from app.providers import tvmaze
@@ -114,6 +115,8 @@ class BaseWebhookProcessor:
             season_number: Season number from payload (optional, will be extracted if None)
             episode_number: Episode number from payload (optional, will be extracted if None)
         """
+        from app.services import metadata_resolution as _metadata_resolution
+
         anidb_id = ids.get("anidb_id")
         if user.anime_enabled and anidb_id:
             mapping_data = anime_mappings.fetch_mapping_data()
@@ -139,14 +142,71 @@ class BaseWebhookProcessor:
                     anidb_id,
                 )
             elif resolved_episode:
-                logger.info(
-                    "Detected anime via AniDB ID: %s. Matching MAL ID: %s, Episode: %d",
-                    anidb_id,
-                    mal_id,
-                    mal_episode_number,
-                )
-                if self._handle_anime(mal_id, mal_episode_number, payload, user):
-                    return None
+                # An AniDB id names the exact MAL cour. It must not also decide
+                # the library shape: that follows the user's Anime Provider and
+                # is sticky once a show has a home. Plex/HAMA sends an anidb id
+                # with no TMDB/TVDB guid, so backfill a franchise identity from
+                # the same mapping before the routing decision can run.
+                if not ids.get("tmdb_id") and not ids.get("tvdb_id"):
+                    ids, season_number, episode_number = self._backfill_ids_from_mal(
+                        mapping_data,
+                        mal_id,
+                        ids,
+                        mal_episode_number,
+                        season_number,
+                        episode_number,
+                    )
+
+                # With no franchise identity - before or after the backfill -
+                # the grouped decision has nothing to resolve or classify, so
+                # the mapping's flat entry is the only shape available.
+                home_kind = None
+                defer_to_grouped = False
+                if ids.get("tmdb_id") or ids.get("tvdb_id"):
+                    anime_home = self._find_existing_anime_home(
+                        user,
+                        ids.get("tmdb_id"),
+                        ids.get("tvdb_id"),
+                    )
+                    home_kind = anime_home[0] if anime_home else None
+                    defer_to_grouped = home_kind == "grouped" or (
+                        home_kind is None
+                        and _metadata_resolution.prefers_grouped_anime(user)
+                    )
+                if defer_to_grouped:
+                    logger.info(
+                        "AniDB ID %s maps to MAL %s, but this show's Anime home "
+                        "is grouped (existing home=%s). Routing it through the "
+                        "normal grouped-anime decision instead of a flat row.",
+                        anidb_id,
+                        mal_id,
+                        home_kind or "none",
+                    )
+                else:
+                    logger.info(
+                        "Detected anime via AniDB ID: %s. Matching MAL ID: %s, Episode: %d",
+                        anidb_id,
+                        mal_id,
+                        mal_episode_number,
+                    )
+                    anime_outcome = self._handle_anime(
+                        mal_id,
+                        mal_episode_number,
+                        payload,
+                        user,
+                    )
+                    if anime_outcome is ANIME_EPISODE_REFUSED:
+                        # No MAL entry covers this episode. Fall through so a
+                        # later mapping or the grouped fallback can take it,
+                        # rather than dropping the scrobble silently.
+                        logger.info(
+                            "MAL %s refused episode %s; falling through to the "
+                            "normal routing decision",
+                            mal_id,
+                            mal_episode_number,
+                        )
+                    elif anime_outcome:
+                        return None
 
         series_title = self._extract_series_title(payload)
         media_id, found_season, found_episode = self._find_tv_media_id(
@@ -303,8 +363,6 @@ class BaseWebhookProcessor:
 
         tvdb_id = tv_metadata.get("tvdb_id") if tv_metadata else None
 
-        from app.services import metadata_resolution as _metadata_resolution
-
         prefers_grouped_anime = _metadata_resolution.prefers_grouped_anime(user)
 
         grouped_anime_match = None
@@ -415,7 +473,21 @@ class BaseWebhookProcessor:
                     mapping_tvdb_id = None
 
             mapping_data = anime_mappings.fetch_mapping_data()
-            mapping_sources = [
+            mapping_sources = []
+            if anidb_id:
+                # The client named the exact cour; prefer it over inferring one
+                # from a TVDB season and episode number.
+                mapping_sources.append(
+                    (
+                        "AniDB",
+                        *anime_mappings.get_mal_id_from_anidb(
+                            mapping_data,
+                            anidb_id,
+                            episode_number,
+                        ),
+                    ),
+                )
+            mapping_sources.append(
                 (
                     "TVDB",
                     *anime_mappings.get_mal_id_from_tvdb(
@@ -425,7 +497,7 @@ class BaseWebhookProcessor:
                         episode_number,
                     ),
                 ),
-            ]
+            )
             for mapping_source, mal_id, mapped_episode in mapping_sources:
                 if not mal_id:
                     continue
@@ -547,6 +619,64 @@ class BaseWebhookProcessor:
             user,
             library_media_type=MediaTypes.TV.value if classified_not_anime else None,
         )
+
+    def _backfill_ids_from_mal(
+        self,
+        mapping_data,
+        mal_id,
+        ids,
+        mal_episode_number,
+        season_number,
+        episode_number,
+    ):
+        """Derive a TMDB/TVDB identity for a payload that carries only an AniDB id.
+
+        Plex/HAMA identifies an episode as `anidb-<id>` and nothing else, so the
+        grouped-anime decision has nothing to resolve or classify. The pinned
+        mapping already answers this: `_handle_anime` reads the same reverse
+        entries to write provider links after the fact. Reading them first lets
+        every payload reach the one routing decision instead of an AniDB-only
+        shortcut past it.
+
+        Returns the (possibly enriched) ids plus the season and episode numbers
+        to use. When no entry carries a franchise identity, everything is
+        returned unchanged: there is no TMDB/TVDB identity for this MAL entry,
+        so a flat row is the only shape the mapping can express.
+        """
+        entries = anime_mappings.find_entries_for_mal_id(mapping_data, mal_id)
+        entry = next(
+            (e for e in entries if e.get("tvdb_id") and e.get("season_number")),
+            None,
+        ) or next((e for e in entries if e.get("tvdb_id") or e.get("tmdb_id")), None)
+        if entry is None:
+            logger.info(
+                "No TMDB/TVDB identity in the mapping for MAL %s; the flat Anime "
+                "row is the only shape available for this payload",
+                mal_id,
+            )
+            return ids, season_number, episode_number
+
+        ids = dict(ids)
+        for key in ("tvdb_id", "tmdb_id"):
+            if entry.get(key):
+                ids[key] = str(entry[key])
+
+        # `episode_offset` is the source-to-MAL offset, so the show's episode is
+        # the MAL episode plus the offset. It only pairs with a known season.
+        if entry.get("season_number") is not None:
+            season_number = entry["season_number"]
+            episode_number = mal_episode_number + (entry.get("episode_offset") or 0)
+
+        logger.info(
+            "Derived franchise identity for MAL %s from the anime mapping: "
+            "tvdb=%s tmdb=%s season=%s episode=%s",
+            mal_id,
+            ids.get("tvdb_id"),
+            ids.get("tmdb_id"),
+            season_number,
+            episode_number,
+        )
+        return ids, season_number, episode_number
 
     def _has_existing_tv_tracking(self, media_id, tvdb_id=None):
         """Return whether the TMDB/TVDB show is already tracked locally."""
@@ -1190,20 +1320,38 @@ class BaseWebhookProcessor:
                     current_instance.item,
                 )
         else:
-            app.models.Movie.objects.create(
-                item=movie_item,
-                user=user,
-                progress=progress,
-                status=Status.COMPLETED.value
-                if movie_played
-                else Status.IN_PROGRESS.value,
-                start_date=now if not movie_played else None,
-                end_date=now if movie_played else None,
-            )
-            logger.info(
-                "Created new movie instance with status: %s",
-                Status.COMPLETED.value if movie_played else Status.IN_PROGRESS.value,
-            )
+            # A second row here is a rewatch, but the same play may already have
+            # been recorded by a repeated webhook or by a Trakt/Plex history
+            # import, so measure it against the plays already stored (#642).
+            duplicate = movie_played and play_dedupe.existing_movie_play_times(
+                user,
+                media_ids=[movie_item.media_id],
+                source=movie_item.source,
+            ).is_duplicate(movie_item.media_id, now)
+
+            if duplicate:
+                logger.debug(
+                    "Skipping duplicate movie record near %s: %s",
+                    now,
+                    movie_item,
+                )
+            else:
+                app.models.Movie.objects.create(
+                    item=movie_item,
+                    user=user,
+                    progress=progress,
+                    status=Status.COMPLETED.value
+                    if movie_played
+                    else Status.IN_PROGRESS.value,
+                    start_date=now if not movie_played else None,
+                    end_date=now if movie_played else None,
+                )
+                logger.info(
+                    "Created new movie instance with status: %s",
+                    Status.COMPLETED.value
+                    if movie_played
+                    else Status.IN_PROGRESS.value,
+                )
 
         # Queue collection metadata update if supported
         self._queue_collection_metadata_update(payload, user, movie_item)
@@ -1876,31 +2024,28 @@ class BaseWebhookProcessor:
                 second=0,
                 microsecond=0,
             )
-            latest_episode = (
-                app.models.Episode.objects.filter(
-                    item=episode_item,
-                    related_season=season_instance,
-                )
-                .order_by("-end_date")
-                .first()
+            # Check for duplicate episode records: webhooks are sometimes
+            # triggered multiple times (#689), and the same play may already
+            # have been recorded by a Trakt or Plex history import (#642).
+            play_key = (
+                episode_item.media_id,
+                episode_item.season_number,
+                episode_item.episode_number,
             )
-
-            should_create = True
-            # check for duplicate episode records,
-            # sometimes webhooks are triggered multiple times #689
-            if latest_episode and latest_episode.end_date:
-                time_diff = abs((now - latest_episode.end_date).total_seconds())
-                threshold = 5
-                if time_diff < threshold:
-                    should_create = False
-                    logger.debug(
-                        "Skipping duplicate episode record "
-                        "(time difference: %d seconds): %s S%02dE%02d",
-                        time_diff,
-                        tv_metadata["title"],
-                        season_number,
-                        episode_number,
-                    )
+            existing_plays = play_dedupe.existing_episode_play_times(
+                user,
+                media_ids=[episode_item.media_id],
+                source=episode_item.source,
+            )
+            should_create = not existing_plays.is_duplicate(play_key, now)
+            if not should_create:
+                logger.debug(
+                    "Skipping duplicate episode record near %s: %s S%02dE%02d",
+                    now,
+                    tv_metadata["title"],
+                    season_number,
+                    episode_number,
+                )
 
             if should_create:
                 app.models.Episode.objects.create(

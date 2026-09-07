@@ -8,7 +8,7 @@ from django.core.cache import cache
 
 from app import helpers
 from app.models import MediaTypes, Sources
-from app.providers import services
+from app.providers import credentials, services
 
 logger = logging.getLogger(__name__)
 base_url = "https://comicvine.gamespot.com/api"
@@ -36,7 +36,7 @@ def handle_error(error):
     raise services.ProviderAPIError(Sources.COMICVINE.value, error)
 
 
-def search(query, page):
+def search(query, page, user=None):
     """Search for comics on Comic Vine."""
     cache_key = (
         f"search_{Sources.COMICVINE.value}_{MediaTypes.COMIC.value}_{query}_{page}"
@@ -45,7 +45,7 @@ def search(query, page):
 
     if data is None:
         params = {
-            "api_key": settings.COMICVINE_API,
+            "api_key": credentials.get("comicvine", "api_key", user=user),
             "format": "json",
             "query": query,
             "resources": "volume",
@@ -90,14 +90,14 @@ def search(query, page):
     return data
 
 
-def comic(media_id):
+def comic(media_id, user=None):
     """Return the metadata for the selected comic volume from Comic Vine."""
     cache_key = f"{Sources.COMICVINE.value}_{MediaTypes.COMIC.value}_{media_id}"
     data = cache.get(cache_key)
 
     if data is None:
         params = {
-            "api_key": settings.COMICVINE_API,
+            "api_key": credentials.get("comicvine", "api_key", user=user),
             "format": "json",
             "field_list": (
                 "publisher,site_detail_url,name,last_issue,image,description,"
@@ -308,7 +308,7 @@ def get_people_full(response):
     return people_full
 
 
-def get_volume_issues(volume_id, limit=100):
+def get_volume_issues(volume_id, limit=100, user=None):
     """Get the list of issues for a comic volume, sorted by issue number."""
     cache_key = f"{Sources.COMICVINE.value}_volume_{volume_id}_issues"
     data = cache.get(cache_key)
@@ -316,7 +316,7 @@ def get_volume_issues(volume_id, limit=100):
 
     if data is None:
         params = {
-            "api_key": settings.COMICVINE_API,
+            "api_key": credentials.get("comicvine", "api_key", user=user),
             "format": "json",
             "field_list": "id,name,image,issue_number,cover_date,site_detail_url",
             "filter": f"volume:{volume_id}",
@@ -367,14 +367,14 @@ def _volume_issue_sort_key(issue):
     return (1, 0)
 
 
-def get_publisher_comics(publisher_id, current_id, limit=15):
+def get_publisher_comics(publisher_id, current_id, limit=15, user=None):
     """Get comics from the same publisher."""
     cache_key = f"{Sources.COMICVINE.value}_publisher_{publisher_id}_{current_id}"
     data = cache.get(cache_key)
 
     if data is None:
         params = {
-            "api_key": settings.COMICVINE_API,
+            "api_key": credentials.get("comicvine", "api_key", user=user),
             "format": "json",
             "field_list": "id,name,image,start_year,publisher",
             "filter": f"publisher:{publisher_id}",
@@ -411,14 +411,14 @@ def get_publisher_comics(publisher_id, current_id, limit=15):
     return data
 
 
-def search_issues(query, page):
+def search_issues(query, page, user=None):
     """Search for individual comic issues on Comic Vine."""
     cache_key = f"search_{Sources.COMICVINE.value}_{MediaTypes.COMIC_ISSUE.value}_{query}_{page}"
     data = cache.get(cache_key)
 
     if data is None:
         params = {
-            "api_key": settings.COMICVINE_API,
+            "api_key": credentials.get("comicvine", "api_key", user=user),
             "format": "json",
             "query": query,
             "resources": "issue",
@@ -473,14 +473,14 @@ def search_issues(query, page):
     return data
 
 
-def comic_issue(media_id):
+def comic_issue(media_id, user=None):
     """Return the full metadata for an individual comic issue from Comic Vine."""
     cache_key = f"{Sources.COMICVINE.value}_{MediaTypes.COMIC_ISSUE.value}_{media_id}"
     data = cache.get(cache_key)
 
     if data is None:
         params = {
-            "api_key": settings.COMICVINE_API,
+            "api_key": credentials.get("comicvine", "api_key", user=user),
             "format": "json",
             "field_list": (
                 "id,name,image,issue_number,volume,cover_date,store_date,"
@@ -589,14 +589,14 @@ def _get_issue_people_full(response):
     return people_full
 
 
-def issue(media_id):
+def issue(media_id, user=None):
     """Return cover and store dates for a comic issue (used by volume detail page)."""
     cache_key = f"{Sources.COMICVINE.value}_issue_{media_id}"
     data = cache.get(cache_key)
 
     if data is None:
         params = {
-            "api_key": settings.COMICVINE_API,
+            "api_key": credentials.get("comicvine", "api_key", user=user),
             "format": "json",
             "field_list": ("cover_date,store_date"),
         }
@@ -624,7 +624,7 @@ def issue(media_id):
     return data
 
 
-def person_profile(person_id):
+def person_profile(person_id, user=None):
     """Return metadata for a Comic Vine person profile."""
     cache_key = f"{Sources.COMICVINE.value}_person_{person_id}"
     data = cache.get(cache_key)
@@ -632,7 +632,7 @@ def person_profile(person_id):
         return data
 
     params = {
-        "api_key": settings.COMICVINE_API,
+        "api_key": credentials.get("comicvine", "api_key", user=user),
         "format": "json",
         "field_list": (
             "id,name,image,deck,description,birth,death,hometown,site_detail_url"

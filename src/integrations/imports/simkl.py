@@ -10,7 +10,7 @@ from django.utils.dateparse import parse_datetime
 import app
 from app import helpers as app_helpers
 from app.models import MediaTypes, Sources, Status
-from app.providers import services
+from app.providers import credentials, services
 from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
@@ -28,8 +28,8 @@ def get_token(request, redirect_uri=None):
     }
 
     params = {
-        "client_id": settings.SIMKL_ID,
-        "client_secret": settings.SIMKL_SECRET,
+        "client_id": credentials.get("simkl", "client_id"),
+        "client_secret": credentials.get("simkl", "client_secret"),
         "code": code,
         "grant_type": "authorization_code",
         "redirect_uri": redirect_uri
@@ -68,7 +68,7 @@ def get_username(token):
             "https://api.simkl.com/users/settings",
             headers={
                 "Authorization": f"Bearer {token}",
-                "simkl-api-key": settings.SIMKL_ID,
+                "simkl-api-key": credentials.get("simkl", "client_id"),
                 "Content-Type": "application/json",
             },
         )
@@ -152,7 +152,7 @@ class SimklImporter:
         url = f"{self.SIMKL_API_BASE_URL}/sync/all-items/"
         headers = {
             "Authorization": f"Bearer: {self.token}",
-            "simkl-api-key": settings.SIMKL_ID,
+            "simkl-api-key": credentials.get("simkl", "client_id"),
         }
         params = {
             "extended": "full",

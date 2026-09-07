@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from app import helpers
 from app.models import MediaTypes, Sources
-from app.providers import services, tmdb
+from app.providers import credentials, services, tmdb
 
 logger = logging.getLogger(__name__)
 
@@ -103,17 +103,17 @@ def metadata_cache_keys(media_id, season_number=None):
     return keys
 
 
-def enabled() -> bool:
+def enabled(user=None) -> bool:
     """Return whether TVDB is configured."""
-    return bool(settings.TVDB_API_KEY)
+    return credentials.is_configured("tvdb", user)
 
 
-def handle_error(error):
+def handle_error(error, user=None):
     """Handle TVDB API errors."""
     response = getattr(error, "response", None)
     status_code = getattr(response, "status_code", None)
     if status_code == requests.codes.unauthorized:
-        cache.delete(TOKEN_CACHE_KEY)
+        cache.delete(_token_cache_key(user))
     raise services.ProviderAPIError(Sources.TVDB.value, error)
 
 
@@ -264,15 +264,23 @@ def _pick_preferred_translation(
     return fallback
 
 
-def _get_token() -> str:
+def _token_cache_key(user=None) -> str:
+    """Return the token cache key for whichever credentials are in play."""
+    suffix = credentials.cache_suffix("tvdb", "api_key", "pin", user=user)
+    return f"{TOKEN_CACHE_KEY}_{suffix}"
+
+
+def _get_token(user=None) -> str:
     """Return a cached TVDB bearer token."""
-    token = cache.get(TOKEN_CACHE_KEY)
+    cache_key = _token_cache_key(user)
+    token = cache.get(cache_key)
     if token:
         return token
 
-    payload = {"apikey": settings.TVDB_API_KEY}
-    if settings.TVDB_PIN:
-        payload["pin"] = settings.TVDB_PIN
+    payload = {"apikey": credentials.get("tvdb", "api_key", user=user)}
+    pin = credentials.get("tvdb", "pin", user=user)
+    if pin:
+        payload["pin"] = pin
 
     try:
         response = services.api_request(
@@ -290,13 +298,13 @@ def _get_token() -> str:
         msg = "TVDB login did not return a token"
         raise ValueError(msg)
 
-    cache.set(TOKEN_CACHE_KEY, token, timeout=TOKEN_CACHE_TIMEOUT)
+    cache.set(cache_key, token, timeout=TOKEN_CACHE_TIMEOUT)
     return token
 
 
-def _request(path: str, *, params=None, retry: bool = True):
+def _request(path: str, *, params=None, retry: bool = True, user=None):
     """Make an authenticated TVDB request."""
-    if not enabled():
+    if not enabled(user):
         msg = "TVDB is not configured"
         raise ValueError(msg)
 
@@ -307,7 +315,7 @@ def _request(path: str, *, params=None, retry: bool = True):
             f"{base_url}/{path.lstrip('/')}",
             params=params,
             headers={
-                "Authorization": f"Bearer {_get_token()}",
+                "Authorization": f"Bearer {_get_token(user)}",
                 "Accept": "application/json",
             },
         )
@@ -317,9 +325,9 @@ def _request(path: str, *, params=None, retry: bool = True):
             and getattr(getattr(error, "response", None), "status_code", None)
             == requests.codes.unauthorized
         ):
-            cache.delete(TOKEN_CACHE_KEY)
-            return _request(path, params=params, retry=False)
-        handle_error(error)
+            cache.delete(_token_cache_key(user))
+            return _request(path, params=params, retry=False, user=user)
+        handle_error(error, user)
 
 
 def _parse_date(value):

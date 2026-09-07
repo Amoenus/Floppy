@@ -31,6 +31,7 @@ from django.http import (
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
@@ -38,6 +39,7 @@ import users
 from app import helpers as app_helpers
 from app import image_cache
 from app.log_safety import exception_summary
+from app.providers import credentials
 from integrations import (
     audiobookshelf_cover as abs_cover_proxy,
 )
@@ -60,6 +62,11 @@ from integrations.imports import anilist, helpers, mdblist, simkl, stremio, trak
 from integrations.imports.audiobookshelf import (
     AudiobookshelfAuthError,
     AudiobookshelfClient,
+)
+from integrations.imports.koreader import (
+    KoreaderAuthError,
+    KoreaderClient,
+    KoreaderClientError,
 )
 from integrations.imports.radarr import RadarrClient
 from integrations.imports.sonarr import SonarrClient
@@ -87,6 +94,8 @@ from integrations.models import (
     GPodderAccount,
     JellyfinAccount,
     KoitoAccount,
+    KoreaderAccount,
+    KoreaderDocumentLink,
     LastFMAccount,
     MDBListAccount,
     PlexAccount,
@@ -114,6 +123,7 @@ SONARR_RECURRING_TASK_NAME = "Import from Sonarr (Recurring)"
 GPODDER_RECURRING_TASK_NAME = "Import from GPodder (Recurring)"
 # The upload rides in the Celery message, so bound what a single import can send.
 TRAKT_EXPORT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+TRAKT_DEVICE_SESSION_KEY = "trakt_device_auth"
 YAMTRACK_IMPORT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 
@@ -577,6 +587,11 @@ def trakt_oauth(request):
         request,
         reverse("import_trakt_private"),
     )
+    if not app_helpers.supports_oauth_redirect(redirect_uri):
+        # Trakt refuses non-HTTPS callbacks, so this instance can only connect
+        # through the device code flow (#681).
+        return _start_trakt_device_flow(request)
+
     url = "https://trakt.tv/oauth/authorize"
     state = {
         "mode": request.POST["mode"],
@@ -588,8 +603,127 @@ def trakt_oauth(request):
     state_token = secrets.token_urlsafe(32)
     request.session[state_token] = state
     return redirect(
-        f"{url}?client_id={settings.TRAKT_API}&redirect_uri={redirect_uri}&response_type=code&state={state_token}",
+        f"{url}?client_id={credentials.get("trakt", "client_id")}&redirect_uri={redirect_uri}&response_type=code&state={state_token}",
     )
+
+
+def _finish_trakt_connection(request, oauth_result, state_data):
+    """Encrypt the refresh token, then queue or schedule the Trakt import."""
+    enc_token = helpers.encrypt(oauth_result["refresh_token"])
+
+    frequency = state_data["frequency"]
+    mode = state_data["mode"]
+    import_time = state_data["time"]
+
+    if frequency == "once":
+        tasks.import_trakt.delay(
+            token=enc_token,
+            user_id=request.user.id,
+            mode=mode,
+            username=oauth_result["username"],
+        )
+        messages.info(request, "The task to import media from Trakt has been queued.")
+    else:
+        helpers.create_import_schedule(
+            oauth_result["username"],
+            request,
+            mode,
+            frequency,
+            import_time,
+            "Trakt",
+            token=enc_token,
+        )
+
+
+def _start_trakt_device_flow(request):
+    """Mint a Trakt device code and send the user to the code screen."""
+    try:
+        device = trakt.request_device_code()
+    except helpers.MediaImportError as error:
+        messages.error(request, str(error))
+        return _integration_redirect(request)
+
+    request.session[TRAKT_DEVICE_SESSION_KEY] = {
+        "device_code": device["device_code"],
+        "user_code": device["user_code"],
+        "verification_url": device["verification_url"],
+        "interval": device["interval"],
+        "expires_at": (
+            timezone.now() + timedelta(seconds=int(device["expires_in"]))
+        ).isoformat(),
+        "mode": request.POST["mode"],
+        "frequency": request.POST["frequency"],
+        "time": request.POST["time"],
+        "return_to": request.POST.get("next"),
+    }
+    return redirect("trakt_device_verify")
+
+
+def _trakt_device_state(request):
+    """Return the pending device authorization, or None if gone or expired."""
+    state = request.session.get(TRAKT_DEVICE_SESSION_KEY)
+    if not isinstance(state, dict):
+        return None
+    expires_at = parse_datetime(state.get("expires_at") or "")
+    if expires_at is None or timezone.now() >= expires_at:
+        return None
+    return state
+
+
+@require_GET
+def trakt_device_verify(request):
+    """Show the Trakt device code the user must enter at trakt.tv/activate."""
+    state = _trakt_device_state(request)
+    if state is None:
+        request.session.pop(TRAKT_DEVICE_SESSION_KEY, None)
+        messages.error(request, "The Trakt authorization code expired. Start again.")
+        return _integration_redirect(request)
+
+    return render(
+        request,
+        "integrations/trakt_device_code.html",
+        {
+            "user_code": state["user_code"],
+            "verification_url": state["verification_url"],
+            "interval": state["interval"],
+            "poll_url": reverse("trakt_device_poll"),
+            "cancel_url": reverse("import_data"),
+        },
+    )
+
+
+def _htmx_redirect(location):
+    """Tell HTMX to navigate away without swapping anything in."""
+    return HttpResponse(status=HTTPStatus.NO_CONTENT, headers={"HX-Redirect": location})
+
+
+@require_GET
+def trakt_device_poll(request):
+    """Poll Trakt once for the pending device authorization."""
+    state = _trakt_device_state(request)
+    if state is None:
+        request.session.pop(TRAKT_DEVICE_SESSION_KEY, None)
+        messages.error(request, "The Trakt authorization code expired. Start again.")
+        return _htmx_redirect(reverse("import_data"))
+
+    try:
+        result = trakt.poll_device_token(state["device_code"])
+    except helpers.MediaImportError as error:
+        request.session.pop(TRAKT_DEVICE_SESSION_KEY, None)
+        messages.error(request, str(error))
+        return _htmx_redirect(reverse("import_data"))
+
+    if result is None:
+        return HttpResponse(status=HTTPStatus.NO_CONTENT)
+
+    request.session.pop(TRAKT_DEVICE_SESSION_KEY, None)
+    _finish_trakt_connection(request, result, state)
+    redirect_response = _integration_redirect(
+        request,
+        connected_slug="trakt",
+        next_url=state.get("return_to"),
+    )
+    return _htmx_redirect(redirect_response["Location"])
 
 
 @require_GET
@@ -601,32 +735,12 @@ def import_trakt_private(request):
 
     redirect_uri = state_data.get("redirect_uri")
     oauth_callback = trakt.handle_oauth_callback(request, redirect_uri=redirect_uri)
-    enc_token = helpers.encrypt(oauth_callback["refresh_token"])
-
-    frequency = state_data["frequency"]
-    mode = state_data["mode"]
-    import_time = state_data["time"]
-    return_to = state_data.get("return_to")
-
-    if frequency == "once":
-        tasks.import_trakt.delay(
-            token=enc_token,
-            user_id=request.user.id,
-            mode=mode,
-            username=oauth_callback["username"],
-        )
-        messages.info(request, "The task to import media from Trakt has been queued.")
-    else:
-        helpers.create_import_schedule(
-            oauth_callback["username"],
-            request,
-            mode,
-            frequency,
-            import_time,
-            "Trakt",
-            token=enc_token,
-        )
-    return _integration_redirect(request, connected_slug="trakt", next_url=return_to)
+    _finish_trakt_connection(request, oauth_callback, state_data)
+    return _integration_redirect(
+        request,
+        connected_slug="trakt",
+        next_url=state_data.get("return_to"),
+    )
 
 
 @require_POST
@@ -817,7 +931,7 @@ def plex_callback(request):
     if return_to:
         # Arrived from the setup wizard: queue a sensible default import
         # rather than requiring a second visit to pick a library/mode.
-        tasks.import_plex.delay(user_id=request.user.id, mode="new", library="all")
+        tasks.import_plex.delay(user_id=request.user.id, mode="new", library=["all"])
 
     return _integration_redirect(request, connected_slug="plex", next_url=return_to)
 
@@ -832,19 +946,24 @@ def plex_disconnect(request):
     return redirect("import_data")
 
 
-def _save_plex_content_kind(plex_account, library, content_kind):
-    """Persist how a Plex library should be imported (auto/music/audiobook).
+def _save_plex_content_kind(plex_account, library_content_kinds):
+    """Persist per-library content-kind choices (auto/music/audiobook).
 
     Stored on the account rather than passed per-run so scheduled imports and
-    the live webhook honor the same choice.
+    the live webhook honor the same choice. Each entry is a
+    "machine_identifier::section_id::content_kind" string.
     """
-    if not content_kind or library in (None, "", "all"):
-        return
-    try:
-        machine_identifier, section_id = library.split("::", 1)
-    except ValueError:
-        return
-    if plex_account.set_content_kind(machine_identifier, section_id, content_kind):
+    changed = False
+    for entry in library_content_kinds:
+        try:
+            machine_identifier, section_id, content_kind = entry.split("::", 2)
+        except ValueError:
+            continue
+        changed = (
+            plex_account.set_content_kind(machine_identifier, section_id, content_kind)
+            or changed
+        )
+    if changed:
         plex_account.save(update_fields=["section_settings"])
 
 
@@ -856,15 +975,15 @@ def import_plex(request):
         messages.error(request, "Connect Plex before importing.")
         return redirect("import_data")
 
-    library = request.POST.get("library") or "all"
+    library = request.POST.getlist("library") or ["all"]
     mode = request.POST.get("mode", "new")
     frequency = request.POST.get("frequency", "once")
     import_time = request.POST.get("time", "00:00")
     raw_usernames = request.POST.get("plex_usernames", "")
-    content_kind = request.POST.get("content_kind")
+    library_content_kinds = request.POST.getlist("library_content_kind")
 
     _save_plex_usernames(request.user, raw_usernames)
-    _save_plex_content_kind(plex_account, library, content_kind)
+    _save_plex_content_kind(plex_account, library_content_kinds)
 
     if mode == "watchlist":
         _ensure_plex_watchlist_schedule(request.user, plex_account)
@@ -958,7 +1077,7 @@ def simkl_oauth(request):
     request.session[state_token] = state
 
     return redirect(
-        f"{url}?client_id={settings.SIMKL_ID}&redirect_uri={redirect_uri}&response_type=code&state={state_token}",
+        f"{url}?client_id={credentials.get("simkl", "client_id")}&redirect_uri={redirect_uri}&response_type=code&state={state_token}",
     )
 
 
@@ -1049,7 +1168,7 @@ def anilist_oauth(request):
     request.session[state_token] = state
 
     return redirect(
-        f"{url}?client_id={settings.ANILIST_ID}&redirect_uri={redirect_uri}&response_type=code&state={state_token}",
+        f"{url}?client_id={credentials.get("anilist", "client_id")}&redirect_uri={redirect_uri}&response_type=code&state={state_token}",
     )
 
 
@@ -2272,6 +2391,226 @@ def import_storyteller(request):
     return redirect("import_data")
 
 
+KOREADER_IMPORT_TASK_NAME = "Import from KOReader"
+KOREADER_MAX_COMPLETION = 100
+
+
+def _parse_finished_threshold_percent(post):
+    """Return a 0-1 completion threshold from a percentage form field."""
+    raw = (post.get("finished_threshold_percent") or "").strip()
+    if not raw:
+        return 1.0
+    try:
+        percent = float(raw)
+    except ValueError as exc:
+        msg = "Completion threshold must be a number between 1 and 100."
+        raise ValueError(msg) from exc
+    if not 1 <= percent <= KOREADER_MAX_COMPLETION:
+        msg = "Completion threshold must be between 1 and 100 percent."
+        raise ValueError(msg)
+    return percent / 100.0
+
+
+def _koreader_options_from_post(post):
+    """Read KOReader account toggles from a form POST."""
+    return {
+        "verify_ssl": post.get("verify_ssl") == "on",
+        "create_missing": post.get("create_missing") == "on",
+        "skip_finished_books": post.get("skip_finished_books") == "on",
+        "finished_threshold": _parse_finished_threshold_percent(post),
+    }
+
+
+def _validate_koreader_connection(server_url, username, auth_key, verify_ssl):
+    """Verify credentials against the sync server or raise."""
+    client = KoreaderClient(server_url, username, auth_key, verify_ssl=verify_ssl)
+    client.auth()
+
+
+@require_POST
+def koreader_connect(request):
+    """Connect a KOReader sync server account."""
+    server_url = request.POST.get("server_url", "").strip().rstrip("/")
+    username = request.POST.get("username", "").strip()
+    password = request.POST.get("password", "")
+    try:
+        options = _koreader_options_from_post(request.POST)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect("import_data")
+    mode = request.POST.get("mode", "new")
+    frequency = request.POST.get("frequency", "once")
+    import_time = request.POST.get("time", "00:00")
+
+    if not server_url or not username or not password:
+        messages.error(request, "Server URL, username, and password are required.")
+        return redirect("import_data")
+
+    auth_key = KoreaderClient.password_to_auth_key(password)
+    try:
+        _validate_koreader_connection(
+            server_url,
+            username,
+            auth_key,
+            options["verify_ssl"],
+        )
+    except KoreaderAuthError as exc:
+        messages.error(request, str(exc))
+        return redirect("import_data")
+    except KoreaderClientError as exc:
+        messages.error(request, f"Could not reach KOReader sync server: {exc}")
+        return redirect("import_data")
+    except requests.RequestException as exc:
+        messages.error(request, f"Could not reach KOReader sync server: {exc}")
+        return redirect("import_data")
+
+    KoreaderAccount.objects.update_or_create(
+        user=request.user,
+        defaults={
+            "server_url": server_url,
+            "username": username,
+            "auth_key": helpers.encrypt(auth_key),
+            **options,
+            "connection_broken": False,
+            "last_error_message": "",
+        },
+    )
+
+    if frequency == "once":
+        tasks.import_koreader.delay(user_id=request.user.id, mode=mode)
+        messages.success(request, "Connected to KOReader. Import queued.")
+    else:
+        helpers.create_import_schedule(
+            username=username,
+            request=request,
+            mode=mode,
+            frequency=frequency,
+            import_time=import_time,
+            source="KOReader",
+            extra_kwargs={"user_id": request.user.id},
+        )
+        tasks.import_koreader.delay(user_id=request.user.id, mode=mode)
+        messages.success(request, "Connected to KOReader. Import scheduled.")
+    return redirect("import_data")
+
+
+@require_POST
+def koreader_settings(request):
+    """Update KOReader connection and sync options."""
+    account = getattr(request.user, "koreader_account", None)
+    if not account:
+        messages.error(request, "Connect KOReader before changing settings.")
+        return redirect("import_data")
+
+    server_url = request.POST.get("server_url", "").strip().rstrip("/")
+    username = request.POST.get("username", "").strip()
+    password = request.POST.get("password", "")
+    try:
+        options = _koreader_options_from_post(request.POST)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect("import_data")
+
+    if not server_url or not username:
+        messages.error(request, "Server URL and username are required.")
+        return redirect("import_data")
+
+    if password:
+        auth_key = KoreaderClient.password_to_auth_key(password)
+    else:
+        try:
+            auth_key = helpers.decrypt_or_raise(account.auth_key)
+        except helpers.MediaImportError as exc:
+            messages.error(request, str(exc))
+            return redirect("import_data")
+
+    try:
+        _validate_koreader_connection(
+            server_url,
+            username,
+            auth_key,
+            options["verify_ssl"],
+        )
+    except KoreaderAuthError as exc:
+        messages.error(request, str(exc))
+        return redirect("import_data")
+    except KoreaderClientError as exc:
+        messages.error(request, f"Could not reach KOReader sync server: {exc}")
+        return redirect("import_data")
+    except requests.RequestException as exc:
+        messages.error(request, f"Could not reach KOReader sync server: {exc}")
+        return redirect("import_data")
+
+    account.server_url = server_url
+    account.username = username
+    account.auth_key = helpers.encrypt(auth_key)
+    account.verify_ssl = options["verify_ssl"]
+    account.create_missing = options["create_missing"]
+    account.skip_finished_books = options["skip_finished_books"]
+    account.finished_threshold = options["finished_threshold"]
+    account.connection_broken = False
+    account.last_error_message = ""
+    account.save(
+        update_fields=[
+            "server_url",
+            "username",
+            "auth_key",
+            "verify_ssl",
+            "create_missing",
+            "skip_finished_books",
+            "finished_threshold",
+            "connection_broken",
+            "last_error_message",
+            "updated_at",
+        ],
+    )
+    messages.success(request, "KOReader settings saved.")
+    return redirect("import_data")
+
+
+@require_POST
+def koreader_disconnect(request):
+    """Disconnect the KOReader integration."""
+    from django_celery_beat.models import PeriodicTask
+
+    PeriodicTask.objects.filter(
+        task=KOREADER_IMPORT_TASK_NAME,
+        kwargs__contains=f'"user_id": {request.user.id}',
+    ).delete()
+    KoreaderDocumentLink.objects.filter(user=request.user).delete()
+    KoreaderAccount.objects.filter(user=request.user).delete()
+    messages.info(request, "Disconnected KOReader.")
+    return redirect("import_data")
+
+
+@require_POST
+def import_koreader(request):
+    """Queue a KOReader import or update its schedule."""
+    account = getattr(request.user, "koreader_account", None)
+    if not account:
+        messages.error(request, "Connect KOReader before importing.")
+        return redirect("import_data")
+
+    mode = request.POST["mode"]
+    frequency = request.POST["frequency"]
+    import_time = request.POST["time"]
+
+    if frequency == "once":
+        tasks.import_koreader.delay(user_id=request.user.id, mode=mode)
+        messages.info(request, "KOReader import queued.")
+    else:
+        helpers.create_import_schedule(
+            username=account.username,
+            request=request,
+            mode=mode,
+            frequency=frequency,
+            import_time=import_time,
+            source="KOReader",
+            extra_kwargs={"user_id": request.user.id},
+        )
+    return redirect("import_data")
+
+
 STREMIO_RECURRING_TASK_NAME = "Import from Stremio (Recurring)"
 
 
@@ -3366,8 +3705,7 @@ def import_hardcover(request):
         return _integration_redirect(request)
 
     if api_key:
-        request.user.hardcover_api_key = helpers.encrypt(api_key)
-        request.user.save(update_fields=["hardcover_api_key"])
+        credentials.set_user("hardcover", request.user, {"api_key": api_key})
         messages.success(request, "Hardcover API key saved.")
 
     if file:

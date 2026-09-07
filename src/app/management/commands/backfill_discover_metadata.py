@@ -7,7 +7,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from app.models import Item, MediaTypes, Sources
-from app.providers import services
+from app.providers import credentials, services
 
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 
@@ -57,7 +57,7 @@ class Command(BaseCommand):
             "GET",
             f"{TMDB_BASE_URL}{endpoint}",
             params={
-                "api_key": settings.TMDB_API,
+                "api_key": credentials.get("tmdb", "api_key"),
                 "language": settings.TMDB_LANG,
             },
         )

@@ -7,6 +7,9 @@ from app.providers import tmdb
 
 
 class SearchPersonProfileTests(SimpleTestCase):
+    # Provider credentials resolve through the database (Settings > Metadata).
+    databases = {"default"}
+
     def setUp(self):
         cache.clear()
 

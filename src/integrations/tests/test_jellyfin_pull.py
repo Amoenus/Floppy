@@ -3,6 +3,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
+from integrations.jellyfin_client import JellyfinClientError
 from integrations.models import ImportRun, JellyfinAccount
 from integrations.tasks._jellyfin_pull import pull_jellyfin_history
 
@@ -81,6 +82,44 @@ class PullJellyfinHistoryTaskTests(TestCase):
         mock_probe.assert_called_once()
         self.account.refresh_from_db()
         self.assertTrue(self.account.playback_reporting_available)
+
+    @patch(
+        "integrations.imports.jellyfin_playback_reporting.decrypt_or_raise",
+        return_value="api-key",
+    )
+    @patch(
+        "integrations.tasks._jellyfin_pull.decrypt_or_raise",
+        return_value="api-key",
+    )
+    @patch("integrations.jellyfin_client.JellyfinClient.iter_library_items")
+    @patch("integrations.jellyfin_client.JellyfinClient.fetch_playback_activity")
+    @patch("integrations.jellyfin_client.JellyfinClient.probe_playback_reporting")
+    def test_falls_back_to_library_backfill_when_fetch_fails_after_probe(
+        self,
+        mock_probe,
+        mock_fetch,
+        mock_library,
+        mock_decrypt_task,
+        mock_decrypt_importer,
+    ):
+        """A broken plugin can pass the probe but 500 on the actual query.
+
+        That must not mark the connection broken -- it should fall back to
+        the library backfill tier like any other "unavailable" result.
+        """
+        mock_probe.return_value = True
+        mock_fetch.side_effect = JellyfinClientError(
+            "Jellyfin request failed (500) for /user_usage_stats/submit_custom_query"
+        )
+        mock_library.return_value = []
+
+        pull_jellyfin_history(self.user.id)
+
+        mock_library.assert_called_once()
+        self.account.refresh_from_db()
+        self.assertFalse(self.account.connection_broken)
+        self.assertFalse(self.account.playback_reporting_available)
+        self.assertEqual(self.account.last_pull_error_message, "")
 
     @patch("integrations.tasks._jellyfin_pull.events.tasks.reload_calendar.delay")
     @patch(

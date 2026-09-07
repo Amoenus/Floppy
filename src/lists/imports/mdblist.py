@@ -6,6 +6,7 @@ stable upserts keyed on (owner, source, source_id) so list PKs, slugs and
 visibility survive recurring refreshes.
 """
 
+import datetime
 import logging
 import re
 from http import HTTPStatus
@@ -157,6 +158,38 @@ def _get_metadata(media_type, tmdb_id, title):
         raise
 
 
+def _mirror_upstream_order(custom_list, desired_item_ids):
+    """Rewrite date_added so the list mirrors MDBList's ordering.
+
+    date_added (not list_item_id) is what the list detail sorts on, and
+    auto_now_add means it can only be written after creation, so this does
+    what manual drag-and-drop reordering already does.
+    """
+    rows = list(
+        CustomListItem.objects.filter(custom_list=custom_list).order_by(
+            "date_added",
+            "id",
+        ),
+    )
+    rows_by_item_id = {row.item_id: row for row in rows}
+    ordered = [
+        rows_by_item_id[item_id]
+        for item_id in desired_item_ids
+        if item_id in rows_by_item_id
+    ]
+    desired_id_set = set(desired_item_ids)
+    # Defensive: reconciliation should have removed these already.
+    ordered += [row for row in rows if row.item_id not in desired_id_set]
+
+    if [row.pk for row in ordered] == [row.pk for row in rows]:
+        return
+
+    base_time = timezone.now().replace(microsecond=0)
+    for index, row in enumerate(ordered):
+        row.date_added = base_time + datetime.timedelta(seconds=index)
+    CustomListItem.objects.bulk_update(ordered, ["date_added"])
+
+
 def _sync_list(user, api_key, list_info):
     """Upsert a CustomList from MDBList list info and reconcile its items.
 
@@ -165,14 +198,18 @@ def _sync_list(user, api_key, list_info):
     list_id = str(list_info["id"])
     entries = _get_list_items(api_key, list_id)
 
-    desired_item_ids = set()
+    # Ordered + de-duplicated: MDBList lists can be ranked, and the response
+    # sequence is the only place that ranking exists.
+    desired_item_ids = []
     skipped_items = 0
     for entry in entries:
         item = _build_item_from_entry(entry)
         if not item:
             skipped_items += 1
             continue
-        desired_item_ids.add(item.id)
+        desired_item_ids.append(item.id)
+    desired_item_ids = list(dict.fromkeys(desired_item_ids))
+    desired_id_set = set(desired_item_ids)
 
     changed_item_ids = set()
 
@@ -189,7 +226,7 @@ def _sync_list(user, api_key, list_info):
             )
             removed_item_ids = set(
                 custom_list.customlistitem_set.exclude(
-                    item_id__in=desired_item_ids,
+                    item_id__in=desired_id_set,
                 ).values_list("item_id", flat=True),
             )
             custom_list.customlistitem_set.filter(
@@ -198,7 +235,11 @@ def _sync_list(user, api_key, list_info):
             existing_item_ids = set(
                 custom_list.customlistitem_set.values_list("item_id", flat=True),
             )
-            added_item_ids = desired_item_ids - existing_item_ids
+            added_item_ids = [
+                item_id
+                for item_id in desired_item_ids
+                if item_id not in existing_item_ids
+            ]
             CustomListItem.objects.bulk_create(
                 CustomListItem(
                     custom_list=custom_list,
@@ -207,6 +248,7 @@ def _sync_list(user, api_key, list_info):
                 )
                 for item_id in added_item_ids
             )
+            _mirror_upstream_order(custom_list, desired_item_ids)
             changed_item_ids.update(removed_item_ids, added_item_ids)
 
     helpers.retry_on_lock(_apply)

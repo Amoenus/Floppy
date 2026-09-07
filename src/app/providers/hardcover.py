@@ -6,7 +6,7 @@ from django.core.cache import cache
 
 from app import helpers
 from app.models import MediaTypes, Sources
-from app.providers import services
+from app.providers import credentials, services
 
 logger = logging.getLogger(__name__)
 
@@ -40,16 +40,12 @@ def enabled() -> bool:
     Background jobs have no user context and must never spend a member's
     personal token, so they gate on this rather than on a per-user key.
     """
-    return bool(settings.HARDCOVER_API)
+    return bool(credentials.get("hardcover", "api_key"))
 
 
 def _resolve_api_token(user):
     """Return the user's personal Hardcover token if set, else the instance default."""
-    if user is not None and getattr(user, "hardcover_api_key", None):
-        from integrations.imports.helpers import decrypt
-
-        return decrypt(user.hardcover_api_key)
-    return None
+    return credentials.get("hardcover", "api_key", user=user)
 
 
 def _authorization_header(user=None):
@@ -59,13 +55,13 @@ def _authorization_header(user=None):
     otherwise send an empty Authorization header and spend a request earning a
     401. Fail before the network call instead.
     """
-    api_token = (_resolve_api_token(user) or settings.HARDCOVER_API or "").strip()
+    api_token = (_resolve_api_token(user) or "").strip()
     if not api_token:
         logger.warning("Hardcover request skipped: no API token configured")
         raise services.ProviderAPIError(
             Sources.HARDCOVER.value,
             requests.exceptions.RequestException("no Hardcover API token"),
-            "set HARDCOVER_API, or add a personal token in Preferences",
+            "add a Hardcover token in Settings > Metadata",
         )
     if api_token.lower().startswith("bearer "):
         return api_token

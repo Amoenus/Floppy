@@ -13,6 +13,7 @@ from app.helpers import (
     minutes_to_hhmm,
     normalize_navigation_url,
     redirect_back,
+    supports_oauth_redirect,
 )
 from app.models import Game, Item, MediaTypes, Movie, Sources, Status
 
@@ -353,3 +354,33 @@ class EnrichItemsWithUserDataTest(TestCase):
             "recommendations",
         )
         self.assertEqual(len(enriched_items), 2)
+
+
+class SupportsOAuthRedirect(TestCase):
+    """Trakt rejects non-HTTPS redirect URIs unless the host is loopback (#681)."""
+
+    def test_https_is_accepted(self):
+        self.assertTrue(supports_oauth_redirect("https://floppy.example.com/import"))
+
+    def test_http_loopback_hosts_are_accepted(self):
+        for url in (
+            "http://localhost:8000/import",
+            "http://127.0.0.1:8000/import",
+            "http://127.5.5.5:8000/import",
+            "http://[::1]:8000/import",
+        ):
+            with self.subTest(url=url):
+                self.assertTrue(supports_oauth_redirect(url))
+
+    def test_http_lan_address_is_rejected(self):
+        self.assertFalse(supports_oauth_redirect("http://192.168.1.50:8000/import"))
+
+    def test_http_hostname_is_rejected(self):
+        self.assertFalse(supports_oauth_redirect("http://floppy.local:8000/import"))
+
+    def test_missing_url_is_rejected(self):
+        self.assertFalse(supports_oauth_redirect(None))
+        self.assertFalse(supports_oauth_redirect(""))
+
+    def test_non_http_scheme_is_rejected(self):
+        self.assertFalse(supports_oauth_redirect("ftp://floppy.example.com/import"))

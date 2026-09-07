@@ -2779,3 +2779,58 @@ class TestPlexAnimeSectionHint(TestCase):
         )
 
         self.assertIsNone(bucket)
+
+
+class TestGetTargetSections(TestCase):
+    """Tests for multi-library selection in _get_target_sections (issue #1079)."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="multilibraryuser")
+        self.sections = [
+            {"id": "1", "machine_identifier": "machine", "title": "Movies"},
+            {"id": "2", "machine_identifier": "machine", "title": "TV Shows"},
+            {"id": "3", "machine_identifier": "machine", "title": "Music"},
+        ]
+        self.account = PlexAccount.objects.create(
+            user=self.user,
+            plex_token="token",
+            plex_username="multilibraryuser",
+            sections=self.sections,
+        )
+
+    def _importer(self, library):
+        return PlexHistoryImporter(
+            user=self.user, account=self.account, mode="new", library=library
+        )
+
+    def test_multiple_specific_libraries_returns_only_matches(self):
+        """Selecting several specific libraries returns exactly those sections."""
+        sections = self._importer(
+            ["machine::1", "machine::3"]
+        )._get_target_sections()
+
+        self.assertEqual({s["id"] for s in sections}, {"1", "3"})
+
+    def test_all_sentinel_in_list_returns_every_section(self):
+        """"all" alongside other values still means every library."""
+        sections = self._importer(["all", "machine::1"])._get_target_sections()
+
+        self.assertEqual(len(sections), 3)
+
+    def test_bare_string_all_is_normalized_for_backward_compatibility(self):
+        """Pre-existing scheduled imports stored library as a bare string."""
+        sections = self._importer("all")._get_target_sections()
+
+        self.assertEqual(len(sections), 3)
+
+    def test_bare_string_single_library_is_normalized(self):
+        """Pre-existing scheduled imports stored a single library as a string."""
+        sections = self._importer("machine::2")._get_target_sections()
+
+        self.assertEqual([s["id"] for s in sections], ["2"])
+
+    def test_unmatched_libraries_raise(self):
+        """An unknown library selection still raises, same as before."""
+        with self.assertRaises(helpers.MediaImportError):
+            self._importer(["machine::99"])._get_target_sections()

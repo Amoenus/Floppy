@@ -1001,11 +1001,6 @@ class User(AbstractUser):
             "(e.g. socks5://user:pass@host:port)"
         ),
     )
-    hardcover_api_key = models.TextField(
-        blank=True,
-        help_text="Encrypted personal Hardcover API token, overrides the instance default",
-    )
-
     date_format = models.CharField(
         max_length=20,
         default=DateFormatChoices.SYSTEM_DEFAULT,
@@ -1742,6 +1737,7 @@ class User(AbstractUser):
                 "Import from Storyteller",
                 "Import from Storyteller (Recurring)",
             ],
+            "koreader": ["Import from KOReader"],
             "pocketcasts": [
                 "Import from Pocket Casts",
                 "Import from Pocket Casts (Recurring)",

@@ -1128,7 +1128,7 @@ def get_media_metadata(
         MediaTypes.BOOK.value: lambda: (
             hardcover.book(media_id, edition_id=edition_id, user=user)
             if source == Sources.HARDCOVER.value
-            else googlebooks.book(media_id)
+            else googlebooks.book(media_id, user=user)
             if source == Sources.GOOGLEBOOKS.value
             else _audiobookshelf_book(media_id)
             if source == Sources.AUDIOBOOKSHELF.value
@@ -1138,8 +1138,8 @@ def get_media_metadata(
             if source == Sources.PLEX.value
             else openlibrary.book(media_id)
         ),
-        MediaTypes.COMIC.value: lambda: comicvine.comic(media_id),
-        MediaTypes.COMIC_ISSUE.value: lambda: comicvine.comic_issue(media_id),
+        MediaTypes.COMIC.value: lambda: comicvine.comic(media_id, user=user),
+        MediaTypes.COMIC_ISSUE.value: lambda: comicvine.comic_issue(media_id, user=user),
         MediaTypes.BOARDGAME.value: lambda: bgg.boardgame(media_id),
         MediaTypes.MUSIC.value: lambda: musicbrainz.recording(media_id),
         MediaTypes.PODCAST.value: lambda: _resolve_podcast_metadata(
@@ -1434,7 +1434,7 @@ def _lookup_by_numeric_id(media_type, query, source, user=None):
     if media_type == MediaTypes.BOOK.value and source == Sources.HARDCOVER.value:
         return hardcover.book(n, user=user)
     if media_type == MediaTypes.COMIC.value:
-        return comicvine.comic(query)
+        return comicvine.comic(query, user=user)
     if media_type == MediaTypes.BOARDGAME.value:
         return bgg.boardgame(query)
     return None
@@ -1553,12 +1553,12 @@ def search(
         MediaTypes.BOOK.value: lambda: (
             openlibrary.search(query, page)
             if source == Sources.OPENLIBRARY.value
-            else googlebooks.search(query, page, language=language)
+            else googlebooks.search(query, page, language=language, user=user)
             if source == Sources.GOOGLEBOOKS.value
             else hardcover.search(query, page, user=user)
         ),
-        MediaTypes.COMIC.value: lambda: comicvine.search(query, page),
-        MediaTypes.COMIC_ISSUE.value: lambda: comicvine.search_issues(query, page),
+        MediaTypes.COMIC.value: lambda: comicvine.search(query, page, user=user),
+        MediaTypes.COMIC_ISSUE.value: lambda: comicvine.search_issues(query, page, user=user),
         MediaTypes.BOARDGAME.value: lambda: bgg.search(query, page),
         MediaTypes.MUSIC.value: lambda: musicbrainz.search_combined(query, page),
         MediaTypes.PODCAST.value: lambda: (

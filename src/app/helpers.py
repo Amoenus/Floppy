@@ -1,3 +1,4 @@
+import ipaddress
 import re
 from datetime import date, datetime
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse
@@ -1245,6 +1246,33 @@ def build_absolute_app_url(request, path):
         return None
 
     return request.build_absolute_uri(path)
+
+
+def supports_oauth_redirect(callback_url):
+    """Whether an OAuth provider will accept this callback URL.
+
+    Trakt (and a growing number of providers) reject redirect URIs that are not
+    HTTPS unless the host is loopback, so an instance served over plain HTTP on
+    a LAN address cannot use the browser-redirect flow at all (#681).
+    """
+    if not callback_url:
+        return False
+
+    parsed = urlparse(callback_url)
+    if parsed.scheme == "https":
+        return True
+    if parsed.scheme != "http":
+        return False
+
+    hostname = parsed.hostname
+    if not hostname:
+        return False
+    if hostname == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
 
 
 def parse_completion_datetime(value):

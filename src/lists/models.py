@@ -8,7 +8,7 @@ from django.db.models import Count, F, Max, OuterRef, Prefetch, Q, Subquery
 from django.urls import reverse
 
 from app.models import Item, MediaTypes, Sources
-from app.providers import services
+from app.providers import credentials, services
 from lists import smart_rules
 
 # IGDB artwork_type values used to classify fetched artwork images.
@@ -489,7 +489,7 @@ class CustomList(models.Model):
                 f"where id = {media_id};"
             )
             headers = {
-                "Client-ID": settings.IGDB_ID,
+                "Client-ID": credentials.get("igdb", "client_id"),
                 "Authorization": f"Bearer {access_token}",
             }
 
@@ -892,7 +892,7 @@ class CustomList(models.Model):
                 f"where id = {media_id};"
             )
             headers = {
-                "Client-ID": settings.IGDB_ID,
+                "Client-ID": credentials.get("igdb", "client_id"),
                 "Authorization": f"Bearer {access_token}",
             }
 

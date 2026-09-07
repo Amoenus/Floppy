@@ -28,13 +28,13 @@ Wizard state lives on a handful of ``User`` fields
 
 from __future__ import annotations
 
-from django.conf import settings
 from django.contrib import messages
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods
 
 from app.models import MediaTypes
+from app.providers import credentials
 from integrations.models import ImportRun
 from integrations.onboarding import get_source, sources_for_media_type
 from users.views import SIDEBAR_MEDIA_TYPES, apply_media_type_preferences
@@ -266,7 +266,10 @@ def onboarding_service_setup(request):
         {
             "current_source": current,
             "remaining_count": len(remaining),
-            "trakt_configured": bool(settings.TRAKT_API and settings.TRAKT_API_SECRET),
+            "trakt_configured": bool(
+                credentials.get("trakt", "client_id")
+                and credentials.get("trakt", "client_secret"),
+            ),
             **_wizard_progress("service_setup"),
         },
     )

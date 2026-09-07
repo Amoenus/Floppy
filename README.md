@@ -862,6 +862,20 @@ If you import from a private Trakt profile, configure OAuth first:
 
 Behind a reverse proxy, also set `URLS=https://your_domain.com` so Floppy generates the correct external callback URL.
 
+#### Instances not served over HTTPS
+
+Trakt rejects any redirect URI that is not HTTPS, unless the host is loopback
+(`localhost` or `127.0.0.1`). If Floppy is reached over plain HTTP at a LAN
+address such as `http://192.168.1.50:8000`, the browser redirect flow cannot
+work at all.
+
+Floppy detects this and uses Trakt's device code flow instead: it shows you an
+8-character code to enter at [trakt.tv/activate](https://trakt.tv/activate). In
+that case set the Trakt app's Redirect URI to `urn:ietf:wg:oauth:2.0:oob`.
+
+Set `URLS=https://your_domain.com` if you would rather use the one-click browser
+flow.
+
 ### Reverse proxy setup
 
 If you are behind a reverse proxy (Nginx, Traefik, Caddy, and so on) and see a `403 Forbidden`, add your URL to the environment:

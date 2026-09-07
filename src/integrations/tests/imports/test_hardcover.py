@@ -3,10 +3,12 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
 from app.models import Book, Status
+from app.providers import credentials
 from integrations.imports import hardcover
 from integrations.imports.helpers import decrypt
 
@@ -18,6 +20,7 @@ class ImportHardcover(TestCase):
 
     def setUp(self):
         """Create user for the tests."""
+        cache.clear()
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
 
@@ -91,6 +94,7 @@ class ImportHardcoverView(TestCase):
     """Coverage for the import_hardcover view's API key save (#937)."""
 
     def setUp(self):
+        cache.clear()
         self.credentials = {"username": "hardcover-view-user", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
@@ -104,7 +108,10 @@ class ImportHardcoverView(TestCase):
 
         self.user.refresh_from_db()
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(decrypt(self.user.hardcover_api_key), "my-personal-token")
+        self.assertEqual(
+            credentials.get("hardcover", "api_key", user=self.user),
+            "my-personal-token",
+        )
         mock_delay.assert_not_called()
 
     def test_csv_only_still_queues_import(self):
@@ -119,7 +126,7 @@ class ImportHardcoverView(TestCase):
 
         self.user.refresh_from_db()
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(self.user.hardcover_api_key, "")
+        self.assertFalse(credentials.has_user_value("hardcover", self.user))
         mock_delay.assert_called_once()
 
     def test_neither_field_returns_error(self):

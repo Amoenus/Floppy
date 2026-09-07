@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
+from django.core.cache import cache
 from django.db.utils import OperationalError
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -18,6 +19,7 @@ from app.models import (
     Sources,
     Status,
 )
+from app.providers import credentials
 from app.services import metadata_resolution
 
 
@@ -25,6 +27,7 @@ class MetadataResolutionTests(TestCase):
     """Tests for per-user metadata provider resolution."""
 
     def setUp(self):
+        cache.clear()
         self.user = get_user_model().objects.create_user(
             username="resolver",
             password="pw12345",
@@ -148,7 +151,7 @@ class MetadataResolutionTests(TestCase):
     @override_settings(HARDCOVER_API="")
     def test_a_personal_token_puts_hardcover_back(self):
         """A member with their own key is not held back by the instance."""
-        self.user.hardcover_api_key = "encrypted-personal-token"
+        credentials.set_user("hardcover", self.user, {"api_key": "personal-token"})
 
         self.assertTrue(
             metadata_resolution.provider_is_enabled("hardcover", self.user),
@@ -807,6 +810,7 @@ class GetOrCreateTrackedSeasonItemTests(TestCase):
     """
 
     def setUp(self):
+        cache.clear()
         self.user = get_user_model().objects.create_user(
             username="dexter-watcher",
             password="pw12345",
@@ -1125,6 +1129,7 @@ class FindTrackedSeasonTests(TestCase):
     """
 
     def setUp(self):
+        cache.clear()
         self.user = get_user_model().objects.create_user(
             username="naruto-watcher",
             password="pw12345",
@@ -1262,6 +1267,7 @@ class FindExistingAnimeHomeTests(TestCase):
 
     def setUp(self):
         """Create two users and one TMDB-identified show."""
+        cache.clear()
         self.user = get_user_model().objects.create_user(
             username="anime-home-user",
             password="password",
@@ -1397,6 +1403,7 @@ class PrefersGroupedAnimeTests(TestCase):
 
     def setUp(self):
         """Create a user with anime enabled."""
+        cache.clear()
         self.user = get_user_model().objects.create_user(
             username="prefers-grouped-user",
             password="password",

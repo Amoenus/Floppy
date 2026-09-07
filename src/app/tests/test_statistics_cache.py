@@ -1,14 +1,23 @@
-from datetime import datetime, timedelta
+from collections import defaultdict
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import call, patch
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
+from django.urls import reverse
 from django.utils import timezone
 
 from app import statistics_cache
 from app.models import Item, MediaTypes, Movie, Sources, Status
+from app.statistics_aggregator import (
+    _build_combined_hours_charts,
+    _build_platform_breakdown,
+    _build_weekday_hour_charts,
+)
+from app.statistics_day_cache import _normalize_day_value
 
 
 class StatisticsRefreshSchedulingTests(TestCase):
@@ -103,6 +112,170 @@ class StatisticsRefreshSchedulingTests(TestCase):
             allow_inline=False,
             priority=settings.CELERY_TASK_PRIORITY_FOLLOWUP,
         )
+
+
+@override_settings(CELERY_TASK_ALWAYS_EAGER=False, TESTING=False)
+class StatisticsStaleResultTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(username="stats-stale-user")
+        self.data = statistics_cache._get_empty_statistics_data()
+        self.data["hours_per_media_type"]["movie"] = "2h"
+        statistics_cache.cache_statistics_data(self.user.id, "This Month", self.data)
+
+    def tearDown(self):
+        cache.clear()
+
+    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
+    def test_invalidation_serves_previous_result_and_schedules_refresh(self, enqueue):
+        for range_name in ("This Month", None):
+            with self.subTest(range_name=range_name):
+                cache.delete(
+                    statistics_cache._refresh_lock_key(self.user.id, "This Month")
+                )
+                enqueue.reset_mock()
+                statistics_cache.invalidate_statistics_cache(self.user.id, range_name)
+
+                result = statistics_cache.get_statistics_data(
+                    self.user, None, None, "This Month"
+                )
+
+                self.assertEqual(result, self.data)
+                enqueue.assert_called_once()
+
+    @patch("app.statistics_cache.refresh_statistics_cache")
+    @patch(
+        "app.tasks.refresh_statistics_cache_task.apply_async",
+        side_effect=OSError("offline"),
+    )
+    def test_unavailable_worker_keeps_previous_result_without_inline_rebuild(
+        self, enqueue, rebuild
+    ):
+        statistics_cache.invalidate_statistics_cache(self.user.id)
+
+        result = statistics_cache.get_statistics_data(
+            self.user, None, None, "This Month"
+        )
+
+        self.assertEqual(result, self.data)
+        enqueue.assert_called_once()
+        rebuild.assert_not_called()
+        self.assertIsNone(
+            cache.get(statistics_cache._refresh_lock_key(self.user.id, "This Month"))
+        )
+
+    def test_completed_refresh_replaces_previous_result(self):
+        statistics_cache.invalidate_statistics_cache(self.user.id)
+        updated = statistics_cache._get_empty_statistics_data()
+        statistics_cache.cache_statistics_data(self.user.id, "This Month", updated)
+
+        with patch("app.tasks.refresh_statistics_cache_task.apply_async") as enqueue:
+            result = statistics_cache.get_statistics_data(
+                self.user, None, None, "This Month"
+            )
+
+        self.assertEqual(result, updated)
+        enqueue.assert_not_called()
+
+    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
+    def test_previous_day_result_refreshes_even_without_new_activity(self, enqueue):
+        later = timezone.now() + timedelta(days=1)
+        with patch("app.statistics_cache.timezone.now", return_value=later):
+            result = statistics_cache.get_statistics_data(
+                self.user, None, None, "This Month"
+            )
+            # Repeat visits while the task waits must not multiply the work.
+            statistics_cache.get_statistics_data(self.user, None, None, "This Month")
+
+        self.assertEqual(result, self.data)
+        enqueue.assert_called_once()
+
+    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
+    def test_local_midnight_refreshes_a_recent_today_snapshot(self, enqueue):
+        # UTC is still the same date, but Tokyo has crossed midnight.
+        before = datetime(2026, 6, 1, 14, 59, tzinfo=UTC)
+        after = before + timedelta(minutes=2)
+        with timezone.override(ZoneInfo("Asia/Tokyo")):
+            with patch("app.statistics_cache.timezone.now", return_value=before):
+                statistics_cache.cache_statistics_data(self.user.id, "Today", self.data)
+            with patch("app.statistics_cache.timezone.now", return_value=after):
+                result = statistics_cache.get_statistics_data(
+                    self.user, None, None, "Today"
+                )
+
+        self.assertEqual(result, self.data)
+        enqueue.assert_called_once()
+
+    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
+    def test_polling_refreshes_previous_day_results_with_matching_history_version(
+        self, enqueue
+    ):
+        self.client.force_login(self.user)
+        later = timezone.now() + timedelta(days=1)
+        with patch("app.statistics_cache.timezone.now", return_value=later):
+            response = self.client.get(
+                reverse("cache_status"),
+                {"cache_type": "statistics", "range_name": "This Month"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["exists"])
+        self.assertTrue(response.json()["is_stale"])
+        self.assertTrue(response.json()["refresh_scheduled"])
+        enqueue.assert_called_once()
+
+    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
+    def test_unchanged_same_day_snapshot_does_not_rebuild_every_fifteen_minutes(
+        self, enqueue
+    ):
+        before = datetime(2026, 6, 1, 12, tzinfo=UTC)
+        with timezone.override(ZoneInfo("UTC")):
+            with patch("app.statistics_cache.timezone.now", return_value=before):
+                statistics_cache.cache_statistics_data(self.user.id, "Today", self.data)
+            with patch(
+                "app.statistics_cache.timezone.now",
+                return_value=before + timedelta(hours=2),
+            ):
+                result = statistics_cache.get_statistics_data(
+                    self.user, None, None, "Today"
+                )
+        self.assertEqual(result, self.data)
+        enqueue.assert_not_called()
+
+    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
+    def test_lightweight_statistics_reads_refresh_retained_stale_results(self, enqueue):
+        for reader, key in (
+            (statistics_cache.get_statistics_minutes_by_type, "minutes_per_media_type"),
+            (statistics_cache.get_statistics_media_count, "media_count"),
+            (statistics_cache.get_top_talent_data, "top_talent"),
+        ):
+            with self.subTest(reader=reader.__name__):
+                cache.delete(
+                    statistics_cache._refresh_lock_key(self.user.id, "This Month")
+                )
+                enqueue.reset_mock()
+                statistics_cache.invalidate_statistics_cache(self.user.id)
+                result = reader(self.user, None, None, "This Month")
+                self.assertEqual(result, self.data[key])
+                enqueue.assert_called_once()
+
+    def test_page_snapshot_survives_between_daily_visits(self):
+        ttl = cache.ttl(statistics_cache._cache_key(self.user.id, "This Month"))
+        self.assertGreater(ttl, 24 * 60 * 60)
+
+    def test_stale_covering_range_cannot_publish_a_fresh_derived_snapshot(self):
+        statistics_cache.cache_statistics_data(self.user.id, "All Time", self.data)
+        start, end = statistics_cache._get_predefined_range_dates("This Month")
+        later = timezone.now() + timedelta(days=1)
+        with patch("app.statistics_cache.timezone.now", return_value=later):
+            covers = statistics_cache._has_covering_range_cache(
+                self.user.id,
+                "This Month",
+                start,
+                end,
+                statistics_cache.get_history_version(self.user.id),
+            )
+        self.assertFalse(covers)
 
 
 class StatisticsHourBucketTests(TestCase):
@@ -881,3 +1054,88 @@ class RequestPathDayBuildTests(TestCase):
 
         self.assertEqual(result, {"movie": 60 * 31})
         self.assertEqual(mock_build_day.call_count, 31)
+
+
+class DayCacheContractTests(SimpleTestCase):
+    def test_cache_key_preserves_supported_day_formats(self):
+        for day in (date(2026, 9, 5), "2026-09-05", "20260905"):
+            with self.subTest(day=day):
+                self.assertEqual(
+                    statistics_cache._day_cache_key(42, day),
+                    "stats:day:v7:42:2026-09-05",
+                )
+        self.assertEqual(statistics_cache._day_cache_key(42, "invalid"), "")
+
+    def test_aware_datetime_uses_local_day(self):
+        with timezone.override("America/Chicago"):
+            self.assertEqual(
+                _normalize_day_value(
+                    datetime.fromisoformat("2026-09-05T01:00:00+00:00")
+                ),
+                date(2026, 9, 4),
+            )
+
+    def test_history_version_round_trips_through_cache_facade(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        initial = statistics_cache.get_history_version(42)
+        self.assertEqual(statistics_cache.get_history_version(42), initial)
+        statistics_cache._set_history_version(42, "changed")
+        self.assertEqual(statistics_cache.get_history_version(42), "changed")
+
+
+class PlatformBreakdownTests(SimpleTestCase):
+    def test_collection_choice_wins_and_repeated_games_count_once(self):
+        result = _build_platform_breakdown(
+            [
+                {"item_id": 1, "hours": 2},
+                {"item_id": 1, "hours": 3},
+                {"item_id": 2, "hours": 1},
+            ],
+            {1: "Steam Deck"},
+            {1: {"platforms": ["PC"]}, 2: {"platforms": ["  Switch  "]}},
+        )
+        self.assertEqual(
+            [(entry["name"], entry["games"], entry["hours"]) for entry in result],
+            [("Steam Deck", 1, 5), ("Switch", 1, 1)],
+        )
+
+    def test_ambiguous_or_missing_platforms_are_omitted(self):
+        self.assertEqual(
+            _build_platform_breakdown(
+                [{"item_id": item_id, "hours": 1} for item_id in (1, 2, 3, None)],
+                {},
+                {1: {"platforms": ["PC", "Switch"]}, 2: {"platforms": "PC"}},
+            ),
+            [],
+        )
+
+
+class StatisticsChartPreparationTests(SimpleTestCase):
+    def test_heatmap_combines_types_and_preserves_empty_cells(self):
+        counts = {
+            "movie": defaultdict(lambda: defaultdict(int)),
+            "tv": defaultdict(lambda: defaultdict(int)),
+        }
+        counts["movie"][2][13] = 2
+        counts["tv"][2][13] = 3
+        result = _build_weekday_hour_charts(counts)
+        self.assertEqual(result["all"][2][13], 5)
+        self.assertEqual(result["movie"][2][13], 2)
+        self.assertEqual(result["all"][0][0], 0)
+        self.assertEqual(len(result["all"]), 7)
+        self.assertTrue(all(len(row) == 24 for row in result["all"]))
+
+    def test_hour_charts_combine_elapsed_time_without_reading_units(self):
+        result = _build_combined_hours_charts(
+            {
+                "movie": {"2026-09-05": 90},
+                "tv": {"2026-09-05": 30},
+                "book": {"2026-09-05": 600},
+            },
+            {"movie": {"13": 90}, "tv": {"13": 30}, "book": {"13": 600}},
+        )
+        self.assertEqual(result["by_month"]["all"]["datasets"][0]["data"][8], 2)
+        self.assertEqual(result["by_time_of_day"]["all"]["datasets"][0]["data"][13], 2)
+        self.assertEqual(result["by_month"]["movie"]["datasets"][0]["data"][8], 1.5)
+        self.assertNotIn("book", result["by_month"])

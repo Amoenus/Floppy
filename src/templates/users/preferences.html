@@ -1313,9 +1313,11 @@
     </form>
 
     {% if anime_shape_prompt_count %}
-      {# Switching the Anime Provider only decides the shape of newly added
-         shows. Ask before touching a library the user already has, rather than
-         starting a bulk conversion they did not expect. #}
+      {% comment %}
+        Switching the Anime Provider only decides the shape of newly added
+        shows. Ask before touching a library the user already has, rather than
+        starting a bulk conversion they did not expect.
+      {% endcomment %}
       <div x-data="{ open: true }"
            x-cloak
            x-show="open"

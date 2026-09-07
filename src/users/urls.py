@@ -1,6 +1,6 @@
 from django.urls import path
 
-from users import onboarding_views, server_port_views, views
+from users import metadata_views, onboarding_views, server_port_views, views
 
 urlpatterns = [
     path("setup/", onboarding_views.onboarding_media_types, name="onboarding_media_types"),
@@ -87,6 +87,26 @@ urlpatterns = [
     ),
     path("settings/integrations", views.integrations, name="integrations"),
     path("settings/rss", views.rss_settings, name="rss_settings"),
+    path(
+        "settings/metadata",
+        metadata_views.metadata_settings,
+        name="metadata_settings",
+    ),
+    path(
+        "settings/metadata/<str:slug>/save",
+        metadata_views.save_provider_credential,
+        name="save_provider_credential",
+    ),
+    path(
+        "settings/metadata/<str:slug>/clear",
+        metadata_views.clear_provider_credential,
+        name="clear_provider_credential",
+    ),
+    path(
+        "settings/metadata/<str:slug>/personal",
+        metadata_views.save_personal_credential,
+        name="save_personal_credential",
+    ),
     path("settings/import", views.import_data, name="import_data"),
     path(
         "settings/import/save-settings",

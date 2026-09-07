@@ -8,7 +8,7 @@ from django.core.cache import cache
 
 from app import helpers
 from app.models import MediaTypes, Sources
-from app.providers import services
+from app.providers import credentials, services
 
 logger = logging.getLogger(__name__)
 base_url = "https://api.myanimelist.net/v2"
@@ -69,7 +69,7 @@ def rating(media_id):
             "GET",
             f"{base_url}/anime/{normalized_media_id}",
             params={"fields": RATING_FIELDS},
-            headers={"X-MAL-CLIENT-ID": settings.MAL_API},
+            headers={"X-MAL-CLIENT-ID": credentials.get("mal", "client_id")},
         )
     except requests.exceptions.HTTPError as error:
         handle_error(error)
@@ -113,7 +113,7 @@ def search(media_type, query, page):
                 "GET",
                 url,
                 params=params,
-                headers={"X-MAL-CLIENT-ID": settings.MAL_API},
+                headers={"X-MAL-CLIENT-ID": credentials.get("mal", "client_id")},
             )
         except requests.exceptions.HTTPError as error:
             response = handle_error(error)
@@ -163,7 +163,7 @@ def anime(media_id):
                 "GET",
                 url,
                 params=params,
-                headers={"X-MAL-CLIENT-ID": settings.MAL_API},
+                headers={"X-MAL-CLIENT-ID": credentials.get("mal", "client_id")},
             )
         except requests.exceptions.HTTPError as error:
             handle_error(error)
@@ -228,7 +228,7 @@ def manga(media_id):
                 "GET",
                 url,
                 params=params,
-                headers={"X-MAL-CLIENT-ID": settings.MAL_API},
+                headers={"X-MAL-CLIENT-ID": credentials.get("mal", "client_id")},
             )
         except requests.exceptions.HTTPError as error:
             handle_error(error)

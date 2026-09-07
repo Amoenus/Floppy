@@ -1011,9 +1011,12 @@ def update_collection_metadata_from_plex(library, user_id):
     and updates their collection metadata without performing a full import.
 
     Args:
-        library: Plex library identifier (e.g., "all" or "machine_id::section_id")
+        library: Plex library identifier(s) - "all", "machine_id::section_id",
+            or a list of either (accepts a bare string for backward
+            compatibility with already-scheduled PeriodicTask rows)
         user_id: User ID
     """
+    library = [library] if isinstance(library, str) else library
     user_model = get_user_model()
     try:
         user = user_model.objects.get(id=user_id)
@@ -1045,18 +1048,14 @@ def update_collection_metadata_from_plex(library, user_id):
         plex_account.sections_refreshed_at = timezone.now()
         plex_account.save(update_fields=["sections", "sections_refreshed_at"])
 
-    if library != "all":
-        try:
-            machine_id, section_id = library.split("::", 1)
-            sections = [
-                s
-                for s in sections
-                if s.get("machine_identifier") == machine_id
-                and str(s.get("id")) == str(section_id)
-            ]
-        except ValueError:
-            logger.warning("Invalid Plex library selection: %s", library)
-            return {"error": "Invalid library selection"}
+    if "all" not in library:
+        target_keys = set(library)
+        sections = [
+            s
+            for s in sections
+            if plex_account.library_key(s.get("machine_identifier"), str(s.get("id")))
+            in target_keys
+        ]
 
     if not sections:
         logger.warning("No Plex sections found for user %s", user.username)

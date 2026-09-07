@@ -58,7 +58,12 @@ def validate_api_key(api_key):
 
 
 def normalize_items_response(response):
-    """Flatten flat-array or {"movies": [], "shows": []} item responses."""
+    """Flatten flat-array or {"movies": [], "shows": []} item responses.
+
+    The flat array preserves the list's upstream ordering; list imports ask for
+    it with unified=true. The grouped shape carries no cross-bucket ordering,
+    so movies-then-shows is the best that can be done for it.
+    """
     if isinstance(response, list):
         return response
     if isinstance(response, dict):

@@ -5,7 +5,7 @@ from django.conf import settings
 from django.db import transaction
 
 from app.models import Item, MediaTypes, Sources
-from app.providers import services
+from app.providers import credentials, services
 from integrations.imports import helpers
 from lists.models import CustomList, CustomListItem
 
@@ -247,7 +247,7 @@ def _build_paginated_url(url, page):
 def _make_trakt_request(access_token, url, client_id=None):
     """Make an authenticated Trakt API request."""
     if not client_id:
-        client_id = settings.TRAKT_API
+        client_id = credentials.get("trakt", "client_id")
     headers = {
         "Content-Type": "application/json",
         "User-Agent": f"Floppy/{settings.VERSION}",

@@ -363,9 +363,10 @@ class TV(Media):
         )
         has_caught_up_season = False
         planning_continuation = None
+        paused_continuation = None
 
         for season in seasons:
-            if season.status in {Status.DROPPED.value, Status.PAUSED.value}:
+            if season.status == Status.DROPPED.value:
                 continue
 
             next_episode_number = season.next_episode_number()
@@ -373,6 +374,16 @@ class TV(Media):
                 has_caught_up_season = (
                     season.status == Status.COMPLETED.value or season.progress > 0
                 )
+                continue
+
+            # A paused season is still where the user left the show, so it can be
+            # watched next -- but only once no unpaused season qualifies, because
+            # pausing one season and moving on to a later one is also normal. It
+            # never hands off to a following planning season: the user stopped here.
+            if season.status == Status.PAUSED.value:
+                if season.progress > 0 and paused_continuation is None:
+                    paused_continuation = season, next_episode_number
+                has_caught_up_season = False
                 continue
 
             if season.progress > 0 or season.status == Status.IN_PROGRESS.value:
@@ -387,7 +398,7 @@ class TV(Media):
 
             has_caught_up_season = False
 
-        return planning_continuation
+        return planning_continuation or paused_continuation
 
     def increase_progress(self, watch_operation_id=None):
         """Increase TV progress by advancing the active season."""
@@ -933,9 +944,23 @@ class Season(Media):
             self.rewatch_started_at = original_started_at
             self._invalidate_episode_stats()
 
-    def derived_status_from_episode_progress(self, max_progress=None):
-        """Return the effective season status from local episode history."""
-        if self.status in {Status.DROPPED.value, Status.PAUSED.value}:
+    def derived_status_from_episode_progress(
+        self,
+        max_progress=None,
+        *,
+        resume_paused=False,
+    ):
+        """Return the effective season status from local episode history.
+
+        Paused is sticky by default so a season the user parked keeps reading
+        as paused everywhere it is displayed. `resume_paused` lifts that for
+        the one write that disproves it: logging a new episode is the user
+        coming back, so the season resumes. Dropped is never lifted -- that is
+        the only status where the user said they are not returning.
+        """
+        if self.status == Status.DROPPED.value:
+            return self.status
+        if self.status == Status.PAUSED.value and not resume_paused:
             return self.status
 
         completed_episode_count = self.completed_episode_count
@@ -1851,6 +1876,7 @@ class Episode(models.Model):
 
         desired_status = self.related_season.derived_status_from_episode_progress(
             max_progress=max_progress,
+            resume_paused=True,
         )
 
         if desired_status != self.related_season.status:

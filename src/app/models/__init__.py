@@ -72,6 +72,10 @@ from app.models.podcast import (
     PodcastShow,
     PodcastShowTracker,
 )
+from app.models.provider_credential import (
+    InstanceProviderCredential,
+    UserProviderCredential,
+)
 from app.models.tombstone import DeletedMedia
 from app.models.tv import (
     TV,
@@ -115,6 +119,7 @@ __all__ = [
     "Episode",
     "Game",
     "HardcoverEditionPreference",
+    "InstanceProviderCredential",
     "Item",
     "ItemPersonCredit",
     "ItemProviderLink",
@@ -146,6 +151,7 @@ __all__ = [
     "Studio",
     "Tag",
     "Track",
+    "UserProviderCredential",
     "build_episode_runtime_index",
     "prefill_episode_runtime_index",
 ]

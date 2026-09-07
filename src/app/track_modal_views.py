@@ -437,6 +437,44 @@ def _render_standard_track_modal(
             if existing_in_progress:
                 initial_data["status"] = Status.IN_PROGRESS.value
 
+    title_subtitle = ""
+    if media_type == MediaTypes.EPISODE.value and episode_number is not None:
+        episode_metadata = base_metadata or {}
+        if not episode_metadata.get("episode_title") and media:
+            # The tracked path does no provider work of its own; the episode
+            # payload is cached, so this is a cache hit in the common case.
+            try:
+                with services.interactive_request_scope():
+                    episode_metadata = services.get_media_metadata(
+                        media_type,
+                        media_id,
+                        source,
+                        [season_number],
+                        episode_number=episode_number,
+                        language=metadata_resolution.metadata_language_default(
+                            request.user,
+                            metadata_item,
+                        ),
+                    )
+            except services.ProviderAPIError:
+                logger.warning(
+                    "Could not resolve episode title for media_id=%s S%sE%s",
+                    media_id,
+                    season_number,
+                    episode_number,
+                )
+                episode_metadata = {}
+        episode_name = episode_metadata.get("episode_title")
+        show_title = episode_metadata.get("title") or (
+            media.item.title if media else ""
+        )
+        episode_label = f"S{season_number}E{episode_number}"
+        if episode_name:
+            title = episode_name
+            title_subtitle = f"{show_title} · {episode_label}"
+        else:
+            title = f"{show_title} {episode_label}".strip()
+
     if route_identity_media_type:
         initial_data["identity_media_type"] = route_identity_media_type
     if route_library_media_type:
@@ -729,6 +767,7 @@ def _render_standard_track_modal(
     context = {
         "user": request.user,
         "title": title,
+        "title_subtitle": title_subtitle,
         "media_type": media_type,
         "form": form,
         "media": media,
@@ -832,6 +871,20 @@ def _render_standard_track_modal(
         "collection_tab_available": False,
         "collection_context": None,
     }
+    koreader_account = getattr(request.user, "koreader_account", None)
+    context["show_koreader_document_field"] = bool(
+        media_type == MediaTypes.BOOK.value
+        and koreader_account
+        and koreader_account.is_connected,
+    )
+    context["koreader_document_id"] = ""
+    if context["show_koreader_document_field"] and metadata_item:
+        from integrations.koreader_links import get_document_hash_for_item
+
+        context["koreader_document_id"] = get_document_hash_for_item(
+            request.user,
+            metadata_item,
+        )
     if media_type == MediaTypes.EPISODE.value and episode_number is not None:
         context["collection_tab_available"] = True
         context["collection_context"] = build_collection_modal_context(

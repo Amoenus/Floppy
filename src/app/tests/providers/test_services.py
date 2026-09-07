@@ -15,6 +15,7 @@ from app.models import (
     Status,
 )
 from app.providers import (
+    credentials,
     igdb,
     mal,
     services,
@@ -224,7 +225,10 @@ class ServicesTests(TestCase):
 
         result = igdb.handle_error(error)
 
-        mock_cache_delete.assert_called_once_with("igdb_access_token")
+        # The token cache is keyed by the credentials that minted it, so a
+        # personal key cannot invalidate (or serve) someone else's token.
+        suffix = credentials.cache_suffix("igdb", "client_id", "client_secret")
+        mock_cache_delete.assert_called_once_with(f"igdb_access_token_{suffix}")
 
         self.assertEqual(result, {"retry": True})
 
@@ -588,7 +592,7 @@ class ServicesTests(TestCase):
 
         self.assert_metadata_title_payload(result, "Test Comic")
 
-        mock_comic.assert_called_once_with("1")
+        mock_comic.assert_called_once_with("1", user=None)
 
     @patch("app.providers.openlibrary.book")
     def test_get_media_metadata_book(self, mock_book):
@@ -617,7 +621,7 @@ class ServicesTests(TestCase):
         )
 
         self.assert_metadata_title_payload(result, "Test Google Book")
-        mock_book.assert_called_once_with("volume-1")
+        mock_book.assert_called_once_with("volume-1", user=None)
 
     @patch("app.providers.manual.metadata")
     def test_get_media_metadata_manual(self, mock_metadata):
@@ -1019,7 +1023,7 @@ class ServicesTests(TestCase):
         )
 
         self.assertEqual(result, [{"title": "Test Google Book"}])
-        mock_search.assert_called_once_with("test", 1, language="fr")
+        mock_search.assert_called_once_with("test", 1, language="fr", user=None)
 
     @override_settings(GOOGLE_BOOKS_API_KEY="test-google-key")
     @patch("app.providers.googlebooks.search")
@@ -1042,7 +1046,7 @@ class ServicesTests(TestCase):
         )
 
         self.assertEqual(result, [{"title": "Google result"}])
-        mock_google_search.assert_called_once_with("9780123456789", 1, language=None)
+        mock_google_search.assert_called_once_with("9780123456789", 1, language=None, user=None)
         mock_hardcover_search.assert_not_called()
         mock_isbn_search.assert_not_called()
 
@@ -1077,7 +1081,7 @@ class ServicesTests(TestCase):
 
         self.assertEqual(result, [{"title": "Test Comic"}])
 
-        mock_search.assert_called_once_with("test", 1)
+        mock_search.assert_called_once_with("test", 1, user=None)
 
     def test_get_media_metadata_returns_local_payload_for_audiobookshelf_books(self):
         """Audiobookshelf books should use local Item metadata, not Open Library."""

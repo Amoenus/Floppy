@@ -4,6 +4,22 @@ import users.models
 from django.db import migrations, models
 
 
+def drop_recent_release_task(apps, schema_editor):
+    """Delete the retired beat entry, if the beat tables exist yet.
+
+    Migration order does not guarantee django_celery_beat has been installed
+    when this runs, so the table is checked before the delete.
+    """
+    connection = schema_editor.connection
+    if "django_celery_beat_periodictask" not in connection.introspection.table_names():
+        return
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "DELETE FROM django_celery_beat_periodictask WHERE name = %s;",
+            ["send-recent-release-notifications"],
+        )
+
+
 class Migration(migrations.Migration):
     dependencies = [
         ("users", "0032_alter_user_token_and_generate_missing_user_tokens"),
@@ -35,8 +51,8 @@ class Migration(migrations.Migration):
                 unique=True,
             ),
         ),
-        migrations.RunSQL(
-            "DELETE FROM django_celery_beat_periodictask WHERE name = 'send-recent-release-notifications';",
-            reverse_sql=migrations.RunSQL.noop,
+        migrations.RunPython(
+            drop_recent_release_task,
+            migrations.RunPython.noop,
         ),
     ]

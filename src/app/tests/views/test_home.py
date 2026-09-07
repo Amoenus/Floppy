@@ -769,10 +769,16 @@ class HomeViewTests(TestCase):
             html=False,
         )
 
-        response = self.client.get(
-            reverse("home") + f"?load_row={season_row['row_id']}&offset=14",
-            headers={"hx-request": "true"},
-        )
+        # Loading another page must not touch other shelves, even when their
+        # cached rows have expired and would need rebuilding.
+        with patch(
+            "users.home_screen._cached_row_section",
+            side_effect=AssertionError("Load more touched an unrelated home row"),
+        ):
+            response = self.client.get(
+                reverse("home") + f"?load_row={season_row['row_id']}&offset=14",
+                headers={"hx-request": "true"},
+            )
 
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "app/components/home_grid.html")

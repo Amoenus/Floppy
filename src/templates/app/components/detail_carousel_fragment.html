@@ -1,5 +1,5 @@
 {% if carousel %}
-  <div class="w-full h-full flex flex-col gap-2" x-data="{ selected: 0, mode: 'image', videoPlaying: false, items: [], lightboxOpen: false, select(i) { this.selected = i; this.mode = this.items[i].kind; this.videoPlaying = false }, next() { this.select((this.selected + 1) % this.items.length) }, prev() { this.select((this.selected - 1 + this.items.length) % this.items.length) }, }" x-init="items = [ {% if carousel.video %}{ kind: 'video', key: '{{ carousel.video.key|escapejs }}' },{% endif %}
+  <div class="w-full h-full flex flex-col gap-2" x-data="{ selected: 0, mode: 'image', videoPlaying: false, items: [], lightboxOpen: false, fit: localStorage.getItem('gallery-fit') || 'contain', select(i) { this.selected = i; this.mode = this.items[i].kind; this.videoPlaying = false }, next() { this.select((this.selected + 1) % this.items.length) }, prev() { this.select((this.selected - 1 + this.items.length) % this.items.length) }, toggleFit() { this.fit = this.fit === 'cover' ? 'contain' : 'cover'; localStorage.setItem('gallery-fit', this.fit) }, }" x-init="items = [ {% if carousel.video %}{ kind: 'video', key: '{{ carousel.video.key|escapejs }}' },{% endif %}
 
   {% for photo in carousel.photos %}{ kind: 'image', url: '{{ photo.url|escapejs }}' },{% endfor %}
   ]; mode = items[0].kind" @keydown.escape.window="lightboxOpen = false" @keydown.arrow-left.window="if (lightboxOpen) prev()" @keydown.arrow-right.window="if (lightboxOpen) next()">
@@ -30,7 +30,8 @@
               allowfullscreen></iframe>
     </template>
     <template x-if="mode !== 'video'">
-      <img class="w-full h-full object-cover cursor-pointer"
+      <img class="w-full h-full cursor-pointer"
+           :class="fit === 'cover' ? 'object-cover' : 'object-contain'"
            :src="items[selected].url"
            alt=""
            @click="lightboxOpen = true">
@@ -39,10 +40,19 @@
     <div class="absolute top-2 left-2 rounded-md bg-black/60 px-2 py-1 text-xs font-medium text-white"
          x-text="(selected + 1) + ' / ' + items.length"></div>
 
-    <button type="button"
-            class="absolute top-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
-            @click="lightboxOpen = true"
-            aria-label="View full size">{% include "app/icons/expand.svg" with classes="w-4 h-4" %}</button>
+    <div class="absolute top-2 right-2 flex items-center gap-1">
+      <button type="button"
+              class="flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
+              @click="toggleFit()"
+              :aria-label="fit === 'cover' ? 'Fit image' : 'Fill frame'"
+              :title="fit === 'cover' ? 'Fit image' : 'Fill frame'">
+        {% include "app/icons/scan.svg" with classes="w-4 h-4" %}
+      </button>
+      <button type="button"
+              class="flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
+              @click="lightboxOpen = true"
+              aria-label="View full size">{% include "app/icons/expand.svg" with classes="w-4 h-4" %}</button>
+    </div>
 
     <button type="button"
             class="absolute left-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"

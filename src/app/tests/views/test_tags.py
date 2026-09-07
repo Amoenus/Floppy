@@ -342,6 +342,18 @@ class TagFilterViewTest(TestCase):
         self.assertNotContains(response, "Tagged Movie")
         self.assertContains(response, "Untagged Movie")
 
+    def test_tag_counts_stay_global_when_filter_applied(self):
+        """Tag dropdown counts show totals, not the filtered subset (#1072)."""
+        home = Tag.objects.create(user=self.user, name="Watched at Home")
+        ItemTag.objects.create(tag=home, item=self.item2)
+
+        url = reverse("medialist", args=["movie"])
+        response = self.client.get(url, {"tag": "Favorite"})
+
+        tag_counts = response.context["filter_data"]["tag_counts"]
+        self.assertEqual(tag_counts["Favorite"], 1)
+        self.assertEqual(tag_counts["Watched at Home"], 1)
+
     def test_multiple_tag_filter_modes(self):
         """Multiple tags support AND, OR, and NOT semantics."""
         comedy = Tag.objects.create(user=self.user, name="Comedy")

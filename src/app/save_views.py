@@ -266,6 +266,29 @@ def media_save(request):
                     media.start_rewatch()
         else:
             media = form.save()
+        if media_type == MediaTypes.BOOK.value and "koreader_document_id" in request.POST:
+            from django.db import IntegrityError
+
+            from integrations.koreader_links import (
+                normalize_document_hash,
+                save_document_link,
+            )
+
+            raw_hash = request.POST.get("koreader_document_id", "")
+            normalized = normalize_document_hash(raw_hash)
+            if raw_hash.strip() and normalized is None:
+                messages.error(
+                    request,
+                    "KOReader document ID must be a 32-character hexadecimal hash.",
+                )
+            else:
+                try:
+                    save_document_link(request.user, media.item, normalized or "")
+                except IntegrityError:
+                    messages.error(
+                        request,
+                        "That KOReader document ID is already linked to another book.",
+                    )
         BasicMedia.objects.annotate_max_progress([media], media_type)
         image_url = form.cleaned_data.get("image_url")
         if image_url and media.item.image != image_url:
@@ -278,7 +301,29 @@ def media_save(request):
             else media.item.title
         ) or "item"
         if is_htmx:
-            try:
+            fragment_context = (
+                f"{action_verb.lower()} save media_type={media_type} "
+                f"source={source} media_id={media_id} "
+                f"instance_id={instance_id} user_id={request.user.id}"
+            )
+
+            # The status pill is the response itself, not an OOB fragment, so
+            # it stays outside the per-fragment isolation below: if it cannot
+            # render there is nothing to return. This matches the old
+            # behaviour, whose fallback rendered this same template and so
+            # raised again anyway.
+            response = render(
+                request,
+                "app/components/detail_track_action.html",
+                {
+                    "media": media.item,
+                    "current_instance": media,
+                    "return_url": return_url,
+                    "track_action_update": True,
+                },
+            )
+
+            def _activity_subtitle_fragment():
                 user_medias = list(
                     media.__class__.objects.filter(
                         user=request.user, item=media.item
@@ -293,18 +338,7 @@ def media_save(request):
                     user_medias=user_medias,
                     public_view=False,
                 )
-                response = render(
-                    request,
-                    "app/components/detail_track_action.html",
-                    {
-                        "media": media.item,
-                        "current_instance": media,
-                        "return_url": return_url,
-                        "track_action_update": True,
-                    },
-                )
-                activity_subtitle_response = render(
-                    request,
+                return render_to_string(
                     "app/components/detail_activity_subtitle_slot.html",
                     {
                         "media": media.item,
@@ -315,9 +349,11 @@ def media_save(request):
                         "user": request.user,
                         "activity_subtitle_slot_oob": True,
                     },
+                    request=request,
                 )
-                score_chip_response = render(
-                    request,
+
+            def _score_chip_fragment():
+                return render_to_string(
                     "app/components/detail_score_chip_slot.html",
                     {
                         "media": media.item,
@@ -329,84 +365,77 @@ def media_save(request):
                         "csrf_token": request.META.get("CSRF_COOKIE", ""),
                         "score_chip_slot_oob": True,
                     },
+                    request=request,
                 )
-                card_rating_response = render(
-                    request,
+
+            def _card_rating_fragment():
+                return render_to_string(
                     "app/components/media_card_rating_oob.html",
                     {
                         "media_instance_id": media.id,
                         "rating_value": media.formatted_score,
                         "user": request.user,
                     },
+                    request=request,
                 )
-                status_chip_response = render(
-                    request,
+
+            def _status_chip_fragment():
+                return render_to_string(
                     "app/components/media_card_status_chip.html",
                     {
                         "media": media,
                         "status_chip_oob": True,
                     },
+                    request=request,
                 )
-                response.write(activity_subtitle_response.content.decode())
-                response.write(score_chip_response.content.decode())
-                response.write(card_rating_response.content.decode())
-                response.write(status_chip_response.content.decode())
+
+            def _season_cascade_fragment():
                 # A season completing (or reopening) can cascade to complete
                 # (or reopen) its show — Season.save() already applies that
                 # server-side, but nothing else refreshes the show's own
                 # pill, e.g. when marking a season watched from the show
                 # page rather than the season's own page.
-                if media_type == MediaTypes.SEASON.value and media.related_tv_id:
-                    tv = (
-                        TV.objects.filter(pk=media.related_tv_id)
-                        .select_related("item")
-                        .first()
-                    )
-                    if tv:
-                        response.write(
-                            _render_track_action_oob(
-                                request,
-                                tv,
-                                media_url(tv.item),
-                            ),
-                        )
-                if media_type in (
+                if media_type != MediaTypes.SEASON.value or not media.related_tv_id:
+                    return None
+                tv = (
+                    TV.objects.filter(pk=media.related_tv_id)
+                    .select_related("item")
+                    .first()
+                )
+                if not tv:
+                    return None
+                return _render_track_action_oob(request, tv, media_url(tv.item))
+
+            def _notes_section_fragment():
+                if media_type not in (
                     MediaTypes.MOVIE.value,
                     MediaTypes.TV.value,
                     MediaTypes.SEASON.value,
                     MediaTypes.ANIME.value,
                 ):
-                    response.write(
-                        _render_notes_section_oob(
-                            request,
-                            media.__class__.objects.filter(
-                                user=request.user,
-                                item=media.item,
-                            ),
-                            media=media.item,
-                        ),
-                    )
-            except Exception:
-                logger.exception(
-                    "Post-save enrichment failed for %s save "
-                    "media_type=%s source=%s media_id=%s instance_id=%s user_id=%s; "
-                    "record was already saved, falling back to a minimal confirmation.",
-                    action_verb.lower(),
-                    media_type,
-                    source,
-                    media_id,
-                    instance_id,
-                    request.user.id,
-                )
-                response = render(
+                    return None
+                return _render_notes_section_oob(
                     request,
-                    "app/components/detail_track_action.html",
-                    {
-                        "media": media.item,
-                        "current_instance": media,
-                        "return_url": return_url,
-                        "track_action_update": True,
-                    },
+                    media.__class__.objects.filter(
+                        user=request.user,
+                        item=media.item,
+                    ),
+                    media=media.item,
+                )
+
+            for label, build in (
+                ("activity subtitle", _activity_subtitle_fragment),
+                ("score chip", _score_chip_fragment),
+                ("card rating", _card_rating_fragment),
+                ("status chip", _status_chip_fragment),
+                ("season cascade pill", _season_cascade_fragment),
+                ("notes section", _notes_section_fragment),
+            ):
+                _append_optional_fragment(
+                    response,
+                    label,
+                    build,
+                    context=fragment_context,
                 )
             htmx_trigger = {
                 "closeModal": {"formId": track_form_id},
@@ -666,6 +695,32 @@ def media_rewatch(request):
     if request.headers.get("HX-Request"):
         return HttpResponse(status=204, headers={"HX-Redirect": redirect_response.url})
     return redirect_response
+
+
+def _append_optional_fragment(response, label, build, *, context):
+    """Append one optional OOB fragment, or log and skip only that fragment.
+
+    A save response is one required element - the status pill - followed by
+    several independent OOB fragments appended to it. Wrapping all of them in a
+    single try meant a failure in any one discarded the whole response: the
+    handler rebound `response` to a bare confirmation, so the later a fragment
+    failed, the more already-rendered work was thrown away, and the client saw
+    a 200 with most of the page silently not updating.
+
+    Each fragment is now isolated, so a broken one costs exactly itself.
+    """
+    try:
+        html = build()
+    except Exception:
+        logger.exception(
+            "Post-save OOB fragment %s failed for %s; the record was saved and "
+            "the rest of the response is unaffected.",
+            label,
+            context,
+        )
+        return
+    if html:
+        response.write(html)
 
 
 def _render_season_progress_oob(related_season):

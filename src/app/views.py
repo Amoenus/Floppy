@@ -425,8 +425,7 @@ def home(request):
             load_row_offset = 0
 
         # First paint renders only the first group; the rest hydrates via
-        # home_rest_fragment. Row-append (load_row) requests need the full
-        # row set, so they skip the deferral.
+        # home_rest_fragment. Row-append requests build only their target shelf.
         defer_remaining_groups = load_row_id is None
         home_groups = build_home_page_groups(
             request.user,
@@ -434,6 +433,7 @@ def home(request):
             load_row_id=load_row_id,
             load_row_offset=load_row_offset,
             append_only=bool(request.headers.get("HX-Request") and load_row_id),
+            only_row_id=load_row_id if request.headers.get("HX-Request") else None,
             first_group_only=defer_remaining_groups,
         )
 
@@ -1891,9 +1891,9 @@ def cache_status(request):
         refresh_scheduled = False
         if cache_entry:
             built_at = cache_entry.get("built_at")
-            history_version = cache_entry.get("history_version")
-            current_version = statistics_cache._get_history_version(request.user.id)
-            is_stale = False
+            is_stale = statistics_cache.is_statistics_cache_stale(
+                cache_entry, request.user.id
+            )
             recently_built = False
             age = None
             if built_at:
@@ -1901,10 +1901,6 @@ def cache_status(request):
                 # Consider cache "recently built" if it was built in the last 60 seconds
                 # This helps catch refreshes that completed just before or during page load
                 recently_built = age < timedelta(seconds=60)
-            if history_version:
-                is_stale = history_version != current_version
-            elif age:
-                is_stale = age > statistics_cache.STATISTICS_STALE_AFTER
 
             if not is_stale and refresh_lock:
                 cache.delete(refresh_lock_key)

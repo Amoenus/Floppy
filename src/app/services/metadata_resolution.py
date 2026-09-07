@@ -21,7 +21,7 @@ from app.models import (
     Sources,
     Status,
 )
-from app.providers import services
+from app.providers import credentials, services
 from integrations import anime_mapping
 
 GROUPED_ANIME_PROVIDERS = {
@@ -69,15 +69,10 @@ def provider_is_enabled(provider: str, user=None) -> bool:
     ``user`` opts a provider back in when the credential can be personal rather
     than instance-wide; callers with no user get the instance-level answer.
     """
-    if provider == Sources.TVDB.value:
-        return bool(settings.TVDB_API_KEY)
-    if provider == Sources.GOOGLEBOOKS.value:
-        return bool(settings.GOOGLE_BOOKS_API_KEY)
-    if provider == Sources.HARDCOVER.value:
-        return bool(settings.HARDCOVER_API) or bool(
-            getattr(user, "hardcover_api_key", None),
-        )
-    return True
+    spec = credentials.get_spec(provider)
+    if spec is None:
+        return True
+    return credentials.is_configured(provider, user)
 
 
 def available_metadata_sources(media_type: str, user=None) -> list[Sources]:

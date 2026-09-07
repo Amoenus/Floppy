@@ -1,18 +1,19 @@
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 
 from app import metadata_utils
 from app.models import Sources
-from app.providers import hardcover, services
-from integrations.imports.helpers import encrypt
+from app.providers import credentials, hardcover, services
 
 
 class HardcoverUserTokenTests(TestCase):
     """Coverage for per-user Hardcover API token resolution (#937)."""
 
     def setUp(self):
+        cache.clear()
         self.user = get_user_model().objects.create_user(
             username="hardcover-user",
             password="12345",
@@ -34,8 +35,7 @@ class HardcoverUserTokenTests(TestCase):
 
     @override_settings(HARDCOVER_API="instance-default-token")
     def test_uses_users_own_key_when_set(self):
-        self.user.hardcover_api_key = encrypt("personal-token")
-        self.user.save(update_fields=["hardcover_api_key"])
+        credentials.set_user("hardcover", self.user, {"api_key": "personal-token"})
 
         self.assertEqual(
             hardcover._authorization_header(self.user),
@@ -48,10 +48,8 @@ class HardcoverUserTokenTests(TestCase):
             username="other-hardcover-user",
             password="12345",
         )
-        self.user.hardcover_api_key = encrypt("token-a")
-        self.user.save(update_fields=["hardcover_api_key"])
-        other_user.hardcover_api_key = encrypt("token-b")
-        other_user.save(update_fields=["hardcover_api_key"])
+        credentials.set_user("hardcover", self.user, {"api_key": "token-a"})
+        credentials.set_user("hardcover", other_user, {"api_key": "token-b"})
 
         self.assertEqual(
             hardcover._authorization_header(self.user),
@@ -64,8 +62,7 @@ class HardcoverUserTokenTests(TestCase):
 
     @patch("app.providers.hardcover.services.api_request")
     def test_search_forwards_user_token_to_request_headers(self, mock_api_request):
-        self.user.hardcover_api_key = encrypt("personal-token")
-        self.user.save(update_fields=["hardcover_api_key"])
+        credentials.set_user("hardcover", self.user, {"api_key": "personal-token"})
         mock_api_request.return_value = {"data": {"search": {"results": None}}}
 
         hardcover.cache.delete("search_hardcover_book_user-token-query_1")
@@ -83,6 +80,7 @@ class HardcoverUnconfiguredTests(TestCase):
     """
 
     def setUp(self):
+        cache.clear()
         self.user = get_user_model().objects.create_user(
             username="no-hardcover",
             password="12345",
@@ -98,11 +96,11 @@ class HardcoverUnconfiguredTests(TestCase):
         with self.assertRaises(services.ProviderAPIError) as caught:
             hardcover._authorization_header(self.user)
 
-        self.assertIn("HARDCOVER_API", str(caught.exception))
+        self.assertIn("Settings > Metadata", str(caught.exception))
 
     @override_settings(HARDCOVER_API="")
     def test_a_personal_token_still_works(self):
-        self.user.hardcover_api_key = encrypt("personal-token")
+        credentials.set_user("hardcover", self.user, {"api_key": "personal-token"})
 
         self.assertEqual(
             hardcover._authorization_header(self.user),
