@@ -2187,7 +2187,11 @@ def _delete_orphaned_metadata(media_type, item_ids):
             manager.filter(item_id__in=item_ids).values_list("item_id", flat=True),
         )
 
-    item_count, _ = Item.objects.filter(id__in=orphaned_ids).delete()
+    # Count the Items themselves, not the cascade total: anything hanging off
+    # an Item (canonical watch state, tags, credits) would otherwise inflate
+    # the "metadata entries" the user is told about.
+    _total, deleted_per_model = Item.objects.filter(id__in=orphaned_ids).delete()
+    item_count = deleted_per_model.get(Item._meta.label, 0)
 
     if media_type == MediaTypes.MUSIC.value:
         item_count += _delete_orphaned_music_catalog()
