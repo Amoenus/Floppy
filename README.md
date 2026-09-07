@@ -120,7 +120,7 @@ Floppy combines the jobs people often split between a watchlist, a media diary, 
 
 ### Also included
 
-Multi-user accounts with OIDC and social login; calendar and iCalendar feeds for upcoming releases; release notifications through Apprise; Jellyfin, Plex, and Emby playback integrations; imports from Trakt, Simkl, MyAnimeList, AniList, Kitsu, Steam, Goodreads, StoryGraph, Hardcover, IMDb, HowLongToBeat, Grouvee and more; a REST API at `/api/v1` with an MCP server; and CSV export/import so your data is always yours to take elsewhere.
+Multi-user accounts with OIDC and social login; calendar and iCalendar feeds for upcoming releases; release notifications through Apprise; Jellyfin, Plex, and Emby playback integrations; imports from Trakt, Simkl, MyAnimeList, AniList, Kitsu, Steam, Goodreads, StoryGraph, Hardcover, IMDb, HowLongToBeat, Grouvee and more; a REST API at `/api/v1` with an MCP server; and CSV export/import so your data is always yours to take elsewhere. Floppy is also an installable PWA, so you can add it to your phone's Home Screen and launch it like an app ([installation guide](https://github.com/dannyvfilms/Floppy/wiki/2.-User-Guide#installing-floppy-on-your-phone)).
 
 ## Screenshots
 
