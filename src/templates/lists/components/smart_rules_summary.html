@@ -6,7 +6,7 @@
     {% if smart_edit_mode %}
       <span class="px-2 py-1 rounded-md bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)]">
         <span class="text-[var(--color-text-muted)]">Types:</span>
-        <span x-text="allTypesSelected() ? 'All Types' : (selectedTypes.length ? selectedTypes.map((mediaType) => { const match = availableMediaTypes.find((type) => type.value === mediaType); return match ? match.label : mediaType; }).join(', ') : 'No Types')"></span>
+        <span x-text="(allTypesSelected() && !hasGranularTypeSelected()) ? 'All Types' : (selectedTypes.length ? selectedTypes.map((mediaType) => { const match = availableMediaTypes.find((type) => type.value === mediaType); return match ? match.label : mediaType; }).join(', ') : 'No Types')"></span>
       </span>
 
       <span x-show="status && status !== 'all'"
@@ -81,10 +81,10 @@
         <span x-text="origin.length <= 3 ? origin.toUpperCase() : origin"></span>
       </span>
 
-      <span x-show="query && query.trim().length"
+      <span x-show="search && search.trim().length"
             class="px-2 py-1 rounded-md bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)]">
         <span class="text-[var(--color-text-muted)]">Search:</span>
-        <span>“<span x-text="query"></span>”</span>
+        <span>“<span x-text="search"></span>”</span>
       </span>
 
       <span class="ml-auto text-xs"

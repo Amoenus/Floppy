@@ -10,7 +10,7 @@
 {% block content %}
   {# Form CSS lives in the content block so boosted navigation keeps it #}
   {% if form %}{{ form.media.css }}{% endif %}
-  {{ smart_filter_data|json_script:"smart-filter-data" }}
+  
   {% if column_config %}
     {{ column_config|json_script:"media-column-config-data" }}
     {{ default_column_config|json_script:"media-column-default-config-data" }}
@@ -29,7 +29,7 @@
     direction: '{{ current_direction|default:'desc' }}',
     layout: '{{ current_layout }}',
     renderedLayout: '{{ current_layout }}',
-    query: '{{ active_smart_rules.search|default:''|escapejs }}',
+    search: '{{ active_smart_rules.search|default:''|escapejs }}',
     statuses: [
       {% for value in active_smart_rules.status %}
         '{{ value|escapejs }}'{% if not forloop.last %},{% endif %}
@@ -47,6 +47,9 @@
     release_date_to: '{{ active_smart_rules.release_date_to|default:''|escapejs }}',
     date_added_from: '{{ active_smart_rules.date_added_from|default:''|escapejs }}',
     date_added_to: '{{ active_smart_rules.date_added_to|default:''|escapejs }}',
+    completed_date_from: '{{ active_smart_rules.completed_date_from|default:''|escapejs }}',
+    completed_date_to: '{{ active_smart_rules.completed_date_to|default:''|escapejs }}',
+    author: '{{ active_smart_rules.author|default:''|escapejs }}',
     source: '{{ active_smart_rules.source|default:''|escapejs }}',
     language: '{{ active_smart_rules.language|default:''|escapejs }}',
     country: '{{ active_smart_rules.country|default:''|escapejs }}',
@@ -152,11 +155,23 @@
     },
     init() {
       if (this.selectedTypes.length === 0 && this.availableMediaTypes.length > 0) {
-        this.selectedTypes = this.availableMediaTypes.map((type) => type.value);
+        this.selectedTypes = this.broadMediaTypes();
       }
     },
+    // Season and episode are offered in the picker but stay out of 'all types':
+    // the server expands an empty media_types rule to the broad types only, so a
+    // list that did not ask for episodes never materialises the whole library.
+    broadMediaTypes() {
+      return this.availableMediaTypes
+        .map((type) => type.value)
+        .filter((value) => !GRANULAR_MEDIA_TYPES.includes(value));
+    },
+    hasGranularTypeSelected() {
+      return this.selectedTypes.some((value) => GRANULAR_MEDIA_TYPES.includes(value));
+    },
     allTypesSelected() {
-      return this.availableMediaTypes.length > 0 && this.selectedTypes.length === this.availableMediaTypes.length;
+      const broad = this.broadMediaTypes();
+      return broad.length > 0 && broad.every((value) => this.selectedTypes.includes(value));
     },
     isTypeSelected(mediaType) {
       return this.selectedTypes.includes(mediaType);
@@ -169,14 +184,44 @@
       this.selectedTypes = [...this.selectedTypes, mediaType];
     },
     toggleAllTypes() {
+      const granular = this.selectedTypes.filter((value) => GRANULAR_MEDIA_TYPES.includes(value));
       if (this.allTypesSelected()) {
-        this.selectedTypes = [];
+        this.selectedTypes = granular;
         return;
       }
-      this.selectedTypes = this.availableMediaTypes.map((type) => type.value);
+      this.selectedTypes = [...this.broadMediaTypes(), ...granular];
+    },
+    // A completed-date range that exactly spans one calendar year is shown as
+    // that year, matching the library toolbar's Completed Year shortcut.
+    completedYearLabel() {
+      const from = this.completed_date_from;
+      const to = this.completed_date_to;
+      if (!from || !to) {
+        return 'Pick a year…';
+      }
+      const year = from.slice(0, 4);
+      if (from === `${year}-01-01` && to === `${year}-12-31`) {
+        return year;
+      }
+      return 'Pick a year…';
+    },
+    dateMenuLabel() {
+      if (this.year) {
+        return this.year === 'unknown' ? 'Unknown' : this.year;
+      }
+      if (this.completed_date_from || this.completed_date_to) {
+        return 'Completed';
+      }
+      if (this.release_date_from || this.release_date_to) {
+        return 'Release Date';
+      }
+      if (this.date_added_from || this.date_added_to) {
+        return 'Date Added';
+      }
+      return 'Any';
     },
     dropdownLabel() {
-      if (this.allTypesSelected()) {
+      if (this.allTypesSelected() && !this.hasGranularTypeSelected()) {
         return 'All Types';
       }
       if (this.selectedTypes.length === 0) {
@@ -189,7 +234,7 @@
       return `${this.selectedTypes.length} Types`;
     },
     selectedTypesForSubmit() {
-      if (this.allTypesSelected()) {
+      if (this.allTypesSelected() && !this.hasGranularTypeSelected()) {
         return [];
       }
       return this.selectedTypes;
@@ -229,7 +274,7 @@
     },
     filterLabel() {
       const labels = [];
-      if (!this.allTypesSelected()) {
+      if (!this.allTypesSelected() || this.hasGranularTypeSelected()) {
         labels.push(this.dropdownLabel());
       }
       if (this.rating && this.rating !== 'all') {
@@ -261,6 +306,13 @@
       const dateAddedLabel = this.formatDateRangeLabel('Added', this.date_added_from, this.date_added_to);
       if (dateAddedLabel) {
         labels.push(dateAddedLabel);
+      }
+      const completedDateLabel = this.formatDateRangeLabel('Completed', this.completed_date_from, this.completed_date_to);
+      if (completedDateLabel) {
+        labels.push(completedDateLabel);
+      }
+      if (this.author) {
+        labels.push(this.author);
       }
       if (this.source) {
         labels.push(this.source.toUpperCase());
@@ -311,6 +363,9 @@
       this.release_date_to = '';
       this.date_added_from = '';
       this.date_added_to = '';
+      this.completed_date_from = '';
+      this.completed_date_to = '';
+      this.author = '';
       this.source = '';
       this.language = '';
       this.country = '';
@@ -336,34 +391,22 @@
       this.saveTimer = setTimeout(() => this.saveSmartRules(), delay);
     },
     async saveSmartRules() {
+      // Projected over SMART_RULE_KEYS rather than hand-listed: a filter added to
+      // the builder without a matching payload line used to preview correctly and
+      // then save as empty (this is how implied_genre was being silently dropped).
       const payload = {
         media_types: this.selectedTypesForSubmit(),
         status: this.statuses,
-        rating: this.rating,
-        rating_min: this.rating_min,
-        rating_max: this.rating_max,
-        collection: this.collection,
-        genre: this.genre,
-        year: this.year,
-        release: this.release,
-        release_date_from: this.release_date_from,
-        release_date_to: this.release_date_to,
-        date_added_from: this.date_added_from,
-        date_added_to: this.date_added_to,
-        source: this.source,
-        language: this.language,
-        country: this.country,
-        platform: this.platform,
-        origin: this.origin,
-        format: this.format,
-        provider: this.provider,
         tag: this.selectedTags,
         tag_mode: this.tagMode,
         list: this.selectedLists,
-        search: this.query,
+        search: this.search,
         sort: this.sort,
         sort_direction: this.direction,
       };
+      for (const key of SMART_RULE_KEYS) {
+        payload[key] = this[key];
+      }
 
       const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
 
@@ -737,139 +780,24 @@
 {# djlint:on #}
 
 {% block js %}
+  {% include "app/components/filter_toolbar_scripts.html" %}
   {% if form %}{{ form.media.js }}{% endif %}
 
   <script>
-    function mediaFilterMenu() {
-      const dataEl = document.getElementById('smart-filter-data');
-      const data = dataEl ? JSON.parse(dataEl.textContent) : {};
-      return {
-        open: false,
-        view: 'root',
-        genreSearch: '',
-        impliedGenreSearch: '',
-        yearSearch: '',
-        sourceSearch: '',
-        languageSearch: '',
-        countrySearch: '',
-        platformSearch: '',
-        originSearch: '',
-        formatSearch: '',
-        providerSearch: '',
-        tagSearch: '',
-        listSearch: '',
-        genres: data.genres || [],
-        impliedGenres: data.implied_genres || [],
-        years: data.years || [],
-        sources: data.sources || [],
-        languages: data.languages || [],
-        countries: data.countries || [],
-        platforms: data.platforms || [],
-        origins: data.origins || [],
-        formats: data.formats || [],
-        providers: data.providers || [],
-        tags: data.tags || [],
-        lists: data.lists || [],
-        resetSearch() {
-          this.genreSearch = '';
-          this.impliedGenreSearch = '';
-          this.yearSearch = '';
-          this.sourceSearch = '';
-          this.languageSearch = '';
-          this.countrySearch = '';
-          this.platformSearch = '';
-          this.originSearch = '';
-          this.formatSearch = '';
-          this.providerSearch = '';
-          this.tagSearch = '';
-          this.listSearch = '';
-        },
-        filteredGenres() {
-          const term = this.genreSearch.toLowerCase();
-          if (!term) {
-            return this.genres;
-          }
-          return this.genres.filter((genre) => genre.toLowerCase().includes(term));
-        },
-        filteredImpliedGenres() {
-          const term = this.impliedGenreSearch.toLowerCase();
-          if (!term) {
-            return this.impliedGenres;
-          }
-          return this.impliedGenres.filter((genre) => genre.toLowerCase().includes(term));
-        },
-        filteredYears() {
-          const term = this.yearSearch.toLowerCase();
-          if (!term) {
-            return this.years;
-          }
-          return this.years.filter((option) => option.label.toLowerCase().includes(term));
-        },
-        filteredSources() {
-          const term = this.sourceSearch.toLowerCase();
-          if (!term) {
-            return this.sources;
-          }
-          return this.sources.filter((option) => option.label.toLowerCase().includes(term));
-        },
-        filteredLanguages() {
-          const term = this.languageSearch.toLowerCase();
-          if (!term) {
-            return this.languages;
-          }
-          return this.languages.filter((option) => option.label.toLowerCase().includes(term));
-        },
-        filteredCountries() {
-          const term = this.countrySearch.toLowerCase();
-          if (!term) {
-            return this.countries;
-          }
-          return this.countries.filter((option) => option.label.toLowerCase().includes(term));
-        },
-        filteredPlatforms() {
-          const term = this.platformSearch.toLowerCase();
-          if (!term) {
-            return this.platforms;
-          }
-          return this.platforms.filter((option) => option.label.toLowerCase().includes(term));
-        },
-        filteredOrigins() {
-          const term = this.originSearch.toLowerCase();
-          if (!term) {
-            return this.origins;
-          }
-          return this.origins.filter((option) => option.label.toLowerCase().includes(term));
-        },
-        filteredFormats() {
-          const term = this.formatSearch.toLowerCase();
-          if (!term) {
-            return this.formats;
-          }
-          return this.formats.filter((option) => option.label.toLowerCase().includes(term));
-        },
-        filteredProviders() {
-          const term = this.providerSearch.toLowerCase();
-          if (!term) {
-            return this.providers;
-          }
-          return this.providers.filter((option) => option.label.toLowerCase().includes(term));
-        },
-        filteredTags() {
-          const term = this.tagSearch.toLowerCase();
-          if (!term) {
-            return this.tags;
-          }
-          return this.tags.filter((t) => t.toLowerCase().includes(term));
-        },
-        filteredLists() {
-          const term = this.listSearch.toLowerCase();
-          if (!term) {
-            return this.lists;
-          }
-          return this.lists.filter((option) => option.label.toLowerCase().includes(term));
-        },
-      };
-    }
+    // Rule keys whose Alpine state name matches the persisted smart_filters key
+    // one-for-one. Keys needing a rename or a shape change (media_types, status,
+    // tag, list, search, sort_direction) are set explicitly in saveSmartRules().
+    // Mirrors IMPLICIT_ALL_EXCLUDED_MEDIA_TYPES in lists/smart_rules.py.
+    const GRANULAR_MEDIA_TYPES = ['season', 'episode'];
+
+    const SMART_RULE_KEYS = [
+      'rating', 'rating_min', 'rating_max', 'collection', 'genre', 'implied_genre',
+      'year', 'release', 'release_date_from', 'release_date_to',
+      'date_added_from', 'date_added_to', 'completed_date_from',
+      'completed_date_to', 'source', 'language', 'country',
+      'platform', 'origin', 'format', 'provider', 'author',
+    ];
+
 
     window.addEventListener('pageshow', (event) => {
       if (event.persisted) {
