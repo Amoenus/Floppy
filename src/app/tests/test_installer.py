@@ -10,6 +10,7 @@ handed to Compose, Supervisor, and Nginx.
 import configparser
 import os
 import pty
+import re
 import select
 import subprocess
 import tempfile
@@ -145,6 +146,35 @@ def extract_resume_update_commands():
     marker = "\n    fi\n"
     end = text.index(marker, start) + len(marker)
     return text[start:end]
+
+
+class BranchAndImageDefaultsTests(SimpleTestCase):
+    """The cloned branch and the pulled image tag must name the same release.
+
+    Regression coverage for a live failure: the checkout defaulted to
+    "latest" (this file's own earlier TODO) while the image tag stayed
+    "release", an older image that predates commands the installer runs
+    (promote_superuser) and failed with "Unknown command". Whichever branch
+    scripts/install/ currently ships from, common.sh's defaults must name it
+    on both axes together.
+    """
+
+    def test_branch_and_image_tag_agree(self):
+        text = (INSTALL_DIR / "common.sh").read_text(encoding="utf-8")
+        branch = re.search(
+            r"FLOPPY_REPO_BRANCH=\$\{FLOPPY_REPO_BRANCH:-(\w+)\}", text
+        ).group(1)
+        image_tag = re.search(
+            r"FLOPPY_IMAGE=\$\{FLOPPY_IMAGE:-ghcr\.io/dannyvfilms/floppy:(\w+)\}",
+            text,
+        ).group(1)
+        self.assertEqual(
+            branch,
+            image_tag,
+            "the cloned branch and the pulled image tag must name the same "
+            "release, or an installed instance can be missing commands the "
+            "installer itself relies on",
+        )
 
 
 class ResumeUpdateTests(SimpleTestCase):
