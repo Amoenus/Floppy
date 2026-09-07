@@ -174,7 +174,7 @@ if [ -e "$REPO_DIR" ]; then
     esac
     say ""
     say "An existing Floppy installation was found at $INSTALL_ROOT."
-    note "The checkout and its configuration are left exactly as they are."
+    note "Your data and configuration are left exactly as they are; the checkout is fast-forwarded to pick up installer fixes."
     ask_yes_no "Resume that installation?" yes || fail "Nothing was changed."
     RESUME=1
 else
@@ -219,6 +219,29 @@ if [ "$RESUME" = "0" ]; then
     git clone --branch "$REPO_BRANCH" --depth 1 --single-branch "$REPO_URL" "$REPO_DIR" \
         || fail "Could not download Floppy from $REPO_URL. Check the network connection and try again; nothing was installed."
     say "  Downloaded to $REPO_DIR"
+else
+    # The bootstrap re-downloads itself on every run, but a resumed
+    # installation was otherwise stuck on whatever commit its first run
+    # cloned - installer fixes never reached it, only ever refetching the
+    # bootstrap ahead of the scripts it hands off to. Bring the checkout
+    # forward the same way the documented "Upgrade" command already does
+    # (fetch + fast-forward), so a fix here reaches an existing install on
+    # its next run. Never a forced reset: if it can't fast-forward cleanly,
+    # skip it and continue with what's on disk rather than discard anything.
+    step "Checking for installer updates"
+    # No --depth here: a second --depth-1 fetch against an already-shallow
+    # clone produces a shallow boundary with no visible ancestry to the first,
+    # so git refuses the fast-forward with "unrelated histories" even though
+    # the branch is a clean, linear advance. An unbounded fetch lets git
+    # deepen the existing shallow history instead of re-truncating it, which
+    # is also what a plain "git pull" (the documented manual upgrade command)
+    # already relies on.
+    if git -C "$REPO_DIR" fetch --quiet origin "$REPO_BRANCH" 2>/dev/null \
+        && git -C "$REPO_DIR" merge --quiet --ff-only FETCH_HEAD 2>/dev/null; then
+        say "  Up to date."
+    else
+        warn "Could not update the installer checkout (offline, or local changes present); continuing with what's on disk."
+    fi
 fi
 
 MAIN="$REPO_DIR/scripts/install/main.sh"

@@ -133,6 +133,119 @@ class PromptCaptureTests(SimpleTestCase):
         self.assertIn("GOT:[no]", output)
 
 
+def extract_resume_update_commands():
+    """Pull the exact fetch/merge invocation resuming an install runs.
+
+    Extracted from the source rather than duplicated by hand, so a future
+    edit to scripts/install.sh's resume-update step is exercised by the same
+    text this test runs - not a copy that can silently drift from it.
+    """
+    text = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    start = text.index('step "Checking for installer updates"')
+    marker = "\n    fi\n"
+    end = text.index(marker, start) + len(marker)
+    return text[start:end]
+
+
+class ResumeUpdateTests(SimpleTestCase):
+    """A resumed installation must pick up installer fixes on every run.
+
+    Regression coverage for two bugs found from a live install: first, that
+    resuming never updated the cloned checkout at all, so a fix pushed after
+    someone's first run stayed invisible to them forever; second, once fixed
+    with a second `--depth 1` fetch, that git refuses to fast-forward a
+    shallow clone's second `--depth 1` fetch ("unrelated histories"), so the
+    "fix" silently never applied either. Both were confirmed against a real
+    git remote before landing the corrected unbounded fetch below.
+    """
+
+    def _make_remote_and_shallow_clone(self, root):
+        remote = root / "remote"
+        repo = root / "repo"
+        subprocess.run(  # noqa: S603
+            ["git", "init", "--quiet", "-b", "latest", str(remote)],  # noqa: S607
+            check=True,
+        )
+        subprocess.run(  # noqa: S603
+            ["git", "-C", str(remote), "config", "user.email", "t@t.com"],  # noqa: S607
+            check=True,
+        )
+        subprocess.run(  # noqa: S603
+            ["git", "-C", str(remote), "config", "user.name", "t"],  # noqa: S607
+            check=True,
+        )
+        (remote / "f").write_text("v1", encoding="utf-8")
+        subprocess.run(  # noqa: S603
+            ["git", "-C", str(remote), "add", "f"],  # noqa: S607
+            check=True,
+        )
+        subprocess.run(  # noqa: S603
+            ["git", "-C", str(remote), "commit", "--quiet", "-m", "v1"],  # noqa: S607
+            check=True,
+        )
+        subprocess.run(  # noqa: S603
+            [  # noqa: S607
+                "git",
+                "clone",
+                "--quiet",
+                "--branch",
+                "latest",
+                "--depth",
+                "1",
+                "--single-branch",
+                f"file://{remote}",
+                str(repo),
+            ],
+            check=True,
+        )
+        return remote, repo
+
+    def _advance_remote(self, remote, contents):
+        (remote / "f").write_text(contents, encoding="utf-8")
+        subprocess.run(["git", "-C", str(remote), "add", "f"], check=True)  # noqa: S603, S607
+        subprocess.run(  # noqa: S603
+            ["git", "-C", str(remote), "commit", "--quiet", "-m", contents],  # noqa: S607
+            check=True,
+        )
+
+    def test_resuming_brings_a_stale_shallow_checkout_forward(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            remote, repo = self._make_remote_and_shallow_clone(root)
+            self._advance_remote(remote, "v2")
+            self._advance_remote(remote, "v3")
+
+            snippet = extract_resume_update_commands()
+            # step/say/warn are installer-wide helpers, irrelevant to what
+            # this test checks; stub them so the extracted snippet runs
+            # standalone.
+            script = (
+                'step() { :; }\nsay() { :; }\nwarn() { echo "WARN: $*"; }\n'
+                f'REPO_DIR="{repo}"\nREPO_BRANCH="latest"\n{snippet}\n'
+            )
+            result = subprocess.run(  # noqa: S603
+                ["bash", "-c", script],  # noqa: S607
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            self.assertNotIn("WARN:", result.stdout + result.stderr)
+            self.assertEqual((repo / "f").read_text(encoding="utf-8"), "v3")
+
+    def test_the_update_fetch_is_not_depth_limited(self):
+        # A second --depth-1 fetch against an already-shallow clone gives git
+        # no visible ancestry to the first, so it refuses to fast-forward
+        # even on a clean, linear branch. This is a static trip-wire against
+        # reintroducing that exact regression.
+        snippet = extract_resume_update_commands()
+        fetch_line = next(
+            line
+            for line in snippet.splitlines()
+            if "git" in line and "fetch" in line and not line.lstrip().startswith("#")
+        )
+        self.assertNotIn("--depth", fetch_line)
+
+
 class InstallerShellSyntaxTests(SimpleTestCase):
     def test_every_installer_file_parses(self):
         for path in SHELL_FILES:
