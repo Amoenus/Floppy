@@ -2,20 +2,24 @@
 #
 # Floppy guided installer - bootstrap.
 #
-#   curl -fsSL https://raw.githubusercontent.com/dannyvfilms/Floppy/release/scripts/install.sh -o /tmp/floppy-install.sh
+#   curl -fsSL https://raw.githubusercontent.com/dannyvfilms/Floppy/latest/scripts/install.sh -o /tmp/floppy-install.sh
 #   bash /tmp/floppy-install.sh
 #
 # This file runs before the repository exists on the host, so it stays small
 # and self-contained: it looks at the machine, asks where Floppy should live,
-# makes sure git is available, clones the stable branch, and hands over to
+# makes sure git is available, clones the target branch, and hands over to
 # scripts/install/main.sh from that clone. Everything else - the installation
 # method, ports, services, owner setup - is decided by the cloned installer, so
 # a fix there reaches a user who saved this bootstrap months ago.
+#
+# TODO: the raw-URL above and the --branch default below point at "latest"
+# because "release" does not carry scripts/install/ yet. Repoint both at
+# "release" once a release brings the installer forward onto that branch.
 
 set -euo pipefail
 
 REPO_URL=${FLOPPY_REPO_URL:-https://github.com/dannyvfilms/Floppy.git}
-REPO_BRANCH=${FLOPPY_REPO_BRANCH:-release}
+REPO_BRANCH=${FLOPPY_REPO_BRANCH:-latest}
 INSTALL_ROOT=${FLOPPY_ROOT:-}
 ASSUME_YES=0
 
@@ -70,7 +74,7 @@ Floppy guided installer.
 Usage: bash floppy-install.sh [options]
 
   --dir PATH     Installation root (default: ~/floppy)
-  --branch NAME  Branch to install from (default: release)
+  --branch NAME  Branch to install from (default: latest)
   --repo URL     Repository to clone (default: the Floppy repository)
   --yes          Accept every default without prompting
   --help         Show this message

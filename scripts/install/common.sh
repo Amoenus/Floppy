@@ -7,7 +7,9 @@
 # before the repository exists and carries its own minimal prompt helper.
 
 FLOPPY_REPO_URL=${FLOPPY_REPO_URL:-https://github.com/dannyvfilms/Floppy.git}
-FLOPPY_REPO_BRANCH=${FLOPPY_REPO_BRANCH:-release}
+# TODO: point back at "release" once a release cuts scripts/install/ forward
+# onto that branch; today only "latest" carries the installer.
+FLOPPY_REPO_BRANCH=${FLOPPY_REPO_BRANCH:-latest}
 FLOPPY_IMAGE=${FLOPPY_IMAGE:-ghcr.io/dannyvfilms/floppy:release}
 
 # Readiness bound shared by every method (five minutes, per the install spec).

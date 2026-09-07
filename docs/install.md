@@ -4,7 +4,7 @@ One command installs Floppy, starts it, and hands you a URL. It asks a few
 plain questions and never asks for a password or an API key.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dannyvfilms/Floppy/release/scripts/install.sh -o /tmp/floppy-install.sh && bash /tmp/floppy-install.sh
+curl -fsSL https://raw.githubusercontent.com/dannyvfilms/Floppy/latest/scripts/install.sh -o /tmp/floppy-install.sh && bash /tmp/floppy-install.sh
 ```
 
 The download and the run are separate steps on purpose: the installer is
@@ -41,7 +41,8 @@ being half-installed.
 
 ```
 ~/floppy/                 the installation root (you choose the path)
-  repo/                   the checkout, on the release branch
+  repo/                   the checkout (currently the latest branch;
+                          see the TODO in scripts/install.sh)
   floppy.env              this installation's settings
   install.conf            the answers needed to resume
   db/                     the database and the generated secret key
