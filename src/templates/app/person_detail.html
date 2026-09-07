@@ -131,10 +131,10 @@
     collection: '{{ current_collection|escapejs }}',
     progress: 'all',
     genre: '{{ current_genre|escapejs }}',
-    impliedGenre: '{{ current_implied_genre|escapejs }}',
+    implied_genre: '{{ current_implied_genre|escapejs }}',
     year: '{{ current_year|escapejs }}',
     release: 'all',
-    sourceFilter: '{{ current_source|escapejs }}',
+    source: '{{ current_source|escapejs }}',
     language: '',
     country: '',
     platform: '',
@@ -221,7 +221,7 @@
       if (this.department) { labels.push(this.department); }
       if (this.year) { labels.push(this.year); }
       if (this.genre) { labels.push(this.genre); }
-      if (this.sourceFilter) { labels.push(this.sourceFilter.toUpperCase()); }
+      if (this.source) { labels.push(this.source.toUpperCase()); }
       if (this.rating !== 'all') { labels.push(this.ratingLabels[this.rating] || this.rating); }
       if (this.collection !== 'all') { labels.push(this.collectionLabels[this.collection] || this.collection); }
       if (this.selectedTags.length) {
@@ -237,10 +237,10 @@
       this.collection = 'all';
       this.progress = 'all';
       this.genre = '';
-      this.impliedGenre = '';
+      this.implied_genre = '';
       this.year = '';
       this.release = 'all';
-      this.sourceFilter = '';
+      this.source = '';
       this.department = '';
       this.language = '';
       this.country = '';

@@ -113,10 +113,7 @@ function dateRangePicker(options = {}) {
     comparisonOptions,
 
     get currentTypeSummary() {
-      const key = this.summaryStatsByType[this.selectedMediaType]
-        ? this.selectedMediaType
-        : "all";
-      const s = this.summaryStatsByType[key] || {};
+      const s = this.summaryStatsByType[this.selectedMediaType] || {};
       const start = s.longest_streak_start;
       const end = s.longest_streak_end;
       let dates = "";

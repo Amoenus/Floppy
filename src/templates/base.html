@@ -136,12 +136,38 @@
           sizes="16x16"
           href="{% static "favicon/favicon-16x16.png" %}">
     <link rel="manifest" href="{% static "favicon/site.webmanifest" %}">
-    <link rel="mask-icon"
-          href="{% static "favicon/safari-pinned-tab.svg" color="#181a1b" %}">
+    <script>
+      // Capture the install prompt here, in the head, so it is not missed.
+      // beforeinstallprompt can fire before any body script runs, and settings
+      // navigation is hx-boost, which swaps the body and leaves the head
+      // alone. The About page reads this state instead of listening itself.
+      window.floppyPwa = {
+        deferredPrompt: null,
+        installed: false,
+        isStandalone() {
+          return (
+            window.matchMedia("(display-mode: standalone)").matches ||
+            window.matchMedia("(display-mode: window-controls-overlay)").matches ||
+            window.navigator.standalone === true
+          );
+        },
+        announce() {
+          window.dispatchEvent(new CustomEvent("floppy:install-availability"));
+        },
+      };
+      window.addEventListener("beforeinstallprompt", (event) => {
+        event.preventDefault();
+        window.floppyPwa.deferredPrompt = event;
+        window.floppyPwa.announce();
+      });
+      window.addEventListener("appinstalled", () => {
+        window.floppyPwa.deferredPrompt = null;
+        window.floppyPwa.installed = true;
+        window.floppyPwa.announce();
+      });
+    </script>
     <link rel="shortcut icon" href="{% static "favicon/favicon.ico" %}">
     <meta name="msapplication-TileColor" content="#181a1b">
-    <meta name="msapplication-config"
-          content="{% static "favicon/browserconfig.xml" %}">
     {% if user.is_authenticated and user.theme == 'light' %}
       <meta name="theme-color" content="#f8f9fa">
     {% elif user.is_authenticated and user.theme == 'dark' %}

@@ -22,8 +22,10 @@ from app.models.credits import (
 )
 from app.models.discovery import (
     CollectionEntry,
+    CollectionEntrySource,
     CollectionField,
     CollectionFieldGroup,
+    CollectionFieldSource,
     CollectionFieldType,
     DiscoverApiCache,
     DiscoverFeedback,
@@ -104,8 +106,10 @@ __all__ = [
     "BoardGame",
     "Book",
     "CollectionEntry",
+    "CollectionEntrySource",
     "CollectionField",
     "CollectionFieldGroup",
+    "CollectionFieldSource",
     "CollectionFieldType",
     "Comic",
     "ComicIssue",

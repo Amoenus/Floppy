@@ -79,6 +79,100 @@
         </div>
       </section>
 
+      {# Install #}
+      <section aria-labelledby="about-install-heading"
+               class="space-y-3"
+               x-data="{
+                 canInstall: false,
+                 status: '',
+                 sync() {
+                   const pwa = window.floppyPwa;
+                   this.canInstall = !!(pwa && pwa.deferredPrompt) && !pwa.isStandalone();
+                 },
+                 async install() {
+                   const pwa = window.floppyPwa;
+                   const prompt = pwa && pwa.deferredPrompt;
+                   if (!prompt) {
+                     this.canInstall = false;
+                     return;
+                   }
+                   // Consume the event either way: it is single-use.
+                   pwa.deferredPrompt = null;
+                   this.canInstall = false;
+                   try {
+                     await prompt.prompt();
+                     const choice = await prompt.userChoice;
+                     this.status = choice.outcome === 'accepted'
+                       ? gettext('Installing Floppy. Look for it alongside your other apps.')
+                       : gettext('Installation dismissed. You can still add Floppy using the steps below.');
+                   } catch (error) {
+                     this.status = gettext('Your browser could not open the install prompt. Use the steps below instead.');
+                   }
+                 }
+               }"
+               x-init="sync()"
+               @floppy:install-availability.window="sync()">
+        <div class="flex items-center gap-2 text-lg font-medium text-[var(--color-text-secondary)]">
+          {% include "app/icons/download.svg" with classes="w-5 h-5 text-[var(--color-link)]" %}
+          <h3 id="about-install-heading">{% translate "Install Floppy" %}</h3>
+        </div>
+        <div class="space-y-4 pl-7">
+          <p class="text-[var(--color-text-secondary)] leading-relaxed">
+            {% translate "Floppy is an installable PWA. Add it to your Home Screen to launch it like an app directly from your browser." %}
+          </p>
+
+          <div x-show="canInstall" style="display: none;" class="space-y-2">
+            <button type="button"
+                    @click="install()"
+                    class="inline-flex items-center gap-2 px-3 py-2 rounded-md font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+              {% include "app/icons/download.svg" with classes="w-4 h-4" %}
+              <span>{% translate "Install Floppy" %}</span>
+            </button>
+          </div>
+          <p x-show="status"
+             style="display: none;"
+             role="status"
+             aria-live="polite"
+             class="text-sm text-[var(--color-text-muted)]"
+             x-text="status"></p>
+
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-strong)] p-4 space-y-2">
+              <h4 class="text-sm font-semibold text-[var(--color-text)]">{% translate "iOS and iPadOS" %}</h4>
+              <ol class="list-decimal pl-4 space-y-1 text-sm text-[var(--color-text-muted)] leading-relaxed">
+                <li>{% translate "Open this instance in Safari." %}</li>
+                <li>{% translate "Tap the Share button." %}</li>
+                <li>{% blocktranslate %}Choose <span class="font-medium text-[var(--color-text)]">Add to Home Screen</span>.{% endblocktranslate %}</li>
+                <li>
+                  {% blocktranslate %}Turn on <span class="font-medium text-[var(--color-text)]">Open as Web App</span> if it is shown, then tap Add.{% endblocktranslate %}
+                </li>
+              </ol>
+            </div>
+
+            <div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-strong)] p-4 space-y-2">
+              <h4 class="text-sm font-semibold text-[var(--color-text)]">{% translate "Android" %}</h4>
+              <ol class="list-decimal pl-4 space-y-1 text-sm text-[var(--color-text-muted)] leading-relaxed">
+                <li>{% translate "Open this instance in Chrome." %}</li>
+                <li>{% translate "Open the browser menu." %}</li>
+                <li>{% blocktranslate %}Choose <span class="font-medium text-[var(--color-text)]">Add to Home screen</span>.{% endblocktranslate %}</li>
+                <li>{% translate "Confirm with Install, following your browser's wording." %}</li>
+              </ol>
+            </div>
+          </div>
+
+          <p class="text-[var(--color-text-muted)] text-sm leading-relaxed">
+            {% translate "No install control anywhere? Serve the instance over HTTPS and open it in a full browser rather than an in-app one. Tracking still needs a connection to your Floppy server." %}
+            <a href="https://github.com/dannyvfilms/Floppy/wiki/2.-User-Guide#installing-floppy-on-your-phone"
+               target="_blank"
+               rel="noopener noreferrer"
+               class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline">
+              {% translate "Installation guide" %}
+              <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
+            </a>
+          </p>
+        </div>
+      </section>
+
       {# Project Resources Table #}
       <section aria-labelledby="about-links-heading" class="space-y-3">
         <div class="flex items-center gap-2 text-lg font-medium text-[var(--color-text-secondary)]">

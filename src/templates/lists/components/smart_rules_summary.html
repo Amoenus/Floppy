@@ -8,7 +8,7 @@
     {% if smart_edit_mode %}
       <span class="px-2 py-1 rounded-md bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)]">
         <span class="text-[var(--color-text-muted)]">{% translate "Types:" %}</span>
-        {% translate "All Types" as media_i18n_16 %}{% translate "No Types" as media_i18n_80 %}<span x-text="allTypesSelected() ? '{{ media_i18n_16|escapejs }}' : (selectedTypes.length ? selectedTypes.map((mediaType) => { const match = availableMediaTypes.find((type) => type.value === mediaType); return match ? match.label : mediaType; }).join(', ') : '{{ media_i18n_80|escapejs }}')"></span>
+        {% translate "All Types" as media_i18n_16 %}{% translate "No Types" as media_i18n_80 %}<span x-text="(allTypesSelected() && !hasGranularTypeSelected()) ? '{{ media_i18n_16|escapejs }}' : (selectedTypes.length ? selectedTypes.map((mediaType) => { const match = availableMediaTypes.find((type) => type.value === mediaType); return match ? match.label : mediaType; }).join(', ') : '{{ media_i18n_80|escapejs }}')"></span>
       </span>
 
       <span x-show="status && status !== 'all'"
@@ -83,10 +83,10 @@
         <span x-text="origin.length <= 3 ? origin.toUpperCase() : origin"></span>
       </span>
 
-      <span x-show="query && query.trim().length"
+      <span x-show="search && search.trim().length"
             class="px-2 py-1 rounded-md bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)]">
         <span class="text-[var(--color-text-muted)]">{% translate "Search:" %}</span>
-        <span>“<span x-text="query"></span>”</span>
+        <span>“<span x-text="search"></span>”</span>
       </span>
 
       <span class="ml-auto text-xs"
