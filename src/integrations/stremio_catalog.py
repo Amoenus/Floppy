@@ -4,8 +4,9 @@ import re
 from dataclasses import dataclass, field
 from urllib.parse import parse_qsl, unquote
 
-from app.models import TV, MediaTypes, Movie, Sources, Status
 from django.db.models import F, Max
+
+from app.models import TV, MediaTypes, Movie, Sources, Status
 from lists.models import CustomList, CustomListItem
 
 PAGE_SIZE = 100
