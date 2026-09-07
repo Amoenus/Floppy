@@ -27,7 +27,17 @@ It runs in Docker, keeps your data on your own hardware, and treats music and po
 
 ## Install
 
-One stack, app plus Redis. Save it as `docker-compose.yml` and run `docker compose up -d`, or paste it straight into a Portainer stack.
+**Guided installer.** One command, no arguments, nothing to edit:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dannyvfilms/Floppy/release/scripts/install.sh -o /tmp/floppy-install.sh && bash /tmp/floppy-install.sh
+```
+
+It detects the host, asks how and where to run Floppy, installs Docker or a
+source deployment with your permission, and stops at a working login. See
+[docs/install.md](docs/install.md).
+
+**Compose by hand.** One stack, app plus Redis. Save it as `docker-compose.yml` and run `docker compose up -d`, or paste it straight into a Portainer stack.
 
 ```yaml
 services:
