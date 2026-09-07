@@ -159,9 +159,18 @@ if (!window.__floppyCollectionCustomFieldsBound) {
         return "";
       },
 
+      knownFieldIds() {
+        // Only fields this form was rendered with may be deleted by a save.
+        // Anything created since (by an import, or another tab) is untouched.
+        return this.savedSchema.flatMap((group) =>
+          (group.fields || []).map((field) => field.id).filter((id) => id != null),
+        );
+      },
+
       serialize() {
         return {
           item_id: this.itemId,
+          known_field_ids: this.knownFieldIds(),
           groups: this.groups.map((group) => ({
             id: group.id,
             name: (group.name || "").trim(),
