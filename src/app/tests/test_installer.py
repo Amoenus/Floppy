@@ -8,8 +8,12 @@ handed to Compose, Supervisor, and Nginx.
 """
 
 import configparser
+import os
+import pty
+import select
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 import yaml
@@ -49,6 +53,84 @@ def run_helper(body, root):
         msg = f"helper failed: {result.stderr}"
         raise AssertionError(msg)
     return result.stdout
+
+
+def run_over_pty(body, *, sends, timeout=5):
+    """Run a snippet under a real pty and feed it keystrokes as it prompts.
+
+    ask()/ask_choice()/ask_yes_no() read from /dev/tty specifically (see the
+    comment above _tty_read in common.sh), so exercising them over a plain
+    subprocess pipe takes the "no controlling tty" branch and always returns
+    the default - it can look like a passing test while never touching the
+    read path a real terminal session uses. `sends` is a list of byte strings
+    written a beat apart, mimicking a person typing an answer per prompt.
+    """
+    script = (
+        "set -euo pipefail\n"
+        f'FLOPPY_ROOT="/tmp/floppy-installer-test-{os.getpid()}"\n'
+        f'. "{INSTALL_DIR / "common.sh"}"\n'
+        f"{body}\n"
+    )
+    script_path = Path(tempfile.mkstemp(suffix=".sh")[1])
+    script_path.write_text(script, encoding="utf-8")
+
+    pid, fd = pty.fork()
+    if pid == 0:  # pragma: no cover - child process
+        os.execvp("bash", ["bash", str(script_path)])  # noqa: S606, S607
+
+    try:
+        output = b""
+        deadline = time.time() + timeout
+        for chunk in sends:
+            time.sleep(0.2)
+            os.write(fd, chunk)
+        while time.time() < deadline:
+            ready, _, _ = select.select([fd], [], [], 0.5)
+            if not ready:
+                continue
+            try:
+                read = os.read(fd, 4096)
+            except OSError:
+                break
+            if not read:
+                break
+            output += read
+        os.kill(pid, 9)
+        os.waitpid(pid, 0)
+    finally:
+        script_path.unlink(missing_ok=True)
+    return output.decode(errors="replace")
+
+
+class PromptCaptureTests(SimpleTestCase):
+    """Regression coverage for a variable-name collision that made every typed
+    answer with no default (a username, most notably) silently disappear,
+    and made every ask_choice() numeric selection fall back to the default
+    no matter what was typed - see the fix in common.sh's _tty_read.
+    """
+
+    def test_ask_captures_a_typed_answer_with_no_default(self):
+        output = run_over_pty(
+            'ask NAME "Username" ""\necho "GOT:[$NAME]"\n',
+            sends=[b"dannyvfilms\n"],
+        )
+        self.assertIn("GOT:[dannyvfilms]", output)
+
+    def test_ask_choice_captures_a_typed_number(self):
+        output = run_over_pty(
+            'ask_choice PICK "Pick one" a "a|Alpha|" "b|Beta|"\n'
+            'echo "GOT:[$PICK]"\n',
+            sends=[b"2\n"],
+        )
+        self.assertIn("GOT:[b]", output)
+
+    def test_ask_yes_no_captures_a_typed_no(self):
+        output = run_over_pty(
+            'if ask_yes_no "Continue?" yes; then echo GOT:[yes]; '
+            "else echo GOT:[no]; fi\n",
+            sends=[b"n\n"],
+        )
+        self.assertIn("GOT:[no]", output)
 
 
 class InstallerShellSyntaxTests(SimpleTestCase):

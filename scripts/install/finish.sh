@@ -86,7 +86,7 @@ finish_owner_setup() {
     fi
 
     step "Create your account"
-    say "Open Floppy and create the first account:"
+    say "Open Floppy and create the first account (copy and paste the address below - most terminals won't let you click it):"
     say ""
     say "    $url"
     say ""
@@ -100,6 +100,12 @@ finish_owner_setup() {
         say "    bash \"$REPO_DIR/scripts/install/main.sh\""
         return 0
     fi
+
+    say ""
+    say "Signing in for the first time drops you into Floppy's own setup wizard"
+    say "(media types, services, and so on) in the browser. That wizard is"
+    say "separate from what's left here and saves as you go, so answer the next"
+    say "prompt now - come back and finish or skip the wizard whenever you like."
 
     step "Making that account the owner"
     note "The owner can change instance-wide settings, such as metadata API keys."

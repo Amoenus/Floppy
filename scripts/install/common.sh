@@ -45,17 +45,22 @@ FLOPPY_ASSUME_YES=${FLOPPY_ASSUME_YES:-0}
 
 _tty_read() {
     # $1 = variable name, rest = prompt
+    #
+    # The local below must not be named the same as any caller's own local
+    # (e.g. ask()'s "__reply") - printf -v resolves to the nearest local of
+    # that name, so a same-named local here would silently shadow it and the
+    # caller would keep reading an empty string forever.
     local __var=$1
     shift
-    local __reply=""
+    local __input=""
     printf '%s' "$*" >&2
     if [ "$FLOPPY_ASSUME_YES" = "1" ] || [ ! -r /dev/tty ]; then
         printf '\n' >&2
         printf -v "$__var" '%s' ""
         return 0
     fi
-    IFS= read -r __reply </dev/tty || __reply=""
-    printf -v "$__var" '%s' "$__reply"
+    IFS= read -r __input </dev/tty || __input=""
+    printf -v "$__var" '%s' "$__input"
 }
 
 # ask VAR "Question" "default"
