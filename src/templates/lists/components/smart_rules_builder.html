@@ -1,3 +1,5 @@
+
+{% load i18n %}
 <form id="smart-filter-form" class="hidden">
   <input type="hidden" name="sort" x-model="sort">
   <input type="hidden" name="direction" x-model="direction">
@@ -48,7 +50,7 @@
      hx-sync="#smart-filter-form:replace">
   <div class="relative grow min-w-0 md:hidden">
     <input id="smart-search-input-mobile"
-           placeholder="Search this list or recommend something..."
+           placeholder="{% translate "Search this list or recommend something..." %}"
            class="w-full min-w-0 py-2 pl-10 pr-4 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
            type="text"
            x-model="query"
@@ -75,14 +77,14 @@
               x-show="!searchMode"
               @click="searchMode = true; $nextTick(() => $refs.smartSearchInput?.focus())"
               type="button"
-              aria-label="Search this list">
+              aria-label="{% translate "Search this list" %}">
         {% include "app/icons/magnifying-glass.svg" with classes="w-5 h-5" %}
       </button>
 
       <div class="relative grow min-w-0" x-cloak x-show="searchMode">
         <input id="smart-search-input"
                x-ref="smartSearchInput"
-               placeholder="Search this list or recommend something..."
+               placeholder="{% translate "Search this list or recommend something..." %}"
                class="w-full min-w-0 py-2 pl-10 pr-4 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                type="text"
                x-model="query"
@@ -133,15 +135,15 @@
                   class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                   @click="clearFilters(); selectedTypes = availableMediaTypes.map((type) => type.value); open = false; onRuleChange()"
                   type="button">
-            <span>All</span>
-            <span class="ml-auto text-xs text-[var(--color-text-muted)]" x-show="filterLabel() === 'All'">Active</span>
+            <span>{% translate "All" %}</span>
+            {% translate "All" as media_i18n_2 %}<span class="ml-auto text-xs text-[var(--color-text-muted)]" x-show="filterLabel() === '{{ media_i18n_2|escapejs }}'">{% translate "Active" %}</span>
           </button>
 
           <div class="border-t border-gray-700 my-1"></div>
           <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                   @click="view = 'mediaTypes'"
                   type="button">
-            <span class="flex-shrink-0 mr-3">Media Type</span>
+            <span class="flex-shrink-0 mr-3">{% translate "Media Type" %}</span>
             <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
                   x-text="dropdownLabel()"></span>
             <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
@@ -150,18 +152,18 @@
           <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                   @click="view = 'rating'"
                   type="button">
-            <span class="flex-shrink-0 mr-3">Rating</span>
-            <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
-                  x-text="ratingLabels[rating] || 'Any'"></span>
+            <span class="flex-shrink-0 mr-3">{% translate "Rating" %}</span>
+            {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                  x-text="ratingLabels[rating] || '{{ media_i18n_7|escapejs }}'"></span>
             <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
           </button>
 
           <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                   @click="view = 'collection'"
                   type="button">
-            <span class="flex-shrink-0 mr-3">Collection</span>
-            <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
-                  x-text="collectionLabels[collection] || 'Any'"></span>
+            <span class="flex-shrink-0 mr-3">{% translate "Collection" %}</span>
+            {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                  x-text="collectionLabels[collection] || '{{ media_i18n_7|escapejs }}'"></span>
             <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
           </button>
 
@@ -170,8 +172,8 @@
             <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'genre'; resetSearch()"
                     type="button">
-              <span class="flex-shrink-0 mr-3">Genre</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="genre || 'Any'"></span>
+              <span class="flex-shrink-0 mr-3">{% translate "Genre" %}</span>
+              {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="genre || '{{ media_i18n_7|escapejs }}'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -179,8 +181,8 @@
             <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'impliedGenre'; resetSearch()"
                     type="button">
-              <span class="flex-shrink-0 mr-3">Implied Genre</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="implied_genre || 'Any'"></span>
+              <span class="flex-shrink-0 mr-3">{% translate "Implied Genre" %}</span>
+              {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="implied_genre || '{{ media_i18n_7|escapejs }}'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -189,8 +191,8 @@
             <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'year'; resetSearch()"
                     type="button">
-              <span class="flex-shrink-0 mr-3">Year</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="year ? (year === 'unknown' ? 'Unknown' : year) : 'Any'"></span>
+              <span class="flex-shrink-0 mr-3">{% translate "Year" %}</span>
+              {% translate "Unknown" as media_i18n_69 %}{% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="year ? (year === 'unknown' ? '{{ media_i18n_69|escapejs }}' : year) : '{{ media_i18n_7|escapejs }}'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -198,27 +200,27 @@
           <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                   @click="view = 'releaseDate'"
                   type="button">
-            <span class="flex-shrink-0 mr-3">Release Date</span>
-            <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
-                  x-text="formatDateRangeLabel('', release_date_from, release_date_to) || 'Any'"></span>
+            <span class="flex-shrink-0 mr-3">{% translate "Release Date" %}</span>
+            {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                  x-text="formatDateRangeLabel('', release_date_from, release_date_to) || '{{ media_i18n_7|escapejs }}'"></span>
             <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
           </button>
 
           <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                   @click="view = 'release'"
                   type="button">
-            <span class="flex-shrink-0 mr-3">Released</span>
-            <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
-                  x-text="releaseLabels[release] || 'Any'"></span>
+            <span class="flex-shrink-0 mr-3">{% translate "Released" %}</span>
+            {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                  x-text="releaseLabels[release] || '{{ media_i18n_7|escapejs }}'"></span>
             <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
           </button>
 
           <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                   @click="view = 'dateAdded'"
                   type="button">
-            <span class="flex-shrink-0 mr-3">Date Added</span>
-            <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
-                  x-text="formatDateRangeLabel('', date_added_from, date_added_to) || 'Any'"></span>
+            <span class="flex-shrink-0 mr-3">{% translate "Date Added" %}</span>
+            {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                  x-text="formatDateRangeLabel('', date_added_from, date_added_to) || '{{ media_i18n_7|escapejs }}'"></span>
             <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
           </button>
 
@@ -226,8 +228,8 @@
             <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'source'; resetSearch()"
                     type="button">
-              <span class="flex-shrink-0 mr-3">Source</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="source ? source.toUpperCase() : 'Any'"></span>
+              <span class="flex-shrink-0 mr-3">{% translate "Source" %}</span>
+              {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="source ? source.toUpperCase() : '{{ media_i18n_7|escapejs }}'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -236,8 +238,8 @@
             <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'language'; resetSearch()"
                     type="button">
-              <span class="flex-shrink-0 mr-3">Language</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="language ? (language.length <= 3 ? language.toUpperCase() : language) : 'Any'"></span>
+              <span class="flex-shrink-0 mr-3">{% translate "Language" %}</span>
+              {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="language ? (language.length <= 3 ? language.toUpperCase() : language) : '{{ media_i18n_7|escapejs }}'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -246,8 +248,8 @@
             <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'country'; resetSearch()"
                     type="button">
-              <span class="flex-shrink-0 mr-3">Country</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="country ? (country.length <= 3 ? country.toUpperCase() : country) : 'Any'"></span>
+              <span class="flex-shrink-0 mr-3">{% translate "Country" %}</span>
+              {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="country ? (country.length <= 3 ? country.toUpperCase() : country) : '{{ media_i18n_7|escapejs }}'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -256,8 +258,8 @@
             <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'platform'; resetSearch()"
                     type="button">
-              <span class="flex-shrink-0 mr-3">Platform</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="platform ? platform : 'Any'"></span>
+              <span class="flex-shrink-0 mr-3">{% translate "Platform" %}</span>
+              {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="platform ? platform : '{{ media_i18n_7|escapejs }}'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -266,8 +268,8 @@
             <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'origin'; resetSearch()"
                     type="button">
-              <span class="flex-shrink-0 mr-3">Origin</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="origin ? (origin.length <= 3 ? origin.toUpperCase() : origin) : 'Any'"></span>
+              <span class="flex-shrink-0 mr-3">{% translate "Origin" %}</span>
+              {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="origin ? (origin.length <= 3 ? origin.toUpperCase() : origin) : '{{ media_i18n_7|escapejs }}'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -276,8 +278,8 @@
             <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'format'; resetSearch()"
                     type="button">
-              <span class="flex-shrink-0 mr-3">Format</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="format ? (format === 'ebook' ? 'eBook' : format.charAt(0).toUpperCase() + format.slice(1)) : 'Any'"></span>
+              <span class="flex-shrink-0 mr-3">{% translate "Format" %}</span>
+              {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="format ? (format === 'ebook' ? 'eBook' : format.charAt(0).toUpperCase() + format.slice(1)) : '{{ media_i18n_7|escapejs }}'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -286,8 +288,8 @@
             <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'provider'; resetSearch()"
                     type="button">
-              <span class="flex-shrink-0 mr-3">Streaming Service</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="provider ? provider : 'Any'"></span>
+              <span class="flex-shrink-0 mr-3">{% translate "Streaming Service" %}</span>
+              {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="provider ? provider : '{{ media_i18n_7|escapejs }}'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -297,8 +299,8 @@
             <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'tag'; resetSearch()"
                     type="button">
-              <span class="flex-shrink-0 mr-3">Tag</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="selectedTags.length ? selectedTags.join(', ') : 'Any'"></span>
+              <span class="flex-shrink-0 mr-3">{% translate "Tag" %}</span>
+              {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="selectedTags.length ? selectedTags.join(', ') : '{{ media_i18n_7|escapejs }}'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -308,8 +310,8 @@
             <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'list'; resetSearch()"
                     type="button">
-              <span class="flex-shrink-0 mr-3">List</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="selectedLists.length ? selectedLists.length + ' selected' : 'Any'"></span>
+              <span class="flex-shrink-0 mr-3">{% translate "List" %}</span>
+              {% translate " selected" as media_i18n_15 %}{% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="selectedLists.length ? selectedLists.length + '{{ media_i18n_15|escapejs }}' : '{{ media_i18n_7|escapejs }}'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -322,12 +324,12 @@
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Genre</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Genre" %}</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="genreSearch"
-                   placeholder="Filter Genre"
+                   placeholder="{% translate "Filter Genre" %}"
                    class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
@@ -338,7 +340,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="genre = ''; open = false; view = 'root'; onRuleChange()"
                     type="button">
-              <span>All Genres</span>
+              <span>{% translate "All Genres" %}</span>
               <span class="ml-auto" x-show="genre === ''">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -367,12 +369,12 @@
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Implied Genre</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Implied Genre" %}</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="impliedGenreSearch"
-                   placeholder="Filter Implied Genre"
+                   placeholder="{% translate "Filter Implied Genre" %}"
                    class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
@@ -383,7 +385,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="implied_genre = ''; open = false; view = 'root'; onRuleChange()"
                     type="button">
-              <span>All Implied Genres</span>
+              <span>{% translate "All Implied Genres" %}</span>
               <span class="ml-auto" x-show="implied_genre === ''">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -412,7 +414,7 @@
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Rating</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Rating" %}</div>
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
@@ -422,7 +424,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="rating = 'all'; open = false; view = 'root'; onRuleChange()"
                     type="button">
-              <span>Any Rating</span>
+              <span>{% translate "Any Rating" %}</span>
               <span class="ml-auto" x-show="rating === 'all'">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -434,7 +436,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="rating = 'rated'; open = false; view = 'root'; onRuleChange()"
                     type="button">
-              <span>Rated</span>
+              <span>{% translate "Rated" %}</span>
               <span class="ml-auto" x-show="rating === 'rated'">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -446,21 +448,21 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="rating = 'not_rated'; open = false; view = 'root'; onRuleChange()"
                     type="button">
-              <span>Not Rated</span>
+              <span>{% translate "Not Rated" %}</span>
               <span class="ml-auto" x-show="rating === 'not_rated'">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
             </button>
             <div class="border-t border-gray-700 my-2"></div>
             <div class="px-4 py-3">
-              <div class="mb-2 text-xs uppercase tracking-wide text-[var(--color-text-muted)]">Score Range</div>
+              <div class="mb-2 text-xs uppercase tracking-wide text-[var(--color-text-muted)]">{% translate "Score Range" %}</div>
               <div class="grid grid-cols-2 gap-2">
                 <input type="number"
                        x-model="rating_min"
                        min="0"
                        max="10"
                        step="0.1"
-                       placeholder="Min"
+                       placeholder="{% translate "Min" %}"
                        class="w-full rounded-md border border-gray-700 bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500"
                        @input.debounce.400ms="onRuleChange()">
                 <input type="number"
@@ -468,7 +470,7 @@
                        min="0"
                        max="10"
                        step="0.1"
-                       placeholder="Max"
+                       placeholder="{% translate "Max" %}"
                        class="w-full rounded-md border border-gray-700 bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500"
                        @input.debounce.400ms="onRuleChange()">
               </div>
@@ -483,7 +485,7 @@
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Release Date</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Release Date" %}</div>
           </div>
           <div class="px-4 py-3">
             <div class="grid grid-cols-1 gap-2">
@@ -506,7 +508,7 @@
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Date Added</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Date Added" %}</div>
           </div>
           <div class="px-4 py-3">
             <div class="grid grid-cols-1 gap-2">
@@ -529,7 +531,7 @@
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Collection</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Collection" %}</div>
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
@@ -539,7 +541,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="collection = 'all'; open = false; view = 'root'; onRuleChange()"
                     type="button">
-              <span>Any Collection</span>
+              <span>{% translate "Any Collection" %}</span>
               <span class="ml-auto" x-show="collection === 'all'">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -551,7 +553,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="collection = 'collected'; open = false; view = 'root'; onRuleChange()"
                     type="button">
-              <span>Collected</span>
+              <span>{% translate "Collected" %}</span>
               <span class="ml-auto" x-show="collection === 'collected'">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -563,7 +565,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="collection = 'not_collected'; open = false; view = 'root'; onRuleChange()"
                     type="button">
-              <span>Not Collected</span>
+              <span>{% translate "Not Collected" %}</span>
               <span class="ml-auto" x-show="collection === 'not_collected'">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -578,15 +580,15 @@
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Media Types</div>
-            <button type="button"
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Media Types" %}</div>
+            {% translate "Hide all" as media_i18n_90 %}{% translate "Show all" as media_i18n_91 %}<button type="button"
                     class="ml-auto text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
                     hx-get="{% url 'list_detail' custom_list.public_reference %}"
                     hx-target="#items-view"
                     hx-include="#smart-filter-form"
                     hx-indicator="#loading-indicator"
                     @click="toggleAllTypes(); onRuleChange()"
-                    x-text="allTypesSelected() ? 'Hide all' : 'Show all'"></button>
+                    x-text="allTypesSelected() ? '{{ media_i18n_90|escapejs }}' : '{{ media_i18n_91|escapejs }}'"></button>
           </div>
           <div class="max-h-64 overflow-y-auto">
             <template x-for="type in availableMediaTypes" :key="type.value">
@@ -613,12 +615,12 @@
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Year</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Year" %}</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="yearSearch"
-                   placeholder="Filter Year"
+                   placeholder="{% translate "Filter Year" %}"
                    class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
@@ -629,7 +631,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="year = ''; open = false; view = 'root'; onRuleChange()"
                     type="button">
-              <span>All Years</span>
+              <span>{% translate "All Years" %}</span>
               <span class="ml-auto" x-show="year === ''">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -658,7 +660,7 @@
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Released</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Released" %}</div>
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
@@ -668,7 +670,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="release = 'all'; open = false; view = 'root'; onRuleChange()"
                     type="button">
-              <span>Any Release State</span>
+              <span>{% translate "Any Release State" %}</span>
               <span class="ml-auto" x-show="release === 'all'">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -680,7 +682,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="release = 'released'; open = false; view = 'root'; onRuleChange()"
                     type="button">
-              <span>Released</span>
+              <span>{% translate "Released" %}</span>
               <span class="ml-auto" x-show="release === 'released'">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -692,7 +694,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="release = 'not_released'; open = false; view = 'root'; onRuleChange()"
                     type="button">
-              <span>Not Released</span>
+              <span>{% translate "Not Released" %}</span>
               <span class="ml-auto" x-show="release === 'not_released'">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -707,12 +709,12 @@
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Source</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Source" %}</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="sourceSearch"
-                   placeholder="Filter Source"
+                   placeholder="{% translate "Filter Source" %}"
                    class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
@@ -723,7 +725,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="source = ''; open = false; view = 'root'; onRuleChange()"
                     type="button">
-              <span>All Sources</span>
+              <span>{% translate "All Sources" %}</span>
               <span class="ml-auto" x-show="source === ''">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -752,12 +754,12 @@
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Language</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Language" %}</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="languageSearch"
-                   placeholder="Filter Language"
+                   placeholder="{% translate "Filter Language" %}"
                    class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
@@ -768,7 +770,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="language = ''; open = false; view = 'root'; onRuleChange()"
                     type="button">
-              <span>All Languages</span>
+              <span>{% translate "All Languages" %}</span>
               <span class="ml-auto" x-show="language === ''">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -797,12 +799,12 @@
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Country</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Country" %}</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="countrySearch"
-                   placeholder="Filter Country"
+                   placeholder="{% translate "Filter Country" %}"
                    class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
@@ -813,7 +815,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="country = ''; open = false; view = 'root'; onRuleChange()"
                     type="button">
-              <span>All Countries</span>
+              <span>{% translate "All Countries" %}</span>
               <span class="ml-auto" x-show="country === ''">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -842,12 +844,12 @@
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Platform</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Platform" %}</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="platformSearch"
-                   placeholder="Filter Platform"
+                   placeholder="{% translate "Filter Platform" %}"
                    class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
@@ -858,7 +860,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="platform = ''; open = false; view = 'root'; onRuleChange()"
                     type="button">
-              <span>Any Platform</span>
+              <span>{% translate "Any Platform" %}</span>
               <span class="ml-auto" x-show="platform === ''">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -887,12 +889,12 @@
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Origin</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Origin" %}</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="originSearch"
-                   placeholder="Filter Origin"
+                   placeholder="{% translate "Filter Origin" %}"
                    class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
@@ -903,7 +905,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="origin = ''; open = false; view = 'root'; onRuleChange()"
                     type="button">
-              <span>Any Origin</span>
+              <span>{% translate "Any Origin" %}</span>
               <span class="ml-auto" x-show="origin === ''">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -932,12 +934,12 @@
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Format</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Format" %}</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="formatSearch"
-                   placeholder="Filter Format"
+                   placeholder="{% translate "Filter Format" %}"
                    class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
@@ -948,7 +950,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="format = ''; open = false; view = 'root'; onRuleChange()"
                     type="button">
-              <span>Any Format</span>
+              <span>{% translate "Any Format" %}</span>
               <span class="ml-auto" x-show="format === ''">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -977,12 +979,12 @@
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Streaming Service</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Streaming Service" %}</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="providerSearch"
-                   placeholder="Filter Streaming Service"
+                   placeholder="{% translate "Filter Streaming Service" %}"
                    class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
@@ -993,7 +995,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="provider = ''; open = false; view = 'root'; onRuleChange()"
                     type="button">
-              <span>Any Streaming Service</span>
+              <span>{% translate "Any Streaming Service" %}</span>
               <span class="ml-auto" x-show="provider === ''">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -1022,7 +1024,7 @@
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Tag</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Tag" %}</div>
             <button type="button"
                     class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[var(--color-surface)] border border-gray-600 text-[var(--color-link)] hover:text-[var(--color-text)] hover:border-indigo-500 transition-colors cursor-pointer"
                     @click.stop="cycleTagMode(); onRuleChange()"
@@ -1031,7 +1033,7 @@
           <div class="px-2 py-2">
             <input type="text"
                    x-model="tagSearch"
-                   placeholder="Filter Tags"
+                   placeholder="{% translate "Filter Tags" %}"
                    class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
@@ -1042,7 +1044,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="selectedTags = []; onRuleChange()"
                     type="button">
-              <span>Clear Tags</span>
+              <span>{% translate "Clear Tags" %}</span>
               <span class="ml-auto" x-show="selectedTags.length === 0">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -1071,12 +1073,12 @@
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">List</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "List" %}</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="listSearch"
-                   placeholder="Filter Lists"
+                   placeholder="{% translate "Filter Lists" %}"
                    class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
@@ -1087,7 +1089,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="selectedLists = []; onRuleChange()"
                     type="button">
-              <span>Clear Lists</span>
+              <span>{% translate "Clear Lists" %}</span>
               <span class="ml-auto" x-show="selectedLists.length === 0">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
@@ -1115,7 +1117,7 @@
       <button class="flex items-center px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
               @click="open = !open"
               type="button">
-        <span x-text="statuses.length === 0 ? 'Status' : (statuses.length === 1 ? (statusLabels[statuses[0]] || statuses[0]) : statuses.length + ' Statuses')"></span>
+        {% translate "Status" as media_i18n_74 %}{% translate " Statuses" as media_i18n_75 %}<span x-text="statuses.length === 0 ? '{{ media_i18n_74|escapejs }}' : (statuses.length === 1 ? (statusLabels[statuses[0]] || statuses[0]) : statuses.length + '{{ media_i18n_75|escapejs }}')"></span>
         <svg xmlns="http://www.w3.org/2000/svg"
              viewBox="0 0 20 20"
              class="w-4 h-4 ml-2"
@@ -1141,7 +1143,7 @@
                 class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
                 :class="statuses.length === 0 ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                 @click="statuses = []; onRuleChange()"
-                type="button">All</button>
+                type="button">{% translate "All" %}</button>
         {% for value, label in status_choices %}
           {% if value != 'all' and value != 'All' %}
             <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
@@ -1152,7 +1154,7 @@
                     :class="isStatusSelected('{{ value }}') ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                     @click="toggleStatus('{{ value }}'); onRuleChange()"
                     type="button">
-              <span>{{ label }}</span>
+              <span>{% translate label %}</span>
               <span class="ml-auto" x-show="isStatusSelected('{{ value }}')">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-[var(--color-text)]" %}
               </span>
@@ -1169,7 +1171,7 @@
               @click="isOrderEditing = false; sortOpen = false; orderOpen = false"
               type="button">
         {% include "app/icons/checkmark.svg" with classes="w-4 h-4" %}
-        <span class="text-sm">Done Editing Order</span>
+        <span class="text-sm">{% translate "Done Editing Order" %}</span>
       </button>
 
       <div class="inline-flex"
@@ -1201,7 +1203,7 @@
                 x-cloak
                 x-show="sort === 'custom' && canEdit"
                 @click="orderOpen = !orderOpen; sortOpen = false"
-                aria-label="Custom sort options"
+                aria-label="{% translate "Custom sort options" %}"
                 type="button">
           {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
         </button>
@@ -1224,7 +1226,7 @@
                   class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
                   :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                   @click="setSort('{{ value }}'); sortOpen = false; orderOpen = false"
-                  type="button">{{ label }}</button>
+                  type="button">{% translate label %}</button>
         {% endfor %}
       </div>
 
@@ -1240,7 +1242,7 @@
         <button class="w-full text-left px-3 py-2 text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                 @click="isOrderEditing = true; orderOpen = false; sortOpen = false"
                 type="button">
-          Edit Item Order
+          {% translate "Edit Item Order" %}
         </button>
       </div>
     </div>
@@ -1256,7 +1258,7 @@
                 hx-indicator="#loading-indicator"
                 class="p-2 cursor-pointer"
                 :class="layout === 'grid' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)]'"
-                title="Grid View"
+                title="{% translate "Grid View" %}"
                 @click="layout = 'grid'"
                 type="button">
           {% include "app/icons/four-square.svg" with classes="w-5 h-5" %}
@@ -1267,7 +1269,7 @@
                 hx-indicator="#loading-indicator"
                 class="p-2 cursor-pointer"
                 :class="layout === 'table' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)]'"
-                title="Table View"
+                title="{% translate "Table View" %}"
                 @click="layout = 'table'"
                 type="button">
           {% include "app/icons/table.svg" with classes="w-5 h-5" %}
