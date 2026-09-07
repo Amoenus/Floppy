@@ -1,13 +1,31 @@
 """Authentication classes for API requests."""
 
 import hashlib
+from datetime import timedelta
 
+from django.utils import timezone
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import BasePermission
 
+from api.scopes import ANY_SCOPE, NEVER, resolve_required_scope
 from integrations.models import IntegrationToken
 from users.models import User
+
+# Bound how often a request writes ``last_used_at``. Every authenticated request
+# would otherwise write a row, which is the hot path for a scrobbling client.
+LAST_USED_WRITE_INTERVAL = timedelta(minutes=5)
+
+
+def _touch_last_used(token: IntegrationToken) -> None:
+    """Record token use, at most once per :data:`LAST_USED_WRITE_INTERVAL`."""
+    now = timezone.now()
+    if token.last_used_at and now - token.last_used_at < LAST_USED_WRITE_INTERVAL:
+        return
+    # Filtered UPDATE rather than save(): concurrent requests collapse into one
+    # write instead of racing, and no other field can be clobbered.
+    IntegrationToken.objects.filter(pk=token.pk).update(last_used_at=now)
+    token.last_used_at = now
 
 
 def authenticate_token(raw_token: str):
@@ -27,6 +45,7 @@ def authenticate_token(raw_token: str):
         if not integration_token.is_valid():
             msg = "Invalid token"
             raise AuthenticationFailed(msg)
+        _touch_last_used(integration_token)
         return (integration_token.user, integration_token)
 
     try:
@@ -96,9 +115,12 @@ class APIKeyAuthentication(BaseAuthentication):
 
 
 class HasScope(BasePermission):
-    """Permission class to check whether request.auth grants a required scope.
+    """Enforce the scope map against the credential the request authenticated with.
 
-    Legacy tokens (request.auth is None) have full access to all scopes.
+    Session logins and legacy ``User.token`` credentials carry no token object
+    (``request.auth is None``) and keep full access. A scoped ``IntegrationToken``
+    must hold the scope ``api.scopes`` maps to this view and method; an unmapped
+    endpoint is denied, so a new route cannot silently become reachable.
     """
 
     required_scope = None
@@ -112,12 +134,14 @@ class HasScope(BasePermission):
         """Return True if the request user and token scopes satisfy requirements."""
         if not request.user or not request.user.is_authenticated:
             return False
-        if request.auth is None:
-            return True
-        if hasattr(request.auth, "has_scope"):
-            scope = getattr(view, "required_scope", self.required_scope)
-            if not scope:
-                return True
-            return request.auth.has_scope(scope)
-        return False
 
+        token = request.auth
+        if token is None or not hasattr(token, "has_scope"):
+            return True
+
+        scope = self.required_scope or resolve_required_scope(view, request.method)
+        if scope == ANY_SCOPE:
+            return True
+        if scope is None or scope == NEVER:
+            return False
+        return token.has_scope(scope)

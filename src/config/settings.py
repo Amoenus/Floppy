@@ -280,6 +280,9 @@ INSTALLED_APPS = [
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
+        # Enforced globally on purpose: a per-view opt-in is a control that gets
+        # forgotten. Views that must stay public set ``permission_classes = []``.
+        "api.authentication.HasScope",
     ],
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "api.authentication.BearerAuthentication",
@@ -288,7 +291,7 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ("api.renderers.ImageCacheJSONRenderer",),
     # ``format`` is a media-list filter, not a renderer override.
     "URL_FORMAT_OVERRIDE": None,
-    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_SCHEMA_CLASS": "api.scope_schema.ScopedAutoSchema",
 }
 
 SPECTACULAR_SETTINGS = {
