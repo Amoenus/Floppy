@@ -62,6 +62,27 @@ _docker_install_engine_apt() {
     fi
 }
 
+# An existing Compose file keeps whatever image tag it was generated with
+# forever (see the "Keeping the existing" branch below - regenerating the
+# whole file on every run would silently discard a hand customization, like
+# an extra volume). That is right for a real customization, but it also means
+# common.sh moving its FLOPPY_IMAGE default forward - as happened live, when
+# :release turned out to predate promote_superuser - never reaches an
+# installation that already exists: every future resume just keeps pulling
+# the stale tag baked into that first run. Bring only this one line forward,
+# leaving the rest of a possibly-customized file untouched.
+_docker_update_image_tag() {
+    local current wanted tmp
+    current=$(grep -m1 '^    image: ghcr\.io/dannyvfilms/floppy:' "$COMPOSE_FILE" || true)
+    [ -n "$current" ] || return 0
+    wanted="    image: $FLOPPY_IMAGE"
+    [ "$current" = "$wanted" ] && return 0
+    tmp="${COMPOSE_FILE}.tmp.$$"
+    sed "s|^    image: ghcr\.io/dannyvfilms/floppy:.*\$|$wanted|" "$COMPOSE_FILE" >"$tmp" \
+        && mv "$tmp" "$COMPOSE_FILE"
+    say "  Updated the image tag: ${current#*image: } -> $FLOPPY_IMAGE"
+}
+
 install_docker() {
     if [ "$(docker_state)" = "missing" ]; then
         _docker_install_engine_apt
@@ -92,6 +113,7 @@ EOF
 
     if [ -f "$COMPOSE_FILE" ]; then
         note "Keeping the existing $COMPOSE_FILE."
+        _docker_update_image_tag
     else
         render_template "$TEMPLATE_DIR/docker-compose.install.yml.tmpl" "$COMPOSE_FILE" \
             "ROOT=$FLOPPY_ROOT" \

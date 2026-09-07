@@ -371,6 +371,101 @@ class PortHelperTests(SimpleTestCase):
             self.assertGreater(int(chosen), busy)
 
 
+def run_docker_helper(body, root):
+    """Like run_helper, but with docker.sh's functions loaded too."""
+    return run_helper(f'. "{INSTALL_DIR / "docker.sh"}"\n{body}', root)
+
+
+class ExistingComposeImageUpdateTests(SimpleTestCase):
+    """A resumed install's Compose file must not stay pinned to a dead tag.
+
+    Regression coverage for a live failure: the checkout and the image-tag
+    *default* were fixed to track the same branch, but an already-generated
+    docker-compose.yml keeps whatever tag it was written with forever - the
+    "Keeping the existing docker-compose.yml" resume path never regenerates
+    it, precisely so a hand customization (an extra volume, say) survives.
+    That meant the default's fix never reached an installation that already
+    existed: Settings > Metadata's own promote_superuser instructions failed
+    with "Unknown command" because the container was still running the tag
+    baked in on day one. _docker_update_image_tag brings forward only that
+    one line.
+    """
+
+    def _compose_file(self, root, image):
+        path = root / "docker-compose.yml"
+        path.write_text(
+            "name: floppy-test\n"
+            "services:\n"
+            "  floppy:\n"
+            f"    image: {image}\n"
+            "    restart: unless-stopped\n"
+            "  redis:\n"
+            "    image: redis:8-alpine\n",
+            encoding="utf-8",
+        )
+        return path
+
+    def test_resuming_an_existing_compose_file_calls_the_update(self):
+        # The function working in isolation (below) proves nothing if
+        # install_docker()'s "Keeping the existing docker-compose.yml" branch
+        # never actually calls it - which is exactly how this regressed once
+        # already: the helper existed and worked, the call site did not.
+        text = (INSTALL_DIR / "docker.sh").read_text(encoding="utf-8")
+        existing_branch = text[text.index('if [ -f "$COMPOSE_FILE" ]; then') :]
+        keeping_to_else = existing_branch[: existing_branch.index("\n    else\n")]
+        self.assertIn("_docker_update_image_tag", keeping_to_else)
+
+    def test_an_old_tag_is_brought_forward(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            compose = self._compose_file(root, "ghcr.io/dannyvfilms/floppy:release")
+            run_docker_helper(
+                'FLOPPY_IMAGE="ghcr.io/dannyvfilms/floppy:latest"\n'
+                "_docker_update_image_tag\n",
+                root,
+            )
+            text = compose.read_text(encoding="utf-8")
+        self.assertIn("image: ghcr.io/dannyvfilms/floppy:latest", text)
+        self.assertIn("image: redis:8-alpine", text)
+
+    def test_an_already_current_tag_is_left_alone(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            compose = self._compose_file(root, "ghcr.io/dannyvfilms/floppy:latest")
+            before = compose.read_text(encoding="utf-8")
+            run_docker_helper(
+                'FLOPPY_IMAGE="ghcr.io/dannyvfilms/floppy:latest"\n'
+                "_docker_update_image_tag\n",
+                root,
+            )
+            after = compose.read_text(encoding="utf-8")
+        self.assertEqual(before, after)
+
+    def test_other_customization_in_the_file_survives(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            compose = root / "docker-compose.yml"
+            compose.write_text(
+                "name: floppy-test\n"
+                "services:\n"
+                "  floppy:\n"
+                "    image: ghcr.io/dannyvfilms/floppy:release\n"
+                "    volumes:\n"
+                "      - ./hand-added-extra:/custom\n"
+                "  redis:\n"
+                "    image: redis:8-alpine\n",
+                encoding="utf-8",
+            )
+            run_docker_helper(
+                'FLOPPY_IMAGE="ghcr.io/dannyvfilms/floppy:latest"\n'
+                "_docker_update_image_tag\n",
+                root,
+            )
+            text = compose.read_text(encoding="utf-8")
+        self.assertIn("./hand-added-extra:/custom", text)
+        self.assertIn("image: ghcr.io/dannyvfilms/floppy:latest", text)
+
+
 class GeneratedComposeTests(SimpleTestCase):
     def render(self, root):
         output = root / "docker-compose.yml"
