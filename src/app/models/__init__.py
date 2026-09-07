@@ -85,6 +85,14 @@ from app.models.tv import (
     RewatchAlreadyCompleteError,
     Season,
 )
+from app.models.watch_state import (
+    WatchState,
+    WatchStateChange,
+    WatchStateChangeKind,
+    WatchStateOrigin,
+    WatchStateSequence,
+    calculate_state_digest,
+)
 
 __all__ = [
     "CREDITS_BACKFILL_VERSION",
@@ -156,6 +164,12 @@ __all__ = [
     "Tag",
     "Track",
     "UserProviderCredential",
+    "WatchState",
+    "WatchStateChange",
+    "WatchStateChangeKind",
+    "WatchStateOrigin",
+    "WatchStateSequence",
     "build_episode_runtime_index",
+    "calculate_state_digest",
     "prefill_episode_runtime_index",
 ]
