@@ -1,38 +1,56 @@
-<!DOCTYPE html>
-<html lang="en">
+{% load static %}<!DOCTYPE html>
+<html lang="en"
+      class="{% if user.is_authenticated and user.theme == 'light' %}light{% elif user.is_authenticated and user.theme == 'dark' %}dark{% endif %}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Configure Floppy for Stremio</title>
+  <link rel="icon" href="{% static 'favicon/favicon-32x32.png' %}">
+  <link rel="stylesheet" href="{% static 'css/main.css' %}">
   <style>
-    :root { color-scheme: dark; }
     body {
-      margin: 0; padding: 2rem 1rem; background: #14161a; color: #e7e9ee;
-      font-family: system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.5;
+      margin: 0; padding: 2rem 1rem;
+      background: var(--color-page-bg); color: var(--color-text);
+      line-height: 1.5;
     }
     main { max-width: 34rem; margin: 0 auto; }
+    .brand { display: flex; align-items: center; gap: .6rem; margin-bottom: 1.25rem; }
+    .brand img { height: 1.75rem; width: auto; }
     h1 { font-size: 1.35rem; margin: 0 0 .35rem; }
-    p.lede { margin: 0 0 1.5rem; color: #9aa1ad; font-size: .93rem; }
-    fieldset { border: 1px solid #2a2f38; border-radius: .6rem; padding: 1rem 1.1rem; margin: 0 0 1.25rem; }
-    legend { padding: 0 .4rem; color: #9aa1ad; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
+    p.lede { margin: 0 0 1.5rem; color: var(--color-text-muted); font-size: .93rem; }
+    fieldset {
+      border: 1px solid var(--color-border); border-radius: .6rem;
+      background: var(--color-panel); padding: 1rem 1.1rem; margin: 0 0 1.25rem;
+    }
+    legend {
+      padding: 0 .4rem; color: var(--color-text-muted); font-size: .8rem;
+      text-transform: uppercase; letter-spacing: .05em;
+    }
     ul#catalog-list { list-style: none; margin: 0; padding: 0; }
     ul#catalog-list li {
       display: flex; align-items: center; gap: .6rem; padding: .45rem 0;
-      border-bottom: 1px solid #21252c;
+      border-bottom: 1px solid var(--color-border);
     }
     ul#catalog-list li:last-child { border-bottom: 0; }
     ul#catalog-list li.off .name, ul#catalog-list li.off .type { opacity: .45; }
     .name { flex: 1; }
-    .type { color: #7d838f; font-size: .8rem; }
-    input[type="checkbox"] { width: 1.05rem; height: 1.05rem; accent-color: #6c8cff; cursor: pointer; }
-    .move {
-      background: #21252c; border: 0; color: #cfd3db; border-radius: .35rem;
-      width: 1.75rem; height: 1.75rem; font-size: .85rem; cursor: pointer; line-height: 1;
+    .type { color: var(--color-text-muted); font-size: .8rem; }
+    input[type="checkbox"] {
+      width: 1.05rem; height: 1.05rem;
+      accent-color: var(--color-accent); cursor: pointer;
     }
+    .move {
+      background: var(--color-surface-strong); border: 0;
+      color: var(--color-text-secondary); border-radius: .35rem;
+      width: 1.75rem; height: 1.75rem; font-size: .85rem;
+      cursor: pointer; line-height: 1;
+    }
+    .move:hover:not(:disabled) { background: var(--color-surface-hover); }
     .move:disabled { opacity: .3; cursor: default; }
     .url {
-      display: block; width: 100%; box-sizing: border-box; background: #0e1013;
-      border: 1px solid #2a2f38; border-radius: .5rem; color: #cfd3db; padding: .7rem .8rem;
+      display: block; width: 100%; box-sizing: border-box;
+      background: var(--color-surface-dim); border: 1px solid var(--color-border);
+      border-radius: .5rem; color: var(--color-text-secondary); padding: .7rem .8rem;
       font-family: ui-monospace, monospace; font-size: .8rem; word-break: break-all;
       margin-bottom: 1rem; resize: none;
     }
@@ -40,15 +58,31 @@
     a.btn, button.btn {
       appearance: none; border: 0; border-radius: .5rem; padding: .65rem 1.1rem;
       font-size: .9rem; font-weight: 600; cursor: pointer; text-decoration: none;
-      background: #6c8cff; color: #10131a;
+      background: var(--color-accent); color: var(--color-page-bg);
     }
-    button.btn.secondary { background: #2a2f38; color: #e7e9ee; }
-    .warn { color: #d98b5f; font-size: .85rem; min-height: 1.2rem; margin: .75rem 0 0; }
-    .hint { color: #9aa1ad; font-size: .85rem; margin: 0 0 .6rem; }
+    button.btn.secondary {
+      background: var(--color-surface-strong); color: var(--color-text);
+    }
+    .warn {
+      color: var(--color-warning-text); font-size: .85rem;
+      min-height: 1.2rem; margin: .75rem 0 0;
+    }
+    .hint { color: var(--color-text-muted); font-size: .85rem; margin: 0 0 .6rem; }
   </style>
+</head>
 </head>
 <body>
 <main>
+  <div class="brand">
+    {% if user.is_authenticated and user.logo_style == 'monochrome' %}
+      <img src="{% static 'img/floppy-logo-white.png' %}" alt="Floppy">
+    {% else %}
+      <img src="{% static 'img/floppy-logo.png' %}"
+           srcset="{% static 'img/floppy-logo.png' %} 1x,
+                   {% static 'img/floppy-logo@2x.png' %} 2x"
+           alt="Floppy">
+    {% endif %}
+  </div>
   <h1>Configure Floppy for Stremio</h1>
   <p class="lede">Choose which catalogs this addon publishes and the order they appear in. Reinstall the addon in Stremio for changes to take effect.</p>
 
