@@ -100,7 +100,10 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_lists.ListRecommendationDecisionView": {"POST": "lists:write"},
     "api.fork_views_lists.ListActivityView": {"GET": "lists:read"},
     "api.fork_views_metadata.ItemImageView": {"PATCH": "metadata:write"},
-    "api.fork_views_metadata.ItemMetadataView": {"PATCH": "metadata:write"},
+    "api.fork_views_metadata.ItemMetadataView": {
+        "GET": "metadata:read",
+        "PATCH": "metadata:write",
+    },
     "api.fork_views_metadata.MediaProviderPreferenceView": {
         "GET": "metadata:read",
         "PUT": "metadata:write",
