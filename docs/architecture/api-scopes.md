@@ -13,6 +13,10 @@ third-party client (Nuvio, Stremio, Kodi, a scrobbler) is written against.
 | Published per-operation scope | `x-required-scope` in `src/api/contracts/openapi.yaml` |
 | Coverage guarantee | `api.tests.test_fork_scope_enforcement.ScopeMapCoverageTests` |
 
+The coverage test has already paid for itself: the watched-state sync endpoints
+landed unmapped, and unmapped means denied, so the change feed was unreachable
+by exactly the clients it exists for until they were added here.
+
 ## The three credential kinds
 
 | Credential | `request.auth` | Access |

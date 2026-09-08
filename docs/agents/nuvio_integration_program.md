@@ -2,7 +2,7 @@
 
 **Status:** Reviewed programme plan, reconciled against implementation
 **Review date:** 2026-08-15
-**Reconciliation date:** 2026-09-06
+**Reconciliation date:** 2026-09-08
 **Floppy baseline:** `17dc7c8e0eaae82603b98bd084abd0131ee6c1c1` (`latest`)
 **Prior baseline:** `1bb6999a539679a27502c6514c3fdfec70f17091`
 **Programme issue:** #532
@@ -42,6 +42,42 @@ Start after Release A's server contract is stable:
 - user metadata preferences and overrides.
 
 Do not combine both trains in one release or one pull request.
+
+## Delivery log
+
+Recorded as work lands, so the ledger below stays a statement about the code
+rather than about the plan. Two threads worked this programme in parallel;
+"other thread" marks work this document did not drive.
+
+| Item | State | Evidence |
+|---|---|---|
+| A0 scope enforcement | Done | `api/scopes.py`, `HasScope` global, coverage test over every routed view |
+| A1 credential lifecycle | Done | Settings → Integrations → App tokens; `users/tests/views/test_integration_tokens.py` |
+| A2 bindings | Done (other thread) | `SyncBinding`, `SyncCheckpoint`, `integrations/state/identity.py` |
+| A3 receipts | Done | Binding-scoped receipts, retention task, `test_receipt_retention.py` |
+| A4 ordered changes | Done | Watched-state feed (other thread) + `ProgressChange` and `/sync/progress-changes/` |
+| A4 checkpoints/retention | Done | `integrations/state/checkpoints.py`, `_change_log.py` compaction |
+| A5 watched state | Done (other thread) | `WatchState`, apply algorithm, outbound outbox |
+| A6 origin and unresolved | Done (other thread) | `origin_key`, `UnresolvedExternalReference`, `StateConflict` |
+| A7 reconciliation | Partial | Conflicts recorded and resolvable; no dry-run preview or diagnostics surface |
+| A8 stabilization | Not started | |
+| Adoption kit | Not started | |
+| Release B | Not started | B1 catalog grants is the first piece |
+
+### Corrections found while building
+
+- Declared token scopes were never enforced: `HasScope` existed and no view
+  used it. Fixed in A0.
+- Scoped tokens could not be created outside a shell. Fixed in A1.
+- Receipts were unique per user, so two devices minting the same client event
+  id collided. Fixed in A3.
+- `SyncCheckpoint` had no writer, so the change log had no safe watermark and
+  could never be compacted. Fixed alongside A4.
+- Adding the watched-state endpoints left them unmapped, and unmapped means
+  denied: the change feed was unreachable by the clients it exists for. Caught
+  by the A0 coverage test, fixed the same day.
+- The tracking preset lacked `sync:read`, so a default token was denied the
+  change feed. Fixed.
 
 ## Reconciliation ledger
 
