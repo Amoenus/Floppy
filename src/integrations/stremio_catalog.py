@@ -260,3 +260,49 @@ def project_catalog(user, spec, skip):
             break
 
     return metas, unresolved_count
+
+
+def project_meta(user, stremio_type, imdb_id):
+    """Return the publishable meta for one item the user actually tracks.
+
+    Scoped to the user's own library on purpose. This endpoint is reachable by
+    anyone holding the install URL, so answering for arbitrary ids would turn a
+    catalog grant into an open metadata proxy over the whole item table.
+
+    Provider fields stay as Floppy holds them; nothing is fetched here, so a
+    metadata provider's terms are not extended by publishing this.
+    """
+    media_types = [
+        spec.media_type for spec in CATALOG_SPECS if spec.stremio_type == stremio_type
+    ]
+    if not media_types:
+        return None
+
+    owned_list_ids = CustomList.objects.filter(owner=user).values_list("id", flat=True)
+    membership = (
+        CustomListItem.objects.filter(
+            custom_list_id__in=list(owned_list_ids),
+            item__media_type__in=media_types,
+        )
+        .select_related("item")
+        .order_by("-date_added", "-id")
+    )
+
+    for entry in membership.iterator():
+        item = entry.item
+        if local_imdb_id(item) != imdb_id:
+            continue
+
+        meta = {
+            "id": imdb_id,
+            "type": stremio_type,
+            "name": item.title,
+        }
+        if item.image:
+            meta["poster"] = item.image
+            meta["background"] = item.image
+        if getattr(item, "synopsis", None):
+            meta["description"] = item.synopsis
+        return meta
+
+    return None

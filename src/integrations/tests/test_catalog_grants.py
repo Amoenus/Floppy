@@ -217,3 +217,79 @@ class CatalogGrantLifecycleTests(TestCase):
         self.assertEqual(response.status_code, HTTP.NOT_FOUND)
         grant.refresh_from_db()
         self.assertIsNone(grant.revoked_at)
+
+
+class AddonMetaTests(TestCase):
+    """The meta resource answers only for items the user tracks."""
+
+    def setUp(self):
+        """Create two users, each with a list holding a different film."""
+        from app.models import Item
+        from app.models.choices import MediaTypes, Sources
+        from lists.models import CustomList, CustomListItem
+
+        self.user = get_user_model().objects.create_user(username="meta")
+        self.other = get_user_model().objects.create_user(username="metaother")
+        _, self.token = CatalogGrant.generate(self.user, "TV")
+        _, self.other_token = CatalogGrant.generate(self.other, "Theirs")
+
+        self.item, _ = Item.objects.get_or_create(
+            media_id="603",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            defaults={"title": "The Matrix", "synopsis": "A hacker learns."},
+        )
+        self.item.provider_external_ids = {"imdb_id": "tt0133093"}
+        self.item.save(update_fields=["provider_external_ids"])
+
+        self.own_list = CustomList.objects.create(owner=self.user, name="Movies")
+        CustomListItem.objects.create(custom_list=self.own_list, item=self.item)
+
+    def get_meta(self, token, media_id="tt0133093"):
+        """Fetch the meta resource."""
+        return self.client.get(
+            reverse("stremio_addon_meta", args=[token, "movie", media_id]),
+        )
+
+    def test_manifest_advertises_meta(self):
+        """A client only asks for a resource the manifest declares."""
+        response = self.client.get(
+            reverse("stremio_addon_manifest", args=[self.token]),
+        )
+
+        self.assertIn("meta", response.json()["resources"])
+
+    def test_a_tracked_item_returns_its_meta(self):
+        """The user's own item is published."""
+        response = self.get_meta(self.token)
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        meta = response.json()["meta"]
+        self.assertEqual(meta["id"], "tt0133093")
+        self.assertEqual(meta["name"], "The Matrix")
+
+    def test_another_users_install_sees_nothing(self):
+        """This endpoint must not become an open metadata proxy."""
+        response = self.get_meta(self.other_token)
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response.json()["meta"], {})
+
+    def test_an_untracked_id_returns_empty_not_404(self):
+        """Stremio reads a 404 as the add-on being broken."""
+        response = self.get_meta(self.token, media_id="tt9999999")
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response.json()["meta"], {})
+
+    def test_a_malformed_id_is_rejected(self):
+        """Identifier shape is validated before it reaches a query."""
+        response = self.get_meta(self.token, media_id="notanid")
+
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+
+    def test_an_invalid_token_is_refused(self):
+        """The meta route authenticates like the others."""
+        response = self.get_meta("cat_nope")
+
+        self.assertEqual(response.status_code, HTTP.UNAUTHORIZED)

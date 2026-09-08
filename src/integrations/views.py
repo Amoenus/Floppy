@@ -4107,7 +4107,7 @@ STREMIO_ADDON_MANIFEST = {
     "description": (
         "Floppy Watchlist catalogs and playback scrobbling for Stremio."
     ),
-    "resources": ["catalog", "subtitles"],
+    "resources": ["catalog", "meta", "subtitles"],
     "types": ["movie", "series"],
     "idPrefixes": ["tt"],
     "catalogs": [],
@@ -4193,6 +4193,36 @@ def stremio_addon_manifest(request, token):
         "catalogs": stremio_catalog.manifest_catalogs_for_grant(user, grant)
     }
     return _stremio_addon_response(manifest)
+
+
+@login_not_required
+@csrf_exempt
+@require_GET
+def stremio_addon_meta(request, token, media_type, media_id):
+    """Serve metadata for one item the user tracks."""
+    user, grant = stremio_catalog.resolve_addon_credential(token)
+    if user is None:
+        logger.warning("Invalid token on Stremio addon meta request")
+        return _stremio_addon_response({"error": "Invalid token"}, status=401)
+
+    media_id = unquote(media_id)
+    if (
+        media_type not in {"movie", "series"}
+        or len(media_id) > STREMIO_MAX_MEDIA_ID_LENGTH
+        or not STREMIO_MEDIA_ID_PATTERN.fullmatch(media_id)
+    ):
+        return _stremio_addon_response({"meta": {}}, status=400)
+
+    if grant is not None:
+        stremio_catalog.touch_grant(grant)
+
+    meta = stremio_catalog.project_meta(user, media_type, media_id)
+    if meta is None:
+        # Empty rather than 404: the item is simply not in this library, and
+        # Stremio treats a 404 as the add-on being broken.
+        return _stremio_addon_response({"meta": {}})
+
+    return _stremio_addon_response({"meta": meta})
 
 
 @login_not_required
