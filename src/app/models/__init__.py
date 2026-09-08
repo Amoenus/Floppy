@@ -74,6 +74,10 @@ from app.models.podcast import (
     PodcastShow,
     PodcastShowTracker,
 )
+from app.models.progress_change import (
+    ProgressChange,
+    ProgressChangeKind,
+)
 from app.models.provider_credential import (
     InstanceProviderCredential,
     UserProviderCredential,
@@ -155,6 +159,8 @@ __all__ = [
     "PodcastEpisode",
     "PodcastShow",
     "PodcastShowTracker",
+    "ProgressChange",
+    "ProgressChangeKind",
     "ProviderMetadataStatus",
     "RewatchAlreadyCompleteError",
     "Season",

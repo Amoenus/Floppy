@@ -11,6 +11,7 @@ from . import (
     fork_views_music,
     fork_views_playback,
     fork_views_podcast,
+    fork_views_progress_changes,
     fork_views_scrobble,
     fork_views_statistics,
     fork_views_tracking,
@@ -349,6 +350,11 @@ urlpatterns = [
         r"^sync/changes/?$",
         fork_views_watched_state.WatchedStateChangeFeedView.as_view(),
         name="api_sync_changes",
+    ),
+    re_path(
+        r"^sync/progress-changes/?$",
+        fork_views_progress_changes.ProgressChangeFeedView.as_view(),
+        name="api_sync_progress_changes",
     ),
     re_path(
         r"^sync/connections/?$",
