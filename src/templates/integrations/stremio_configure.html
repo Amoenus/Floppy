@@ -196,7 +196,7 @@
 
       var chosen = order.filter(function (id) { return checked[id]; });
       var url = chosen.length
-        ? baseUrl() + "/c/" + chosen.join(",") + "/manifest.json"
+        ? baseUrl() + "/c/" + chosen.map(encodeURIComponent).join(",") + "/manifest.json"
         : baseUrl() + "/manifest.json";
       urlField.value = url;
       installLink.href = url.replace(/^https?:/, "stremio:");
