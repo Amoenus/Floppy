@@ -1665,3 +1665,108 @@ class UnresolvedExternalReference(models.Model):
     def __str__(self):
         """Readable representation."""
         return f"UnresolvedExternalReference({self.namespace}:{self.value})"
+
+
+class OutboundDeliveryStatus(models.TextChoices):
+    """Lifecycle of one outbound state write."""
+
+    PENDING = "pending", "Pending"
+    IN_FLIGHT = "in_flight", "In flight"
+    DELIVERED = "delivered", "Delivered"
+    FAILED = "failed", "Failed"
+    SUPERSEDED = "superseded", "Superseded"
+    SKIPPED = "skipped", "Skipped"
+
+
+class OutboundStateDelivery(models.Model):
+    """A durable intent to tell one provider about one state revision.
+
+    Written in the same transaction as the change that caused it, so a crash
+    between "we changed state" and "we told them" is impossible: either both
+    rows exist or neither does. The Celery kick that follows is an optimisation,
+    and a sweeper picks up anything a lost kick dropped, so correctness never
+    depends on the broker being up.
+    """
+
+    binding = models.ForeignKey(
+        SyncBinding,
+        on_delete=models.CASCADE,
+        related_name="deliveries",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="state_deliveries",
+    )
+    item = models.ForeignKey(
+        "app.Item",
+        on_delete=models.CASCADE,
+        related_name="state_deliveries",
+    )
+    change = models.ForeignKey(
+        "app.WatchStateChange",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="deliveries",
+    )
+
+    # The revision this write is trying to make true remotely, and the digest
+    # that revision describes. Both are needed: the revision orders the write,
+    # the digest is what a read-back is compared against.
+    target_revision = models.PositiveIntegerField(default=0)
+    target_digest = models.CharField(max_length=64, blank=True, default="")
+    intent = models.BooleanField(
+        default=True,
+        help_text="True to mark played remotely, False to mark unplayed.",
+    )
+
+    status = models.CharField(
+        max_length=16,
+        choices=OutboundDeliveryStatus,
+        default=OutboundDeliveryStatus.PENDING.value,
+    )
+    attempts = models.PositiveIntegerField(default=0)
+    next_attempt_at = models.DateTimeField(null=True, blank=True)
+    last_error_message = models.TextField(blank=True, default="")
+
+    client_event_id = models.CharField(max_length=255, blank=True, default="")
+    correlation_id = models.UUIDField(null=True, blank=True, db_index=True)
+    # A fresh read of provider state taken *after* the write returned, not the
+    # value we intended to write. This is what makes echo detection independent
+    # of any timeout.
+    readback_digest = models.CharField(max_length=64, blank=True, default="")
+    echo_seen_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Outbound state delivery"
+        verbose_name_plural = "Outbound state deliveries"
+        ordering = ["binding", "item", "target_revision"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["binding", "item", "target_revision"],
+                name="unique_delivery_per_revision",
+            ),
+            # Serialization primitive: at most one write per (destination, item)
+            # can be in flight, enforced by the database rather than by a lock
+            # that a crashed worker could hold forever.
+            models.UniqueConstraint(
+                fields=["binding", "item"],
+                condition=models.Q(status="in_flight"),
+                name="unique_inflight_delivery_per_item",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "next_attempt_at"]),
+            models.Index(fields=["binding", "status"]),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"OutboundStateDelivery({self.binding_id}, item={self.item_id})"

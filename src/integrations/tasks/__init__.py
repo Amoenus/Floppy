@@ -92,6 +92,11 @@ from integrations.tasks._plex_collection import (
     update_collection_metadata_from_plex,
     update_collection_metadata_from_plex_webhook,
 )
+from integrations.tasks._state_sync import (
+    deliver_watched_state,
+    reconcile_watched_state,
+    sweep_watched_state_deliveries,
+)
 from integrations.tasks._webhook import (
     WEBHOOK_PROCESSORS,
     _webhook_history_user,
@@ -145,6 +150,7 @@ __all__ = [
     "_run_incremental_koito_sync",
     "_run_incremental_lastfm_sync",
     "_webhook_history_user",
+    "deliver_watched_state",
     "fetch_collection_metadata_for_item",
     "format_import_message",
     "format_media_type_display",
@@ -201,7 +207,9 @@ __all__ = [
     "process_webhook",
     "pull_jellyfin_history",
     "push_jellyfin_watched",
+    "reconcile_watched_state",
     "refresh_plex_sections",
+    "sweep_watched_state_deliveries",
     "sync_plex_watchlist",
     "update_collection_metadata_from_plex",
     "update_collection_metadata_from_plex_webhook",
