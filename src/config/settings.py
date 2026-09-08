@@ -1011,6 +1011,13 @@ BACKUP_DIR = config("BACKUP_DIR", default=str(BASE_DIR / "backups"))
 # exports above, which cannot replace a physically damaged db.sqlite3. Rides
 # the same BACKUP_DIR volume mount installs already have.
 DB_SNAPSHOT_ENABLED = config("DB_SNAPSHOT_ENABLED", default=True, cast=bool)
+# How long an idempotency receipt stays replayable. A client that retries after
+# this window gets a fresh operation, not the prior result, so keep it longer
+# than the longest client backoff. Measure real retry intervals before lowering.
+INTEGRATION_RECEIPT_RETENTION_DAYS = config(
+    "INTEGRATION_RECEIPT_RETENTION_DAYS", default=14, cast=int,
+)
+
 DB_SNAPSHOT_RETENTION_COUNT = config(
     "DB_SNAPSHOT_RETENTION_COUNT", default=7, cast=int,
 )

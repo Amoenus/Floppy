@@ -92,6 +92,10 @@ from integrations.tasks._plex_collection import (
     update_collection_metadata_from_plex,
     update_collection_metadata_from_plex_webhook,
 )
+from integrations.tasks._receipts import (
+    COMPACT_RECEIPTS_TASK_NAME,
+    compact_integration_event_receipts,
+)
 from integrations.tasks._state_sync import (
     deliver_watched_state,
     reconcile_watched_state,
@@ -130,6 +134,7 @@ def scheduled_backup_export(
 
 
 __all__ = [
+    "COMPACT_RECEIPTS_TASK_NAME",
     "ERROR_TITLE",
     "GOODREADS_IMPORT_TASK_NAME",
     "JELLYFIN_PULL_INTERVAL_MINUTES",
@@ -150,6 +155,7 @@ __all__ = [
     "_run_incremental_koito_sync",
     "_run_incremental_lastfm_sync",
     "_webhook_history_user",
+    "compact_integration_event_receipts",
     "deliver_watched_state",
     "fetch_collection_metadata_for_item",
     "format_import_message",

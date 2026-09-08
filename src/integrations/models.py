@@ -1291,12 +1291,22 @@ class IntegrationEventReceipt(models.Model):
         on_delete=models.CASCADE,
         related_name="event_receipts",
     )
+    # Receipts scope to the binding when there is one. Two devices on the same
+    # account routinely mint the same client event id ("1", a per-install
+    # counter), and a user-wide constraint turns the second device's first
+    # event into a bogus idempotency conflict.
+    binding = models.ForeignKey(
+        "SyncBinding",
+        on_delete=models.CASCADE,
+        related_name="event_receipts",
+        null=True,
+        blank=True,
+    )
     client_event_id = models.CharField(max_length=255, db_index=True)
     payload_digest = models.CharField(max_length=64)
     response_status_code = models.IntegerField(default=200)
     response_body = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
     created_at = models.DateTimeField(auto_now_add=True)
-
 
     class Meta:
         """Model options."""
@@ -1304,10 +1314,23 @@ class IntegrationEventReceipt(models.Model):
         verbose_name = "Integration event receipt"
         verbose_name_plural = "Integration event receipts"
         constraints = [
+            # Conditional pair rather than one constraint over both columns:
+            # NULL never equals NULL, so a plain unique(binding, event_id) would
+            # stop deduplicating entirely for unbound credentials.
             models.UniqueConstraint(
                 fields=["user", "client_event_id"],
-                name="unique_user_client_event_id",
+                condition=models.Q(binding__isnull=True),
+                name="unique_unbound_user_client_event_id",
             ),
+            models.UniqueConstraint(
+                fields=["binding", "client_event_id"],
+                condition=models.Q(binding__isnull=False),
+                name="unique_binding_client_event_id",
+            ),
+        ]
+        indexes = [
+            # Drives retention compaction.
+            models.Index(fields=["created_at"]),
         ]
 
     def __str__(self):
