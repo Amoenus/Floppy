@@ -105,8 +105,11 @@ from integrations.models import (
     PSNAccount,
     RadarrInstance,
     SonarrInstance,
+    StateConflict,
+    StateConflictStatus,
     StorytellerAccount,
     StremioAccount,
+    SyncBinding,
     XboxAccount,
 )
 from integrations.plex_watchlist import (
@@ -114,6 +117,7 @@ from integrations.plex_watchlist import (
     WATCHLIST_TASK_NAME,
 )
 from integrations.pocketcasts_api import PocketCastsAuthError
+from integrations.state import outbound
 from integrations.webhooks.plex import extract_plex_webhook_usernames
 
 logger = logging.getLogger(__name__)
@@ -4256,3 +4260,124 @@ def stremio_addon_subtitles(request, token, media_type, media_id):
             )
 
     return _stremio_addon_response({"subtitles": []})
+
+
+@require_POST
+def sync_direction_settings(request):
+    """Set which way watched state may travel for one connection.
+
+    The chosen direction is intersected with what the provider's adapter can
+    actually do, so picking "Both" on a read-only connection grants the reads
+    and grants no writes — rather than recording an approval that would never
+    be honoured and reporting it as if it had been.
+    """
+    from integrations.state import identity, settings_view
+
+    binding = SyncBinding.objects.filter(
+        pk=request.POST.get("binding_id"),
+        user=request.user,
+    ).first()
+    if binding is None:
+        messages.error(request, "That connection no longer exists.")
+        return redirect("integrations")
+
+    direction = request.POST.get("direction", settings_view.DIRECTION_OFF)
+    if direction not in settings_view.DIRECTION_LABELS:
+        messages.error(request, "Unknown synchronization direction.")
+        return redirect("integrations")
+
+    if direction == settings_view.DIRECTION_OFF:
+        identity.deactivate_binding(binding)
+        messages.success(
+            request,
+            f"Turned off watched-state sync for {binding.get_client_kind_display()}.",
+        )
+        return redirect("integrations")
+
+    adapter = outbound.get_adapter(binding)
+    supported = set(adapter.CAPABILITIES) if adapter is not None else set()
+    capabilities = settings_view.capabilities_for_direction(direction, supported)
+
+    if not capabilities:
+        messages.error(
+            request,
+            (
+                f"{binding.get_client_kind_display()} cannot do that yet. "
+                "Its adapter reports no matching capability."
+            ),
+        )
+        return redirect("integrations")
+
+    identity.activate_binding(
+        binding,
+        capabilities=capabilities,
+        directions=settings_view.directions_for_choice(direction, capabilities),
+    )
+
+    granted = settings_view.capabilities_for_direction(direction, supported)
+    requested = settings_view.capabilities_for_direction(
+        direction,
+        set(settings_view.CAPABILITY_LABELS),
+    )
+    if len(granted) < len(requested):
+        messages.warning(
+            request,
+            (
+                f"Enabled what {binding.get_client_kind_display()} supports. "
+                "The rest is listed as unavailable until its adapter is verified."
+            ),
+        )
+    else:
+        messages.success(
+            request,
+            f"Updated watched-state sync for {binding.get_client_kind_display()}.",
+        )
+    return redirect("integrations")
+
+
+@require_POST
+def sync_kill_switch(request):
+    """Stop or resume one connection without discarding its approvals."""
+    binding = SyncBinding.objects.filter(
+        pk=request.POST.get("binding_id"),
+        user=request.user,
+    ).first()
+    if binding is None:
+        messages.error(request, "That connection no longer exists.")
+        return redirect("integrations")
+
+    binding.kill_switch = request.POST.get("kill_switch") == "on"
+    binding.save(update_fields=["kill_switch", "updated_at"])
+
+    if binding.kill_switch:
+        messages.info(
+            request,
+            f"Paused {binding.get_client_kind_display()}. Your settings are kept.",
+        )
+    else:
+        messages.success(request, f"Resumed {binding.get_client_kind_display()}.")
+    return redirect("integrations")
+
+
+@require_POST
+def sync_resolve_conflict(request):
+    """Settle one held disagreement with the state the user chose."""
+    from integrations.state.apply import resolve_conflict
+
+    conflict = StateConflict.objects.filter(
+        pk=request.POST.get("conflict_id"),
+        user=request.user,
+        status=StateConflictStatus.OPEN.value,
+    ).first()
+    if conflict is None:
+        messages.error(request, "That conflict is no longer open.")
+        return redirect("integrations")
+
+    watched = request.POST.get("watched") == "true"
+    resolve_conflict(conflict, watched=watched)
+    messages.success(
+        request,
+        f"Resolved. {conflict.item} is now marked "
+        f"{'watched' if watched else 'unwatched'}.",
+    )
+    return redirect("integrations")
