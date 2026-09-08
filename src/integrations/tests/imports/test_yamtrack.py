@@ -268,12 +268,17 @@ class ImportYamtrackEpisodeHistoryDate(TestCase):
 
 
 class ImportYamtrackRaggedRows(TestCase):
-    """A CSV row with more/fewer columns than the header is skipped, not misparsed.
+    """A CSV row with more columns than the header is skipped, not misparsed.
 
-    Regression test for #1106: csv.DictReader silently shifts values into
-    the wrong fields for a malformed row instead of raising, which could
-    otherwise land a completely unrelated value (e.g. a timestamp) in a
-    field like end_date or score.
+    Regression test for #1106: csv.DictReader silently drops extra values
+    under a None key instead of raising, which otherwise means an unescaped
+    delimiter earlier in the row shifted every field after it into the
+    wrong column - landing a completely unrelated value (e.g. a timestamp)
+    in a field like end_date or score. A *short* row (fewer columns than
+    the header) is intentionally not flagged: it's a pattern this codebase's
+    own exports rely on (e.g. list-item rows omitting trailing columns; see
+    ImportListCsvViewTests in lists/tests/test_csv_export_import.py) and
+    csv.DictReader fills the gap safely via `restval`.
     """
 
     def setUp(self):
@@ -297,8 +302,8 @@ class ImportYamtrackRaggedRows(TestCase):
         self.assertIn("Skipping row 1", warnings)
         self.assertFalse(Book.objects.filter(user=self.user).exists())
 
-    def test_row_with_missing_trailing_column_is_skipped(self):
-        """A row with one fewer comma-separated value than the header is skipped."""
+    def test_row_with_missing_trailing_column_still_imports(self):
+        """A row with fewer columns than the header (omitted trailing fields) still imports."""
         csv_data = (
             "media_id,source,media_type,title,image,season_number,episode_number,"
             "score,status,notes,start_date,end_date,progress,created_at,progressed_at\n"
@@ -308,8 +313,10 @@ class ImportYamtrackRaggedRows(TestCase):
 
         counts, warnings = yamtrack.importer(BytesIO(csv_data.encode()), self.user, "new")
 
-        self.assertIn("Skipping row 1", warnings)
-        self.assertFalse(Book.objects.filter(user=self.user).exists())
+        self.assertEqual(warnings, "")
+        book = Book.objects.get(user=self.user)
+        self.assertEqual(book.score, 6.0)
+        self.assertEqual(book.progress, 336)
 
     def test_well_formed_row_still_imports(self):
         """A properly-shaped row (same column count as the header) is unaffected."""
