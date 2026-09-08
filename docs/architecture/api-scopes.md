@@ -122,6 +122,23 @@ imports, exports, user settings, or metadata. `TRACKING_PRESET` and
 `integrations.models.DEFAULT_INTEGRATION_SCOPES` are asserted equal by test, so
 the documented preset and the minted default cannot drift apart.
 
+## List write bindings
+
+`lists:write` lets a token change lists. `IntegrationToken.writable_list_ids`
+narrows that further:
+
+- empty means every list the user owns, which is what `lists:write` meant
+  before bindings existed
+- a populated list is an exact allowlist of `CustomList` ids
+
+Smart lists are read-only to every external token, bound or not: a computed
+list's contents come from its rules, so an external write would be silently
+recomputed away.
+
+Enforced centrally by `api.authentication.CanWriteBoundList`, installed in
+`DEFAULT_PERMISSION_CLASSES` alongside `HasScope`. Thirteen endpoints write
+lists across two modules; a per-view opt-in is a control that gets forgotten.
+
 ## Last use
 
 `IntegrationToken.last_used_at` is written at most once per

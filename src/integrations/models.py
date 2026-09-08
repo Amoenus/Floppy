@@ -1240,6 +1240,10 @@ class IntegrationToken(models.Model):
     token_digest = models.CharField(max_length=64, unique=True, db_index=True)
     token_prefix = models.CharField(max_length=16, blank=True, default="")
     scopes = models.JSONField(default=list)
+    # Empty means every list the user owns, which is what lists:write meant
+    # before this existed. A populated list is an allowlist of CustomList ids,
+    # so a token can be given one shared list without the rest of the library.
+    writable_list_ids = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_used_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
@@ -1291,6 +1295,17 @@ class IntegrationToken(models.Model):
     def is_expired(self) -> bool:
         """Return True if the token has passed its expiry."""
         return self.expires_at is not None and self.expires_at <= timezone.now()
+
+    def may_write_list(self, list_id) -> bool:
+        """Return whether this token may write one list.
+
+        An empty allowlist keeps the previous behaviour. A populated one is
+        exact: a token bound to one list must not reach another by id.
+        """
+        allowed = self.writable_list_ids or []
+        if not allowed:
+            return True
+        return list_id in allowed or str(list_id) in [str(x) for x in allowed]
 
     def has_scope(self, scope: str) -> bool:
         """Return True if '*' is in scopes or the specific scope is in scopes."""

@@ -283,6 +283,7 @@ REST_FRAMEWORK = {
         # Enforced globally on purpose: a per-view opt-in is a control that gets
         # forgotten. Views that must stay public set ``permission_classes = []``.
         "api.authentication.HasScope",
+        "api.authentication.CanWriteBoundList",
     ],
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "api.authentication.BearerAuthentication",

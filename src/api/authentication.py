@@ -145,3 +145,41 @@ class HasScope(BasePermission):
         if scope is None or scope == NEVER:
             return False
         return token.has_scope(scope)
+
+
+SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+class CanWriteBoundList(BasePermission):
+    """Restrict a scoped token's list writes to the lists it is bound to.
+
+    Installed globally rather than per view: there are thirteen list-writing
+    endpoints across two modules, and a per-view opt-in is a control that gets
+    forgotten the fourteenth time.
+
+    Two rules:
+
+    - a token with a populated ``writable_list_ids`` may write only those lists
+    - no external token may write a smart list, whatever it is bound to, because
+      a computed list's contents come from its rules and an external write would
+      be silently recomputed away
+    """
+
+    def has_permission(self, request, view):
+        """Return whether this request may write the list it names."""
+        token = request.auth
+        if token is None or not hasattr(token, "may_write_list"):
+            return True
+        if request.method in SAFE_METHODS:
+            return True
+
+        list_id = (getattr(view, "kwargs", None) or {}).get("list_id")
+        if list_id is None:
+            return True
+
+        if not token.may_write_list(list_id):
+            return False
+
+        from lists.models import CustomList
+
+        return not CustomList.objects.filter(pk=list_id, is_smart=True).exists()
