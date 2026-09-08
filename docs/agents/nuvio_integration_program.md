@@ -65,12 +65,12 @@ Every capability below was checked against `latest` at the reconciliation baseli
 | Scrobble ingest | Implemented | `^scrobble/?$` (`src/api/fork_views_scrobble.py`); start/pause non-durable, completed stop creates history. Baseline tests: `src/api/tests/test_fork_nuvio_baseline.py`. |
 | Saved items / watched state / history API | Implemented | `^collection/`, `^history/`, per-episode `watch`/`drop`/`score`, bulk episodes (`src/api/fork_urls.py`); `src/api/tests/test_fork_tracking.py`. |
 | Delta sync | Partial | `?updated_since=` on playback progress only (`src/api/fork_views_playback.py:322-565`, backed by `position_updated_at`, migration `app/0142`). Timestamp-ordered, not server-sequenced. No delta on saved items, watched state, or history. |
-| Explicit deletes / tombstones | Missing | No delete events, no tombstones anywhere. A client cannot learn that an item was removed except by full comparison, which the state policy forbids treating as a delete. |
-| `SyncBinding` (user + external client/profile) | Missing | `IntegrationToken.client_identifier` is a free-text field with no approval, no profile, no capability set, no direction set, and no reapproval-on-profile-change. |
-| `SyncCheckpoint` | Missing | No server-side cursor state. |
+| Explicit deletes / tombstones | Partial (watched state) | `WatchStateChange.kind` carries an explicit `delete`, and absence is never inferred as one. Saved items and history still have no tombstones. |
+| `SyncBinding` (user + external client/profile) | Implemented (watched state) | `integrations.models.SyncBinding`, migration `integrations/0037`. Approval is per-capability *and* per-direction, and both are required before a write. Minted `origin_key` (not derived, so narrowing `instance_key` cannot orphan changes already stamped with it). Profile change forces reapproval. `integrations/0038` maps Jellyfin's existing toggles across without broadening: `push_watched_enabled` defaults on but grants no write direction without a schedule. Tests: `src/integrations/tests/test_state_apply.py`. |
+| `SyncCheckpoint` | Partial | `integrations.models.SyncCheckpoint` exists with `(binding, resource, direction)` uniqueness and a `provider_cursor` for native cursors. Not yet advanced by a real reconciliation pass — provider enumeration lands with each adapter. |
 | Opaque cursor contract | Missing | No cursor issuance, validation, binding check, or expiry response. |
-| Origin derivation / loop prevention | Missing | Nothing derives change origin from the authenticated credential, and nothing suppresses reflected changes. |
-| `UnresolvedExternalReference` | Missing | Unresolvable ids return 404 (`test_fork_nuvio_baseline.py:106`) and are not recorded, deduplicated, or surfaced. |
+| Origin derivation / loop prevention | Implemented (watched state) | Every change carries `origin_kind`, `origin_key` and a `correlation_id`. `enqueue_deliveries` skips the binding a change came from, and echo detection correlates a durable delivery's read-back digest rather than a cache timeout. Tests: `src/integrations/tests/test_state_outbound.py`. |
+| `UnresolvedExternalReference` | Implemented | `integrations.models.UnresolvedExternalReference`, deduplicated by `(binding, namespace, value, reason_code)` with an occurrence count and no secret-bearing payload. Written when an outbound delivery cannot resolve an item unambiguously. |
 | Reconciliation preview / apply | Missing | `src/app/reconcile_state.py` is internal library-state repair, not client reconciliation. No dry run, no categorized diff, no diagnostics surface. |
 | Conformance fixtures | Missing | `src/api/tests/test_fork_nuvio_baseline.py` is a five-test regression baseline, not a publishable kit. |
 | Published contract artifacts | Implemented | `src/api/contracts/openapi.yaml`, `asyncapi.json`, `context.jsonld`; regeneration and validation commands in `AGENTS.md`. AsyncAPI channels: Plex, Jellyfin, Emby, Jellyseerr, Seerr, Kodi, Stremio subtitles, ListenBrainz. |
@@ -100,7 +100,9 @@ Every capability below was checked against `latest` at the reconciliation baseli
 
 ### Reconciliation conclusion
 
-The security and delivery foundation landed. The **ordered-change layer did not**: no bindings, no sequences, no cursors, no tombstones, no reconciliation. Everything Release A still owes depends on that layer, so it is the next thing built.
+The security and delivery foundation landed. The **ordered-change layer did not**, and is now being built: the watched-state synchronization program supplies bindings, per-user commit-ordered sequences, an ordered change feed, explicit deletes, origin derivation and loop prevention, and a durable outbox — for watched state specifically. See `docs/architecture/watched-state-sync.md`.
+
+Still owed after that work: cursors as opaque validated tokens rather than raw sequences; the same layer extended to saved items and history; reconciliation preview/apply; and a publishable conformance kit. Receipt uniqueness is still scoped to `(user, client_event_id)` rather than to the binding — a unique-constraint change on a live idempotency table serving three production endpoints, which needs its own patch and rollback story.
 
 Two findings are corrections rather than gaps, and are pulled forward:
 
