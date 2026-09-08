@@ -2,7 +2,7 @@
 
 **Status:** Reviewed programme plan, reconciled against implementation
 **Review date:** 2026-08-15
-**Reconciliation date:** 2026-09-08
+**Reconciliation date:** 2026-09-08 (delivery log current)
 **Floppy baseline:** `17dc7c8e0eaae82603b98bd084abd0131ee6c1c1` (`latest`)
 **Prior baseline:** `1bb6999a539679a27502c6514c3fdfec70f17091`
 **Programme issue:** #532
@@ -59,10 +59,18 @@ rather than about the plan. Two threads worked this programme in parallel;
 | A4 checkpoints/retention | Done | `integrations/state/checkpoints.py`, `_change_log.py` compaction |
 | A5 watched state | Done (other thread) | `WatchState`, apply algorithm, outbound outbox |
 | A6 origin and unresolved | Done (other thread) | `origin_key`, `UnresolvedExternalReference`, `StateConflict` |
-| A7 reconciliation | Partial | Conflicts recorded and resolvable; no dry-run preview or diagnostics surface |
-| A8 stabilization | Not started | |
-| Adoption kit | Not started | |
-| Release B | Not started | B1 catalog grants is the first piece |
+| A7 diagnostics | Done | Connection position, lag, failed deliveries, unresolved counts |
+| A7 dry-run preview | Blocked | `_reconcile_binding` is still a stub; provider enumeration has not landed, so a preview would preview nothing |
+| A8 stabilization | Partial | Targeted, lint, migration hygiene and conformance gates run per change; upgrade replay and the container/Postgres matrix have not been run |
+| Adoption kit | Done | `docs/integrations/nuvio-client-guide.md` + `api.tests.test_nuvio_conformance` |
+| B1 catalog grants | Done | `CatalogGrant`, revocable per-install add-on credential |
+| B2 catalogs and meta | Done | `meta` resource, scoped to the user's own library |
+| B3 metadata projections | Not started | |
+| B4 safe fetch | Not started | |
+| B5 declarative add-ons | Not started | |
+| B6 collections | Not started | |
+| B7 writable list bindings | Not started | |
+| B8-B9 metadata prefs | Not started | |
 
 ### Corrections found while building
 
@@ -78,6 +86,20 @@ rather than about the plan. Two threads worked this programme in parallel;
   by the A0 coverage test, fixed the same day.
 - The tracking preset lacked `sync:read`, so a default token was denied the
   change feed. Fixed.
+- The add-on install URL carried the account token in its path, so revoking it
+  broke every integration at once. Fixed in B1.
+- Nothing exposed a binding's `origin_key`, so no client could name itself and
+  no checkpoint could ever be recorded. Fixed with the A7 diagnostics.
+
+### Known deviations, recorded rather than hidden
+
+- A replayed idempotent response loses datetime microseconds: the stored copy
+  is re-encoded with `DjangoJSONEncoder`. Same result, lower precision.
+- `403` covers both a dead credential and a missing scope. DRF downgrades
+  authentication failures without a challenge, and `api.tests.test_authentication`
+  asserts `403` across every protected endpoint, so correcting it to `401` is an
+  API break that needs a deliberate decision. The client guide documents the
+  workaround.
 
 ## Reconciliation ledger
 
