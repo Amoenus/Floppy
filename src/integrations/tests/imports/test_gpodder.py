@@ -590,3 +590,118 @@ class GPodderImporterTests(TestCase):
         self.account.refresh_from_db()
         self.assertEqual(self.account.episode_actions_since, 123)
         self.assertGreater(self.account.last_full_resync_at, now)
+
+    @patch("integrations.imports.gpodder.gpodder_api.register_device")
+    @patch("integrations.imports.gpodder.gpodder_api.fetch_episode_actions")
+    @patch("integrations.imports.gpodder.gpodder_api.fetch_subscriptions")
+    @patch("integrations.imports.gpodder.gpodder_api.verify_login")
+    @patch("integrations.imports.gpodder.podcast_rss.fetch_episodes_from_rss")
+    @patch("integrations.imports.gpodder.podcast_rss.fetch_show_metadata_from_rss")
+    def test_full_resync_replay_does_not_duplicate_repeated_listens(
+        self,
+        mock_show_metadata,
+        mock_fetch_rss_episodes,
+        _mock_verify_login,
+        mock_fetch_subscriptions,
+        mock_fetch_actions,
+        _mock_register_device,
+    ):
+        """A daily full resync must not recreate rows for older completions.
+
+        Regression test for a full-history replay that only checked the
+        single most-recently-created completed row: an older completion
+        (from an earlier repeat listen) fell outside that row's dedup
+        window and was recreated as a duplicate on every replay.
+        """
+        now = timezone.now()
+        show = PodcastShow.objects.create(
+            podcast_uuid="gp_existing",
+            source=Sources.GPODDER.value,
+            title="Example Show",
+            rss_feed_url="https://example.com/feed.xml",
+        )
+        episode = PodcastEpisode.objects.create(
+            show=show,
+            episode_uuid="ep-1",
+            title="Episode 1",
+            audio_url="https://cdn.example.com/ep1.mp3",
+            duration=300,
+            published=now,
+        )
+        item = Item.objects.create(
+            media_id="ep-1",
+            source=Sources.GPODDER.value,
+            media_type=MediaTypes.PODCAST.value,
+            title="Episode 1",
+            image="https://example.com/image.jpg",
+            runtime_minutes=5,
+            release_datetime=now,
+        )
+        # Two earlier, separate completed listens of the same episode.
+        first_completion = Podcast.objects.create(
+            user=self.user,
+            item=item,
+            show=show,
+            episode=episode,
+            status=Status.COMPLETED.value,
+            progress=5,
+            played_up_to_seconds=300,
+            last_seen_status=3,
+            end_date=datetime(2026, 1, 1, 12, 5, 0, tzinfo=UTC),
+        )
+        second_completion = Podcast.objects.create(
+            user=self.user,
+            item=item,
+            show=show,
+            episode=episode,
+            status=Status.COMPLETED.value,
+            progress=5,
+            played_up_to_seconds=300,
+            last_seen_status=3,
+            end_date=datetime(2026, 2, 1, 12, 5, 0, tzinfo=UTC),
+        )
+
+        self.account.episode_actions_since = 200
+        self.account.last_full_resync_at = timezone.now() - timedelta(hours=25)
+        self.account.save(update_fields=["episode_actions_since", "last_full_resync_at"])
+
+        mock_fetch_subscriptions.return_value = ["https://example.com/feed.xml"]
+        mock_show_metadata.return_value = {"title": "Example Show"}
+        mock_fetch_rss_episodes.return_value = [
+            {
+                "title": "Episode 1",
+                "published": now,
+                "duration": 300,
+                "audio_url": "https://cdn.example.com/ep1.mp3",
+                "guid": "ep-1",
+            },
+        ]
+        mock_fetch_actions.return_value = (
+            [
+                {
+                    "action": "play",
+                    "podcast": "https://example.com/feed.xml",
+                    "episode": "https://cdn.example.com/ep1.mp3",
+                    "timestamp": "2026-01-01T12:05:00Z",
+                    "position": 300,
+                    "total": 300,
+                },
+                {
+                    "action": "play",
+                    "podcast": "https://example.com/feed.xml",
+                    "episode": "https://cdn.example.com/ep1.mp3",
+                    "timestamp": "2026-02-01T12:05:00Z",
+                    "position": 300,
+                    "total": 300,
+                },
+            ],
+            250,
+        )
+
+        gpodder_import.importer(None, self.user, "new")
+
+        self.assertEqual(Podcast.objects.filter(user=self.user, item=item).count(), 2)
+        first_completion.refresh_from_db()
+        second_completion.refresh_from_db()
+        self.assertEqual(first_completion.status, Status.COMPLETED.value)
+        self.assertEqual(second_completion.status, Status.COMPLETED.value)

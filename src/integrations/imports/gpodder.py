@@ -393,10 +393,10 @@ class GPodderImporter:
             )
             return True
 
-        if (
-            latest_completed is not None and is_completed
-        ) and self._is_duplicate_completion(
-            latest_completed, position_seconds, action_time
+        if is_completed and any(
+            entry.end_date is not None
+            and self._is_duplicate_completion(entry, position_seconds, action_time)
+            for entry in latest_entries
         ):
             return False
 
