@@ -1211,6 +1211,11 @@ class ImportRun(models.Model):
         return f"ImportRun({self.source}, {self.user.username}, {self.status})"
 
 
+# What a tracking client needs and no more. Mirrored by api.scopes.TRACKING_PRESET,
+# which a test holds equal to this list. sync:read is not optional for such a
+# client: the change feed is how it learns what moved, so a token without it is
+# a sync client that cannot sync. sync:write stays out — resolving a conflict is
+# a deliberate human act, not routine client traffic.
 DEFAULT_INTEGRATION_SCOPES = [
     "scrobble:write",
     "progress:read",
@@ -1218,6 +1223,7 @@ DEFAULT_INTEGRATION_SCOPES = [
     "watchlist:read",
     "watchlist:write",
     "catalog:read",
+    "sync:read",
 ]
 
 

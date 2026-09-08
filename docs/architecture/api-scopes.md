@@ -75,6 +75,7 @@ Do not describe Floppy as fully scope-gated until those are addressed.
 | `music:read` / `music:write` | Artists, albums, tracks, plays |
 | `podcasts:read` / `podcasts:write` | Shows, episodes, play state |
 | `statistics:read` / `statistics:write` | Read statistics; trigger a recompute |
+| `sync:read` / `sync:write` | Read sync connections, the change feed, and conflicts; resolve a conflict |
 | `imports:read` / `imports:write` | Import activity; start imports |
 | `exports:read` | Download exports |
 | `user:read` / `user:write` | Preferences, sidebar, notification settings |
@@ -108,6 +109,7 @@ progress:write
 watchlist:read
 watchlist:write
 catalog:read
+sync:read
 ```
 
 That preset can scrobble, sync resume positions, read and change saved items and

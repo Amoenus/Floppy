@@ -57,6 +57,7 @@ TRACKING_PRESET = (
     "watchlist:read",
     "watchlist:write",
     "catalog:read",
+    "sync:read",
 )
 
 _R = "watchlist:read"
