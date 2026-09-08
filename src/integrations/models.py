@@ -340,6 +340,11 @@ class GPodderAccount(models.Model):
         blank=True,
         help_text="Reserved for future incremental subscription sync",
     )
+    last_full_resync_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Last time a full (non-incremental) GPodder history resync ran",
+    )
     last_sync_at = models.DateTimeField(null=True, blank=True)
     connection_broken = models.BooleanField(default=False)
     last_error_message = models.TextField(blank=True, default="")
