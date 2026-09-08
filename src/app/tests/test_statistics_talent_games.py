@@ -5,6 +5,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from app.models import (
+    TV,
     CreditRoleType,
     Episode,
     Game,
@@ -19,8 +20,8 @@ from app.models import (
     Sources,
     Status,
     Studio,
-    TV,
 )
+from app.statistics_cache import get_statistics_data
 from app.statistics_talent import _aggregate_top_talent, get_person_talent_totals
 
 
@@ -240,7 +241,8 @@ class GamesInTopTalentAggregationTests(TestCase):
 
 class NoDateEntriesInAllTimeTopTalentTests(TestCase):
     """Regression tests for #1098: entries with no start/end date should still
-    count toward "All Time" top talent, but not toward a concrete date range."""
+    count toward "All Time" top talent, but not toward a concrete date range.
+    """
 
     # A past range guaranteed not to overlap any dateless entry.
     RANGE_START = datetime.datetime(2000, 1, 1, tzinfo=datetime.UTC)
@@ -411,3 +413,45 @@ class NoDateEntriesInAllTimeTopTalentTests(TestCase):
         )
         ranged_actor_names = {row["name"] for row in ranged_result["top_actors"]}
         self.assertNotIn("Undated Episode Actor", ranged_actor_names)
+
+    def test_all_time_page_shows_talent_when_only_activity_is_dateless(self):
+        """Regression test for the day-cache gap flagged in PR #1126 review.
+
+        When a user's only movie/TV activity has no recorded date at all, the
+        day-bucketed play counts that gate top-talent computation never see
+        it, so the "All Time" page must fall back to a direct existence
+        check (see `_has_dateless_movie_or_episode_activity` in
+        statistics_aggregator.py) rather than reporting empty top talent.
+        """
+        movie_item = Item.objects.create(
+            media_id="tmdb-500",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Only Undated Movie",
+        )
+        Movie.objects.create(
+            item=movie_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            start_date=None,
+            end_date=None,
+        )
+        person = Person.objects.create(
+            source=Sources.TMDB.value,
+            source_person_id="500",
+            name="Only Undated Movie Actor",
+            gender=PersonGender.MALE.value,
+        )
+        ItemPersonCredit.objects.create(
+            item=movie_item,
+            person=person,
+            role_type=CreditRoleType.CAST.value,
+            role="Lead",
+        )
+
+        data = get_statistics_data(self.user, start_date=None, end_date=None)
+
+        actor_names = {
+            row["name"] for row in data["top_talent"]["by_sort"]["plays"]["top_actors"]
+        }
+        self.assertIn("Only Undated Movie Actor", actor_names)
