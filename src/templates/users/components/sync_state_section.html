@@ -10,12 +10,12 @@ Two things this section is careful about:
   * Direction is chosen with the Alpine dropdown pattern from preferences.html,
     posting through a hidden input. No native <select> anywhere in settings.
 {% endcomment %}
-<div class="bg-[#1f2429] rounded-xl p-6 mb-6"
+<div class="bg-[var(--color-panel)] rounded-xl p-6 mb-6"
      x-show="activeIntegration === 'all' || activeIntegration === 'sync'">
   <div class="flex items-start justify-between mb-4">
     <div>
-      <h2 class="text-xl font-semibold text-gray-100">Watched-state sync</h2>
-      <p class="text-sm text-gray-400 mt-1">
+      <h2 class="text-xl font-semibold text-[var(--color-text)]">Watched-state sync</h2>
+      <p class="text-sm text-[var(--color-text-muted)] mt-1">
         Keep completion state in step with your media servers. History imports
         are configured separately, per connection.
       </p>
@@ -24,20 +24,20 @@ Two things this section is careful about:
 
   {% if sync_conflicts %}
     <div class="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
-      <h3 class="text-sm font-semibold text-amber-200 mb-2">
+      <h3 class="text-sm font-semibold text-[var(--color-warning-text)] mb-2">
         {{ sync_conflicts|length }} item{{ sync_conflicts|pluralize }}
         need{{ sync_conflicts|pluralize:"s," }} your decision
       </h3>
-      <p class="text-xs text-amber-100/80 mb-3">
+      <p class="text-xs text-[var(--color-warning-text)] opacity-80 mb-3">
         Both sides changed while they were out of contact. Sync is paused for
         these items only — everything else keeps flowing.
       </p>
       <ul class="space-y-2">
         {% for conflict in sync_conflicts %}
-          <li class="flex flex-wrap items-center justify-between gap-2 rounded bg-black/20 px-3 py-2">
+          <li class="flex flex-wrap items-center justify-between gap-2 rounded bg-[var(--color-surface-dim)] px-3 py-2">
             <div class="min-w-0">
-              <p class="text-sm text-gray-100 truncate">{{ conflict.item }}</p>
-              <p class="text-xs text-gray-400">
+              <p class="text-sm text-[var(--color-text)] truncate">{{ conflict.item }}</p>
+              <p class="text-xs text-[var(--color-text-muted)]">
                 {{ conflict.binding.get_client_kind_display }} says
                 {% if conflict.remote_snapshot.watched %}watched{% else %}unwatched{% endif %};
                 Floppy says
@@ -59,7 +59,7 @@ Two things this section is careful about:
                 <input type="hidden" name="conflict_id" value="{{ conflict.pk }}">
                 <input type="hidden" name="watched" value="false">
                 <button type="submit"
-                        class="px-3 py-1 text-xs rounded bg-[#2a2f35] hover:bg-[#39404b] text-gray-200">
+                        class="px-3 py-1 text-xs rounded bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)]">
                   Unwatched
                 </button>
               </form>
@@ -71,28 +71,28 @@ Two things this section is careful about:
   {% endif %}
 
   {% if not sync_bindings %}
-    <p class="text-sm text-gray-400">
+    <p class="text-sm text-[var(--color-text-muted)]">
       No connections yet. Connect a media server above and it will appear here.
     </p>
   {% else %}
     <div class="space-y-4">
       {% for row in sync_bindings %}
-        <div class="rounded-lg border border-white/5 bg-[#2a2f35] p-4">
+        <div class="rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] p-4">
           <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
             <div class="min-w-0">
               <div class="flex items-center gap-2">
-                <h3 class="text-base font-medium text-gray-100">{{ row.label }}</h3>
+                <h3 class="text-base font-medium text-[var(--color-text)]">{{ row.label }}</h3>
                 {% if row.kill_switch %}
-                  <span class="px-2 py-0.5 text-xs rounded bg-amber-500/20 text-amber-300">Paused</span>
+                  <span class="px-2 py-0.5 text-xs rounded bg-amber-500/20 text-[var(--color-warning-text)]">Paused</span>
                 {% elif row.is_operational %}
                   <span class="px-2 py-0.5 text-xs rounded bg-emerald-500/10 text-emerald-300">Active</span>
                 {% else %}
-                  <span class="px-2 py-0.5 text-xs rounded bg-gray-500/20 text-gray-300">
+                  <span class="px-2 py-0.5 text-xs rounded bg-[var(--color-surface-muted)] text-[var(--color-text-secondary)]">
                     {{ row.binding.get_status_display }}
                   </span>
                 {% endif %}
               </div>
-              <p class="text-xs text-gray-400 mt-1">
+              <p class="text-xs text-[var(--color-text-muted)] mt-1">
                 {% if row.last_reconciled_at %}
                   Last checked {{ row.last_reconciled_at|user_datetime_format:user }}
                 {% else %}
@@ -102,10 +102,10 @@ Two things this section is careful about:
                   &middot; {{ row.pending_deliveries }} pending
                 {% endif %}
                 {% if row.failed_deliveries %}
-                  &middot; <span class="text-amber-300">{{ row.failed_deliveries }} failed</span>
+                  &middot; <span class="text-[var(--color-warning-text)]">{{ row.failed_deliveries }} failed</span>
                 {% endif %}
                 {% if row.open_conflicts %}
-                  &middot; <span class="text-amber-300">{{ row.open_conflicts }} to decide</span>
+                  &middot; <span class="text-[var(--color-warning-text)]">{{ row.open_conflicts }} to decide</span>
                 {% endif %}
               </p>
             </div>
@@ -115,14 +115,14 @@ Two things this section is careful about:
               <input type="hidden" name="binding_id" value="{{ row.id }}">
               <input type="hidden" name="kill_switch" value="{% if row.kill_switch %}off{% else %}on{% endif %}">
               <button type="submit"
-                      class="px-3 py-1 text-xs rounded bg-[#39404b] hover:bg-[#454d5a] text-gray-200">
+                      class="px-3 py-1 text-xs rounded bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)]">
                 {% if row.kill_switch %}Resume{% else %}Pause{% endif %}
               </button>
             </form>
           </div>
 
           {% if row.last_error_message %}
-            <p class="mb-3 rounded bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            <p class="mb-3 rounded bg-amber-500/10 px-3 py-2 text-xs text-[var(--color-warning-text)]">
               {{ row.last_error_message }}
             </p>
           {% endif %}
@@ -134,21 +134,21 @@ Two things this section is careful about:
 
             <div class="relative w-64"
                  x-data="{ open: false, selectedValue: '{{ row.direction }}', selectedLabel: '{{ row.direction_label }}' }">
-              <label class="block text-xs text-gray-400 mb-1">Direction</label>
+              <label class="block text-xs text-[var(--color-text-muted)] mb-1">Direction</label>
               <button type="button" @click="open = !open" @click.outside="open = false"
-                      class="w-full flex items-center justify-between rounded-lg bg-[#1f2429] px-3 py-2 text-sm text-gray-100 border border-white/10">
+                      class="w-full flex items-center justify-between rounded-lg bg-[var(--color-surface-strong)] px-3 py-2 text-sm text-[var(--color-text)] border border-[var(--color-surface-border)]">
                 <span x-text="selectedLabel"></span>
-                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4 text-[var(--color-text-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                 </svg>
               </button>
               <div x-show="open" x-cloak
                    x-transition:enter="transition ease-out duration-100"
-                   class="absolute z-10 mt-1 w-full rounded-lg bg-[#1f2429] border border-white/10 shadow-lg">
+                   class="absolute z-10 mt-1 w-full rounded-lg bg-[var(--color-surface-strong)] border border-[var(--color-surface-border)] shadow-lg">
                 {% for value, label in row.direction_choices %}
                   <button type="button"
                           @click="selectedValue='{{ value }}'; selectedLabel='{{ label }}'; open=false"
-                          class="block w-full px-3 py-2 text-left text-sm text-gray-200 hover:bg-[#2a2f35]">
+                          class="block w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]">
                     {{ label }}
                   </button>
                 {% endfor %}
@@ -166,18 +166,18 @@ Two things this section is careful about:
             {% for capability in row.capability_rows %}
               <li class="flex items-center gap-2 text-xs">
                 {% if capability.unavailable %}
-                  <span class="text-amber-300">Unavailable</span>
-                  <span class="text-gray-400">{{ capability.label }}</span>
-                  <span class="text-gray-500">— not verified for this provider yet</span>
+                  <span class="text-[var(--color-warning-text)]">Unavailable</span>
+                  <span class="text-[var(--color-text-muted)]">{{ capability.label }}</span>
+                  <span class="text-[var(--color-text-muted)]">— not verified for this provider yet</span>
                 {% elif capability.approved %}
                   <span class="text-emerald-300">On</span>
-                  <span class="text-gray-300">{{ capability.label }}</span>
+                  <span class="text-[var(--color-text-secondary)]">{{ capability.label }}</span>
                 {% elif capability.supported %}
-                  <span class="text-gray-500">Off</span>
-                  <span class="text-gray-500">{{ capability.label }}</span>
+                  <span class="text-[var(--color-text-muted)]">Off</span>
+                  <span class="text-[var(--color-text-muted)]">{{ capability.label }}</span>
                 {% else %}
-                  <span class="text-gray-600">Not supported</span>
-                  <span class="text-gray-600">{{ capability.label }}</span>
+                  <span class="text-[var(--color-text-muted)] opacity-60">Not supported</span>
+                  <span class="text-[var(--color-text-muted)] opacity-60">{{ capability.label }}</span>
                 {% endif %}
               </li>
             {% endfor %}
