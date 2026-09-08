@@ -1092,6 +1092,9 @@
             </div>
             {# djlint:on #}
           </li>
+          <li>
+            {% translate "Optional:" %} <a href="{% url 'stremio_addon_configure' request.user.token %}" class="text-[var(--color-link)] hover:underline" target="_blank" rel="noopener">{% translate "choose which catalogs" %}</a> {% translate "the addon publishes, then use the URL it gives you in place of the one above." %}
+          </li>
           <li>{% translate "In Stremio, open" %} <strong>{% translate "Addons" %}</strong>{% translate ", paste the URL into the search box at the top, and click" %} <strong>{% translate "Install" %}</strong>.</li>
           <li>{% translate "Floppy must be reachable from your Stremio device over" %} <strong>HTTPS</strong> {% translate "(plain HTTP only works for localhost)." %}</li>
           <li>{% translate "Playback start marks the item in progress; the recurring library import marks items watched." %}</li>

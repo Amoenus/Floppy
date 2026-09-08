@@ -29,6 +29,7 @@ from django.http import (
     StreamingHttpResponse,
 )
 from django.shortcuts import get_object_or_404, redirect, render
+from django.templatetags.static import static
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -4098,7 +4099,7 @@ def kodi_webhook(request, token):
 STREMIO_ADDON_MANIFEST = {
     # Keep the existing addon id so installed clients remain compatible.
     "id": "org.yamtrack.scrobbler",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "name": "Floppy",
     "description": (
         "Floppy Watchlist catalogs and playback scrobbling for Stremio."
@@ -4107,6 +4108,7 @@ STREMIO_ADDON_MANIFEST = {
     "types": ["movie", "series"],
     "idPrefixes": ["tt"],
     "catalogs": [],
+    "behaviorHints": {"configurable": True, "configurationRequired": False},
 }
 STREMIO_SCROBBLE_THROTTLE_SECONDS = 1800
 STREMIO_MAX_MEDIA_ID_LENGTH = 128
@@ -4131,6 +4133,7 @@ def stremio_addon_catalog(
     media_type,
     catalog_id,
     extra=None,
+    config=None,
 ):
     """Serve a Floppy Watchlist catalog to Stremio."""
     try:
@@ -4163,9 +4166,29 @@ def stremio_addon_catalog(
 
 
 @login_not_required
+@require_GET
+def stremio_addon_configure(request, token, config=None):
+    """Serve the addon configuration page for a user's install URL."""
+    try:
+        user = users.models.User.objects.get(token=token)
+    except ObjectDoesNotExist:
+        logger.warning("Invalid token on Stremio addon configure request")
+        return HttpResponse("Invalid token", status=401)
+
+    return render(
+        request,
+        "integrations/stremio_configure.html",
+        {
+            "catalog_options": stremio_catalog.catalog_options(user),
+            "selected_ids": list(stremio_catalog.parse_catalog_config(config)),
+        },
+    )
+
+
+@login_not_required
 @csrf_exempt
 @require_GET
-def stremio_addon_manifest(request, token):
+def stremio_addon_manifest(request, token, config=None):
     """Serve the Stremio addon manifest for a user's install URL."""
     try:
         user = users.models.User.objects.get(token=token)
@@ -4173,8 +4196,12 @@ def stremio_addon_manifest(request, token):
         logger.warning("Invalid token on Stremio addon manifest request")
         return _stremio_addon_response({"error": "Invalid token"}, status=401)
 
+    selected = stremio_catalog.parse_catalog_config(config)
     manifest = STREMIO_ADDON_MANIFEST | {
-        "catalogs": stremio_catalog.manifest_catalogs(user)
+        "logo": request.build_absolute_uri(
+            static("favicon/apple-touch-icon.png"),
+        ),
+        "catalogs": stremio_catalog.manifest_catalogs(user, selected),
     }
     return _stremio_addon_response(manifest)
 
@@ -4182,7 +4209,7 @@ def stremio_addon_manifest(request, token):
 @login_not_required
 @csrf_exempt
 @require_GET
-def stremio_addon_subtitles(request, token, media_type, media_id):
+def stremio_addon_subtitles(request, token, media_type, media_id, config=None):
     """Record a playback-start scrobble from a Stremio subtitles request."""
     from django.core.cache import cache
 

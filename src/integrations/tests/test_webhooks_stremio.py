@@ -98,6 +98,30 @@ class StremioAddonViewTests(TestCase):
                     "name": "Floppy: Series",
                     "extra": [{"name": "skip", "isRequired": False}],
                 },
+                {
+                    "type": "movie",
+                    "id": "floppy-history-movies",
+                    "name": "Floppy: History",
+                    "extra": [{"name": "skip", "isRequired": False}],
+                },
+                {
+                    "type": "series",
+                    "id": "floppy-history-series",
+                    "name": "Floppy: History",
+                    "extra": [{"name": "skip", "isRequired": False}],
+                },
+                {
+                    "type": "movie",
+                    "id": "floppy-in-progress-movies",
+                    "name": "Floppy: In Progress",
+                    "extra": [{"name": "skip", "isRequired": False}],
+                },
+                {
+                    "type": "series",
+                    "id": "floppy-in-progress-series",
+                    "name": "Floppy: In Progress",
+                    "extra": [{"name": "skip", "isRequired": False}],
+                },
             ],
         )
         self.assertEqual(response["Content-Type"], "application/json")
@@ -111,7 +135,17 @@ class StremioAddonViewTests(TestCase):
         )
 
         names = [catalog["name"] for catalog in response.json()["catalogs"]]
-        self.assertEqual(names, ["Floppy: Watchlist", "Floppy: Watchlist"])
+        self.assertEqual(
+            names,
+            [
+                "Floppy: Watchlist",
+                "Floppy: Watchlist",
+                "Floppy: History",
+                "Floppy: History",
+                "Floppy: In Progress",
+                "Floppy: In Progress",
+            ],
+        )
 
     def test_manifest_invalid_token(self):
         """An unknown token returns 401."""
