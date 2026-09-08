@@ -52,9 +52,15 @@ _ADAPTER_BUILDERS = {}
 def get_adapter(binding):
     """Return the adapter for a binding, or None when it has none."""
     if not _ADAPTER_BUILDERS:
-        from integrations.state.adapters import jellyfin
+        from integrations.state.adapters import emby, jellyfin, kodi
 
-        _ADAPTER_BUILDERS[SyncClientKind.JELLYFIN.value] = jellyfin.build_adapter
+        _ADAPTER_BUILDERS.update(
+            {
+                SyncClientKind.JELLYFIN.value: jellyfin.build_adapter,
+                SyncClientKind.EMBY.value: emby.build_adapter,
+                SyncClientKind.KODI.value: kodi.build_adapter,
+            },
+        )
 
     builder = _ADAPTER_BUILDERS.get(binding.client_kind)
     if builder is None:

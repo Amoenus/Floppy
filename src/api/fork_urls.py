@@ -15,6 +15,7 @@ from . import (
     fork_views_statistics,
     fork_views_tracking,
     fork_views_users,
+    fork_views_watched_state,
 )
 
 urlpatterns = [
@@ -337,5 +338,31 @@ urlpatterns = [
         r"^statistics/refresh/?$",
         fork_views_statistics.StatisticsRefreshView.as_view(),
         name="api_statistics_refresh",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/"
+        r"watched-state/?$",
+        fork_views_watched_state.WatchedStateView.as_view(),
+        name="api_watched_state",
+    ),
+    re_path(
+        r"^sync/changes/?$",
+        fork_views_watched_state.WatchedStateChangeFeedView.as_view(),
+        name="api_sync_changes",
+    ),
+    re_path(
+        r"^sync/connections/?$",
+        fork_views_watched_state.SyncConnectionsView.as_view(),
+        name="api_sync_connections",
+    ),
+    re_path(
+        r"^sync/conflicts/?$",
+        fork_views_watched_state.SyncConflictsView.as_view(),
+        name="api_sync_conflicts",
+    ),
+    re_path(
+        r"^sync/conflicts/(?P<conflict_id>\d+)/resolve/?$",
+        fork_views_watched_state.SyncConflictResolveView.as_view(),
+        name="api_sync_conflict_resolve",
     ),
 ]

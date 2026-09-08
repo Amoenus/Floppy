@@ -389,6 +389,12 @@ class AudiobookshelfAccount(models.Model):
         help_text="Last imported Audiobookshelf progress timestamp (milliseconds)",
     )
     last_sync_at = models.DateTimeField(null=True, blank=True)
+    abs_user_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Audiobookshelf user id, used to scope a sync binding.",
+    )
     connection_broken = models.BooleanField(default=False)
     last_error_message = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -756,6 +762,16 @@ class JellyfinAccount(models.Model):
     api_key = models.TextField(help_text="Encrypted Jellyfin API key")
     jellyfin_user_id = models.CharField(max_length=255, blank=True, default="")
     jellyfin_username = models.CharField(max_length=255, blank=True, default="")
+    server_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=(
+            "Jellyfin server GUID. Scopes a sync binding to one server, so "
+            "pointing the same account at a different server stops rather than "
+            "silently writing to it."
+        ),
+    )
     push_watched_enabled = models.BooleanField(
         default=True,
         help_text="Push Floppy 'watched' status to Jellyfin",
@@ -1795,3 +1811,90 @@ class OutboundStateDelivery(models.Model):
     def __str__(self):
         """Readable representation."""
         return f"OutboundStateDelivery({self.binding_id}, item={self.item_id})"
+
+
+class EmbyAccount(models.Model):
+    """Store Emby connection settings for a user.
+
+    Emby currently authenticates its webhook off the account token in the URL,
+    which is enough to receive playback but not to read library state or write
+    anything back. A real connection is what lets reconciliation notice a manual
+    change — most providers have no event for "user ticked watched", so the only
+    way to find out is to look.
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="emby_account",
+    )
+    base_url = models.URLField(help_text="Emby server URL")
+    api_key = models.TextField(help_text="Encrypted Emby API key")
+    emby_user_id = models.CharField(max_length=255, blank=True, default="")
+    emby_username = models.CharField(max_length=255, blank=True, default="")
+    server_id = models.CharField(max_length=255, blank=True, default="")
+
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Emby account"
+        verbose_name_plural = "Emby accounts"
+
+    def __str__(self):
+        """Readable representation."""
+        return f"EmbyAccount({self.user.username})"
+
+    @property
+    def is_connected(self):
+        """Return whether the connection is usable."""
+        return bool(self.base_url and self.api_key and not self.connection_broken)
+
+
+class KodiAccount(models.Model):
+    """Store Kodi JSON-RPC connection settings for a user.
+
+    Kodi identifies media by *local library id*, not by a provider id, so
+    nothing can be written to it without first resolving identity through its
+    library. That is what this connection is for; the webhook alone cannot do it.
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="kodi_account",
+    )
+    base_url = models.URLField(help_text="Kodi JSON-RPC endpoint URL")
+    username = models.CharField(max_length=255, blank=True, default="")
+    password = models.TextField(
+        blank=True,
+        default="",
+        help_text="Encrypted Kodi JSON-RPC password",
+    )
+    instance_uuid = models.CharField(max_length=255, blank=True, default="")
+
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Kodi account"
+        verbose_name_plural = "Kodi accounts"
+
+    def __str__(self):
+        """Readable representation."""
+        return f"KodiAccount({self.user.username})"
+
+    @property
+    def is_connected(self):
+        """Return whether the connection is usable."""
+        return bool(self.base_url and not self.connection_broken)

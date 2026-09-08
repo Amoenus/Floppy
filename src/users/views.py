@@ -1335,6 +1335,8 @@ def convert_anime_library(request):
 @require_GET
 def integrations(request):
     """Render the integrations settings page."""
+    from integrations.state import settings_view
+
     user = request.user
     last_received = user.plex_webhook_last_received_at
     rotated_at = user.plex_webhook_token_rotated_at
@@ -1406,6 +1408,8 @@ def integrations(request):
         "users/integrations.html",
         {
             "user": user,
+            "sync_bindings": settings_view.binding_rows(user),
+            "sync_conflicts": settings_view.open_conflicts(user),
             "plex_webhook_needs_update": plex_webhook_needs_update,
             "plex_library_options_json": json.dumps(plex_library_options),
             "plex_library_options": plex_library_options,
