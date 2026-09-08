@@ -1014,6 +1014,14 @@ DB_SNAPSHOT_ENABLED = config("DB_SNAPSHOT_ENABLED", default=True, cast=bool)
 # How long an idempotency receipt stays replayable. A client that retries after
 # this window gets a fresh operation, not the prior result, so keep it longer
 # than the longest client backoff. Measure real retry intervals before lowering.
+# How long an applied change stays in the watched-state log. A binding that has
+# not checked in within this window must take a fresh snapshot rather than pin
+# the log open forever. Compaction never crosses a live binding's checkpoint,
+# whatever this says.
+WATCH_STATE_CHANGE_RETENTION_DAYS = config(
+    "WATCH_STATE_CHANGE_RETENTION_DAYS", default=30, cast=int,
+)
+
 INTEGRATION_RECEIPT_RETENTION_DAYS = config(
     "INTEGRATION_RECEIPT_RETENTION_DAYS", default=14, cast=int,
 )

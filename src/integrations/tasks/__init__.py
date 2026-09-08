@@ -3,6 +3,10 @@ import logging
 from celery import shared_task
 from django.contrib.auth import get_user_model
 
+from integrations.tasks._change_log import (
+    COMPACT_CHANGE_LOG_TASK_NAME,
+    compact_watch_state_changes,
+)
 from integrations.tasks._import_helpers import (
     ERROR_TITLE,
     GOODREADS_IMPORT_TASK_NAME,
@@ -134,6 +138,7 @@ def scheduled_backup_export(
 
 
 __all__ = [
+    "COMPACT_CHANGE_LOG_TASK_NAME",
     "COMPACT_RECEIPTS_TASK_NAME",
     "ERROR_TITLE",
     "GOODREADS_IMPORT_TASK_NAME",
@@ -156,6 +161,7 @@ __all__ = [
     "_run_incremental_lastfm_sync",
     "_webhook_history_user",
     "compact_integration_event_receipts",
+    "compact_watch_state_changes",
     "deliver_watched_state",
     "fetch_collection_metadata_for_item",
     "format_import_message",

@@ -14,12 +14,14 @@ from app.services.watch_state import (
     changes_since,
     effective_state,
     record_state_change,
+    retained_change_range,
 )
 from integrations.models import (
     StateConflict,
     StateConflictStatus,
     SyncBinding,
 )
+from integrations.state.checkpoints import record_applied_position
 
 from .helpers import check_source_type, check_valid_type, resolve_item_queryset
 
@@ -216,6 +218,31 @@ class WatchedStateChangeFeedView(drf_views.APIView):
                 status=HTTP.BAD_REQUEST,
             )
 
+        oldest, newest = retained_change_range(request.user)
+        if oldest is not None and 0 < cursor < oldest - 1:
+            # The client's position was compacted away. Serving the remaining
+            # tail would look like a successful catch-up while silently
+            # dropping everything between its cursor and what is left.
+            return Response(
+                {
+                    "code": "cursor_expired",
+                    "detail": (
+                        "This cursor is older than the retained change log. "
+                        "Take a fresh snapshot and resume from its sequence."
+                    ),
+                    "oldest_sequence": oldest,
+                    "newest_sequence": newest,
+                },
+                status=HTTP.CONFLICT,
+            )
+
+        # Asking for changes after N is the client's proof it applied through N.
+        # The server cannot know that any earlier, and advancing on delivery
+        # would skip whatever a client fetched but died before applying.
+        binding = self._acknowledging_binding(request)
+        if binding is not None and cursor > 0:
+            record_applied_position(binding, cursor)
+
         changes = changes_since(request.user, cursor, limit=limit)
         results = [
             {
@@ -240,9 +267,27 @@ class WatchedStateChangeFeedView(drf_views.APIView):
                 "results": results,
                 "next_cursor": results[-1]["sequence"] if results else cursor,
                 "has_more": len(results) == limit,
+                "oldest_sequence": oldest,
+                "newest_sequence": newest,
             },
             status=HTTP.OK,
         )
+
+    @staticmethod
+    def _acknowledging_binding(request):
+        """Return the binding this pull speaks for, if it names one.
+
+        Identified by origin key so a client can hold several connections
+        without them sharing a checkpoint. Unnamed pulls still work; they just
+        record no position, and so never let the log compact past them.
+        """
+        origin_key = request.query_params.get("connection")
+        if not origin_key:
+            return None
+        return SyncBinding.objects.filter(
+            user=request.user,
+            origin_key=origin_key,
+        ).first()
 
 
 # /api/v1/sync/connections/
