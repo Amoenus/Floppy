@@ -37,6 +37,54 @@ CATALOG_SPECS = (
 )
 
 
+def resolve_addon_credential(token):
+    """Return (user, grant) for an add-on URL token, or (None, None).
+
+    Accepts a catalog grant first, then falls back to the legacy account token
+    so existing installs keep working. The fallback is the deprecation path,
+    not the design: an account token in a URL grants full API access.
+    """
+    from integrations.models import CatalogGrant
+    from users.models import User
+
+    if not token:
+        return (None, None)
+
+    grant = CatalogGrant.objects.select_related("user").filter(token=token).first()
+    if grant is not None:
+        if not grant.is_valid():
+            return (None, None)
+        return (grant.user, grant)
+
+    user = User.objects.filter(token=token).first()
+    return (user, None) if user is not None else (None, None)
+
+
+def touch_grant(grant, *, interval_minutes=60):
+    """Record grant use, at most once an hour.
+
+    Stremio polls catalogs continuously; writing a row per request would make
+    this the busiest table in the install for no added information.
+    """
+    from django.utils import timezone
+
+    now = timezone.now()
+    if grant.last_used_at and (now - grant.last_used_at).total_seconds() < (
+        interval_minutes * 60
+    ):
+        return
+    type(grant).objects.filter(pk=grant.pk).update(last_used_at=now)
+    grant.last_used_at = now
+
+
+def manifest_catalogs_for_grant(user, grant):
+    """Build manifest catalogs limited to what the grant covers."""
+    catalogs = manifest_catalogs(user)
+    if grant is None:
+        return catalogs
+    return [entry for entry in catalogs if grant.allows_catalog(entry["id"])]
+
+
 def get_catalog_spec(stremio_type, catalog_id):
     """Return the matching supported catalog, if any."""
     return next(

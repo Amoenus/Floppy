@@ -4137,9 +4137,8 @@ def stremio_addon_catalog(
     extra=None,
 ):
     """Serve a Floppy Watchlist catalog to Stremio."""
-    try:
-        user = users.models.User.objects.get(token=token)
-    except ObjectDoesNotExist:
+    user, grant = stremio_catalog.resolve_addon_credential(token)
+    if user is None:
         logger.warning("Invalid token on Stremio addon catalog request")
         return _stremio_addon_response(
             {"error": "Invalid token"},
@@ -4149,6 +4148,17 @@ def stremio_addon_catalog(
     spec = stremio_catalog.get_catalog_spec(media_type, catalog_id)
     if spec is None:
         return _stremio_addon_response({"metas": []})
+
+    if grant is not None:
+        if not grant.allows_catalog(catalog_id):
+            # Not 403: the add-on protocol has no way to show one, and an empty
+            # catalog is the honest answer for something this install may not see.
+            logger.info(
+                "stremio_catalog grant_scope_excluded catalog_id=%s",
+                catalog_id,
+            )
+            return _stremio_addon_response({"metas": []})
+        stremio_catalog.touch_grant(grant)
 
     try:
         skip = stremio_catalog.parse_skip(extra)
@@ -4171,14 +4181,16 @@ def stremio_addon_catalog(
 @require_GET
 def stremio_addon_manifest(request, token):
     """Serve the Stremio addon manifest for a user's install URL."""
-    try:
-        user = users.models.User.objects.get(token=token)
-    except ObjectDoesNotExist:
+    user, grant = stremio_catalog.resolve_addon_credential(token)
+    if user is None:
         logger.warning("Invalid token on Stremio addon manifest request")
         return _stremio_addon_response({"error": "Invalid token"}, status=401)
 
+    if grant is not None:
+        stremio_catalog.touch_grant(grant)
+
     manifest = STREMIO_ADDON_MANIFEST | {
-        "catalogs": stremio_catalog.manifest_catalogs(user)
+        "catalogs": stremio_catalog.manifest_catalogs_for_grant(user, grant)
     }
     return _stremio_addon_response(manifest)
 
@@ -4190,11 +4202,15 @@ def stremio_addon_subtitles(request, token, media_type, media_id):
     """Record a playback-start scrobble from a Stremio subtitles request."""
     from django.core.cache import cache
 
-    try:
-        user = users.models.User.objects.get(token=token)
-    except ObjectDoesNotExist:
+    user, grant = stremio_catalog.resolve_addon_credential(token)
+    if user is None:
         logger.warning("Invalid token on Stremio addon subtitles request")
         return _stremio_addon_response({"error": "Invalid token"}, status=401)
+    if grant is not None and not grant.allow_playback_start:
+        # This route records a playback start, which is a write. A grant minted
+        # without that permission serves catalogs and nothing else.
+        logger.info("stremio_subtitles rejected reason=grant_excludes_playback_start")
+        return _stremio_addon_response({"subtitles": []})
 
     media_id = unquote(media_id)
     if (

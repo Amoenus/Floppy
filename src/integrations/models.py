@@ -1362,6 +1362,77 @@ class IntegrationEventReceipt(models.Model):
 
 
 
+class CatalogGrant(models.Model):
+    """A revocable, per-resource grant for published read-only catalogs.
+
+    The Stremio add-on install URL carries its credential in the path, which
+    means it lands in server logs, browser history and any screenshot of the
+    settings page. Before this that credential was the account token: full
+    API access, and revoking it broke every webhook and integration at once.
+
+    A grant reads the selected catalogs and nothing else, and revoking one
+    affects only the install it was minted for.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="catalog_grants",
+    )
+    name = models.CharField(max_length=255)
+    # Stored in the clear, unlike IntegrationToken: Stremio replays the install
+    # URL on every request, so there is nothing to compare a digest against
+    # without indexing the digest anyway. Entropy is the control here, plus
+    # the narrow read-only scope and independent revocation.
+    token = models.CharField(max_length=64, unique=True, db_index=True)
+    # Empty means every supported catalog. A populated list is an allowlist of
+    # CatalogSpec.catalog_id values.
+    catalog_ids = models.JSONField(default=list)
+    # The add-on marks an item in progress when Stremio asks for subtitles.
+    # On by default because that is what the install is for; still far narrower
+    # than the account token, which reaches the whole API.
+    allow_playback_start = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Catalog grant"
+        verbose_name_plural = "Catalog grants"
+        indexes = [
+            models.Index(fields=["user", "created_at"]),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"CatalogGrant({self.name}, {self.user.username})"
+
+    @classmethod
+    def generate(cls, user, name, catalog_ids=None, *, allow_playback_start=True):
+        """Mint a grant and return it with its URL token."""
+        token = f"cat_{secrets.token_urlsafe(24)}"
+        instance = cls.objects.create(
+            user=user,
+            name=name,
+            token=token,
+            catalog_ids=list(catalog_ids or []),
+            allow_playback_start=allow_playback_start,
+        )
+        return instance, token
+
+    def is_valid(self) -> bool:
+        """Return whether this grant may still serve a catalog."""
+        return self.revoked_at is None
+
+    def allows_catalog(self, catalog_id: str) -> bool:
+        """Return whether this grant covers one catalog."""
+        if not self.catalog_ids:
+            return True
+        return catalog_id in self.catalog_ids
+
+
 class SyncClientKind(models.TextChoices):
     """The kind of external system a binding points at."""
 

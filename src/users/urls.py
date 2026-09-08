@@ -184,6 +184,16 @@ urlpatterns = [
     ),
     path("regenerate_token", views.regenerate_token, name="regenerate_token"),
     path(
+        "settings/integrations/catalog-grants/create",
+        views.create_catalog_grant,
+        name="create_catalog_grant",
+    ),
+    path(
+        "settings/integrations/catalog-grants/<int:grant_id>/revoke",
+        views.revoke_catalog_grant,
+        name="revoke_catalog_grant",
+    ),
+    path(
         "settings/integrations/tokens/create",
         views.create_integration_token,
         name="create_integration_token",

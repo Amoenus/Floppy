@@ -51,6 +51,7 @@ from integrations import exports, plex, stremio_catalog, tasks
 from integrations.imports import trakt as trakt_imports
 from integrations.models import (
     DEFAULT_INTEGRATION_SCOPES,
+    CatalogGrant,
     ImportRun,
     IntegrationToken,
     LastFMAccount,
@@ -2521,7 +2522,46 @@ def integration_token_context(user):
         "integration_tracking_preset_json": json.dumps(
             list(DEFAULT_INTEGRATION_SCOPES),
         ),
+        "catalog_grants": list(
+            CatalogGrant.objects.filter(
+                user=user,
+                revoked_at__isnull=True,
+            ).order_by("-created_at"),
+        ),
     }
+
+
+@require_POST
+def create_catalog_grant(request):
+    """Mint a revocable add-on install credential."""
+    name = (request.POST.get("name") or "").strip()[:MAX_TOKEN_NAME_LENGTH]
+    if not name:
+        messages.error(request, "Give the install a name so you can recognise it.")
+        return redirect("integrations")
+
+    allow_playback_start = request.POST.get("allow_playback_start") == "on"
+    grant, _token = CatalogGrant.generate(
+        user=request.user,
+        name=name,
+        allow_playback_start=allow_playback_start,
+    )
+    messages.success(request, f"Created add-on install '{grant.name}'.")
+    return redirect("integrations")
+
+
+@require_POST
+def revoke_catalog_grant(request, grant_id):
+    """Revoke one add-on install credential."""
+    grant = get_object_or_404(
+        CatalogGrant,
+        pk=grant_id,
+        user=request.user,
+        revoked_at__isnull=True,
+    )
+    grant.revoked_at = timezone.now()
+    grant.save(update_fields=["revoked_at"])
+    messages.success(request, f"Revoked add-on install '{grant.name}'.")
+    return redirect("integrations")
 
 
 @require_POST

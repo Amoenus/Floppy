@@ -1095,7 +1095,8 @@
       </p>
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
         <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
-        {% url 'stremio_addon_manifest' request.user.token as stremio_addon_path %}
+        {% if catalog_grants %}{% firstof catalog_grants.0.token request.user.token as stremio_addon_credential %}{% else %}{% firstof request.user.token as stremio_addon_credential %}{% endif %}
+        {% url 'stremio_addon_manifest' stremio_addon_credential as stremio_addon_path %}
         {% absolute_app_url stremio_addon_path as stremio_addon_url %}
         <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
           <li>
@@ -1113,6 +1114,7 @@
           <li>Floppy must be reachable from your Stremio device over <strong>HTTPS</strong> (plain HTTP only works for localhost).</li>
           <li>Playback start marks the item in progress; the recurring library import marks items watched.</li>
         </ol>
+        {% include "users/components/catalog_grants.html" %}
       </div>
       {% if stremio_catalog_readiness %}
         <div class="mt-4">
