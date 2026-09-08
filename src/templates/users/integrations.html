@@ -39,7 +39,11 @@
         {% include "app/icons/padlock.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
         <h3 class="text-base font-medium">API Token</h3>
       </div>
-      <p class="text-[var(--color-text-muted)] mb-4 text-sm">This token is used to authenticate webhook requests from your media servers.</p>
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">
+        This token authenticates webhook requests from your media servers. It has full
+        access to your account, so for apps and API clients create an app token below
+        instead — those can be limited and revoked one at a time.
+      </p>
       <div class="bg-[var(--color-surface-dim)] p-3 rounded-md mb-4">
         <div class="flex items-center gap-2">
           <input readonly=""
@@ -71,6 +75,8 @@
         </div>
       </div>
     </div>
+
+    {% include "users/components/integration_tokens.html" %}
 
     {# Filter bar #}
     <div class="bg-[var(--color-surface-strong)] rounded-lg p-4 mb-5">
@@ -317,7 +323,7 @@
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center">
           {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-          <h3 class="text-base font-medium">Floppy &rarr; Jellyfin</h3>
+          <h3 class="text-base font-medium">Floppy → Jellyfin</h3>
         </div>
         {% if jellyfin_account and jellyfin_account.is_connected %}
           <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">Connected</span>
@@ -331,11 +337,11 @@
           <div class="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
             <span>{{ jellyfin_account.base_url }}</span>
             {% if jellyfin_account.jellyfin_username %}
-              <span>&bull;</span>
+              <span>•</span>
               <span>{{ jellyfin_account.jellyfin_username }}</span>
             {% endif %}
             {% if jellyfin_account.last_sync_at %}
-              <span>&bull;</span>
+              <span>•</span>
               <span>Last sync: {{ jellyfin_account.last_sync_at|user_datetime_format:user }}</span>
             {% endif %}
           </div>
@@ -346,7 +352,7 @@
           {% endif %}
           <div class="border-t border-gray-600/50 pt-3 space-y-3">
             <div>
-              <h4 class="text-sm font-medium">Jellyfin &rarr; Floppy: auto-import history</h4>
+              <h4 class="text-sm font-medium">Jellyfin → Floppy: auto-import history</h4>
               <p class="text-xs text-[var(--color-text-muted)] mt-1">
                 No manual export needed. Floppy pulls your watch history straight from your
                 Jellyfin server: full per-play history via the Playback Reporting plugin's API
@@ -358,7 +364,7 @@
               {% if jellyfin_account.playback_reporting_available %}
                 Using Playback Reporting's API (full per-play history).
               {% elif jellyfin_account.playback_reporting_available is False %}
-                Playback Reporting's API isn't reachable with this key &mdash; using the
+                Playback Reporting's API isn't reachable with this key — using the
                 current-watched-state backfill instead (one event per item).
               {% else %}
                 Not yet run.
