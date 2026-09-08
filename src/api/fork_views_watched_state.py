@@ -9,6 +9,10 @@ from rest_framework import views as drf_views
 from rest_framework.response import Response
 
 from app.models import WatchStateOrigin
+from app.services.progress_changes import (
+    PROGRESS_RESOURCE,
+    retained_progress_range,
+)
 from app.services.watch_state import (
     RevisionConflictError,
     changes_since,
@@ -17,11 +21,16 @@ from app.services.watch_state import (
     retained_change_range,
 )
 from integrations.models import (
+    OutboundDeliveryStatus,
     StateConflict,
     StateConflictStatus,
     SyncBinding,
+    SyncCheckpoint,
 )
-from integrations.state.checkpoints import record_applied_position
+from integrations.state.checkpoints import (
+    WATCHED_STATE_RESOURCE,
+    record_applied_position,
+)
 
 from .helpers import check_source_type, check_valid_type, resolve_item_queryset
 
@@ -298,6 +307,13 @@ class SyncConnectionsView(drf_views.APIView):
         """Return connections, their directions, and unavailable capabilities."""
         from integrations.state.outbound import get_adapter
 
+        _, newest_watched = retained_change_range(request.user)
+        _, newest_progress = retained_progress_range(request.user)
+        newest_by_resource = {
+            WATCHED_STATE_RESOURCE: newest_watched,
+            PROGRESS_RESOURCE: newest_progress,
+        }
+
         results = []
         for binding in SyncBinding.objects.filter(user=request.user):
             adapter = get_adapter(binding)
@@ -316,17 +332,58 @@ class SyncConnectionsView(drf_views.APIView):
                     # user asked for and cannot have is a capability
                     # limitation, and saying nothing reads as success.
                     "unavailable_capabilities": sorted(approved - supported),
+                    # A client needs this to name itself when pulling a change
+                    # feed; without it no checkpoint can ever be recorded, and
+                    # the change log can never compact.
+                    "origin_key": binding.origin_key,
                     "last_reconciled_at": binding.last_reconciled_at,
+                    "last_error_message": binding.last_error_message,
                     "pending_deliveries": binding.deliveries.filter(
-                        status="pending",
+                        status=OutboundDeliveryStatus.PENDING.value,
+                    ).count(),
+                    # Counted separately and never folded into "pending": a
+                    # failed write that reads as still-in-progress is the
+                    # silent failure this whole surface exists to prevent.
+                    "failed_deliveries": binding.deliveries.filter(
+                        status=OutboundDeliveryStatus.FAILED.value,
                     ).count(),
                     "open_conflicts": binding.conflicts.filter(
                         status=StateConflictStatus.OPEN.value,
                     ).count(),
+                    "unresolved_references": binding.unresolved_references.filter(
+                        dismissed_at__isnull=True,
+                    ).count(),
+                    "checkpoints": self._checkpoints(binding, newest_by_resource),
                 },
             )
 
         return Response({"results": results}, status=HTTP.OK)
+
+    @staticmethod
+    def _checkpoints(binding, newest_by_resource):
+        """Report where this connection has got to, and how far behind it is.
+
+        "Behind" is the number the user actually acts on: a connection that
+        looks healthy but sits ten thousand changes back is not working, and
+        neither a status field nor a last-seen timestamp shows that.
+        """
+        rows = []
+        for checkpoint in SyncCheckpoint.objects.filter(binding=binding):
+            newest = newest_by_resource.get(checkpoint.resource)
+            rows.append(
+                {
+                    "resource": checkpoint.resource,
+                    "direction": checkpoint.direction,
+                    "last_sequence": checkpoint.last_sequence,
+                    "behind_by": (
+                        max(newest - checkpoint.last_sequence, 0)
+                        if newest is not None
+                        else None
+                    ),
+                    "updated_at": checkpoint.updated_at,
+                },
+            )
+        return rows
 
 
 # /api/v1/sync/conflicts/
