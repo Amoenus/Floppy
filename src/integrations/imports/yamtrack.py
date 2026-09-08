@@ -113,6 +113,19 @@ def _normalize_status(value):
     return aliases.get(lowered, raw)
 
 
+def _is_ragged_row(row):
+    """Return whether a CSV row has more or fewer columns than the header.
+
+    ``csv.DictReader`` doesn't raise on a malformed row: extra values are
+    silently dropped under a ``None`` key, and missing trailing columns are
+    filled with ``None`` (``restval``'s default) - either would otherwise
+    silently shift the row's real values into the wrong fields.
+    """
+    if row.get(None):
+        return True
+    return any(value is None for value in row.values())
+
+
 def _find_item_after_integrity_error(lookup, original_exc):
     """Return the Item that caused a UniqueViolation during update_or_create.
 
@@ -206,6 +219,11 @@ class YamtrackImporter:
 
         for i, row in enumerate(rows, start=1):
             import_progress.report(i, total, "Yamtrack")
+            if _is_ragged_row(row):
+                self.warnings.append(
+                    f"Skipping row {i}: column count doesn't match the header.",
+                )
+                continue
             try:
                 self._process_row(row)
             except services.ProviderAPIError as error:
