@@ -46,16 +46,23 @@ def _safe_runtime_minutes(value):
     return minutes
 
 
+def _require_movie_or_game_date(qs, start_date, end_date):
+    """Restrict a movie/game queryset to dated entries, unless this is an all-time query.
+
+    "All Time" (start_date and end_date both None) has no period an entry
+    could fail to belong to, so entries with no recorded date are kept. Any
+    concrete range still needs a date to place the entry within it.
+    """
+    if start_date is None and end_date is None:
+        return qs
+    return qs.filter(Q(end_date__isnull=False) | Q(start_date__isnull=False))
+
+
 def _tv_episode_play_rows(user, start_date, end_date):
     """Return watched TV episode rows and the season/show items they touch."""
-    episodes_qs = Episode.objects.filter(
-        related_season__user=user,
-        end_date__isnull=False,
-    )
-    if start_date:
-        episodes_qs = episodes_qs.filter(end_date__gte=start_date)
-    if end_date:
-        episodes_qs = episodes_qs.filter(end_date__lte=end_date)
+    episodes_qs = Episode.objects.filter(related_season__user=user)
+    if start_date or end_date:
+        episodes_qs = episodes_qs.filter(end_date__isnull=False)
 
     episode_play_rows = []
     season_item_ids = set()
@@ -173,10 +180,8 @@ def _build_person_talent_context(
     season_items_with_writer_credits = tv_episode_rows.season_items_with_writer_credits
     season_items_with_usable_credits = tv_episode_rows.season_items_with_usable_credits
 
-    movies_qs = Movie.objects.filter(
-        user=user,
-    ).filter(
-        Q(end_date__isnull=False) | Q(start_date__isnull=False),
+    movies_qs = _require_movie_or_game_date(
+        Movie.objects.filter(user=user), start_date, end_date
     )
     if start_date:
         movies_qs = movies_qs.filter(
@@ -197,10 +202,8 @@ def _build_person_talent_context(
 
     from app.stats_time import _calculate_game_time_in_range
 
-    games_qs = Game.objects.filter(
-        user=user,
-    ).filter(
-        Q(end_date__isnull=False) | Q(start_date__isnull=False),
+    games_qs = _require_movie_or_game_date(
+        Game.objects.filter(user=user), start_date, end_date
     )
     if start_date:
         games_qs = games_qs.filter(
@@ -586,11 +589,10 @@ def _aggregate_top_talent(
     season_items_with_writer_credits = tv_episode_rows.season_items_with_writer_credits
     season_items_with_usable_credits = tv_episode_rows.season_items_with_usable_credits
 
-    # Movie plays: count completed/dated movie entries.
-    movies_qs = Movie.objects.filter(
-        user=user,
-    ).filter(
-        Q(end_date__isnull=False) | Q(start_date__isnull=False),
+    # Movie plays: count completed/dated movie entries (all-time includes
+    # entries with no recorded date; a concrete range still requires one).
+    movies_qs = _require_movie_or_game_date(
+        Movie.objects.filter(user=user), start_date, end_date
     )
     if start_date:
         movies_qs = movies_qs.filter(
@@ -612,10 +614,8 @@ def _aggregate_top_talent(
     # Game plays: same completed/dated filter as movies. Games only have
     # best-effort IMDB-sourced cast (see app.services.imdb_game_credits), so
     # this just needs their item ids folded into played_item_ids below.
-    games_qs = Game.objects.filter(
-        user=user,
-    ).filter(
-        Q(end_date__isnull=False) | Q(start_date__isnull=False),
+    games_qs = _require_movie_or_game_date(
+        Game.objects.filter(user=user), start_date, end_date
     )
     if start_date:
         games_qs = games_qs.filter(
