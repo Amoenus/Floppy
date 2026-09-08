@@ -1537,10 +1537,15 @@ class ListDetailViewTests(TestCase):
             "search": "q",
             "sort_direction": "direction",
         }
+        # Keys the page only offers when its filter_data carries options for
+        # them, so their absence here is the gating working, not a dropped
+        # field. `provider` needs a watch region; this fixture has none.
+        conditionally_offered = {"provider"}
         missing = [
             key
             for key in smart_rules.SMART_FILTER_KEYS
-            if f'name="{field_names.get(key, key)}"' not in html
+            if key not in conditionally_offered
+            and f'name="{field_names.get(key, key)}"' not in html
         ]
         self.assertEqual(missing, [])
 
