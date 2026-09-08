@@ -3,7 +3,7 @@
 import json
 import pickle
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -135,7 +135,7 @@ class MusicSubviewHomeTests(TestCase):
         # Regression test for #1122: the "Recently Played Music" row is cached
         # via django_redis, which pickles cache values. A locally-scoped
         # adapter class previously broke this with an unpicklable-object error.
-        now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        now = datetime(2024, 1, 1, tzinfo=UTC)
         track = _FakeTrack(
             album=self.album,
             repeats=3,
