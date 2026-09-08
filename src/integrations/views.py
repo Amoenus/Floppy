@@ -230,13 +230,23 @@ def _run_with_lock_retry(operation_name, fn):
     singleton row (`PeriodicTasks.changed()`) — a serialization hotspot on
     SQLite. Wrapping the write in a retried transaction turns a transient
     lock into a short delay instead of a 503 (see issue #1112).
+
+    `max_retries=1` (2 attempts total) rather than the helper's default of
+    5: each attempt can block for up to `SQLITE_BUSY_TIMEOUT_SECONDS`
+    (30s by default) before raising, and nginx.conf sets no explicit
+    `proxy_read_timeout` (nginx's own default is 60s) — more attempts would
+    risk the proxy returning a gateway timeout to the user while this view
+    keeps retrying underneath it, so the write could still commit after the
+    client has already seen a failure.
     """
 
     def _atomic_fn():
         with transaction.atomic():
             return fn()
 
-    return run_retryable_db_operation(_atomic_fn, operation_name=operation_name).value
+    return run_retryable_db_operation(
+        _atomic_fn, operation_name=operation_name, max_retries=1
+    ).value
 
 
 def _next_arr_sync_start(now=None):
