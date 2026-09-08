@@ -29,6 +29,7 @@ from django.http import (
     StreamingHttpResponse,
 )
 from django.shortcuts import get_object_or_404, redirect, render
+from django.templatetags.static import static
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -4098,7 +4099,7 @@ def kodi_webhook(request, token):
 STREMIO_ADDON_MANIFEST = {
     # Keep the existing addon id so installed clients remain compatible.
     "id": "org.yamtrack.scrobbler",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "name": "Floppy",
     "description": (
         "Floppy Watchlist catalogs and playback scrobbling for Stremio."
@@ -4197,7 +4198,10 @@ def stremio_addon_manifest(request, token, config=None):
 
     selected = stremio_catalog.parse_catalog_config(config)
     manifest = STREMIO_ADDON_MANIFEST | {
-        "catalogs": stremio_catalog.manifest_catalogs(user, selected)
+        "logo": request.build_absolute_uri(
+            static("favicon/apple-touch-icon.png"),
+        ),
+        "catalogs": stremio_catalog.manifest_catalogs(user, selected),
     }
     return _stremio_addon_response(manifest)
 
