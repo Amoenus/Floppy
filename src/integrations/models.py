@@ -1433,6 +1433,70 @@ class CatalogGrant(models.Model):
         return catalog_id in self.catalog_ids
 
 
+class RemoteAddon(models.Model):
+    """A declarative remote HTTP capability the user registered.
+
+    Declarative means declarative: Floppy stores what the manifest said and
+    fetches from the URL through the outbound boundary. No code from the remote
+    host is ever executed, and an executable plugin is not a thing this can
+    become. See docs/architecture/outbound-fetch.md.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="remote_addons",
+    )
+    # The configured URL can itself carry a secret, so it is masked in the UI
+    # and never logged; only the reason code of a failure is.
+    manifest_url = models.URLField(max_length=2048)
+    addon_id = models.CharField(max_length=255, blank=True, default="")
+    name = models.CharField(max_length=255, blank=True, default="")
+    version = models.CharField(max_length=64, blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    # The validated projection of the manifest, never the raw document.
+    manifest = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+    enabled = models.BooleanField(default=True)
+    last_fetched_at = models.DateTimeField(null=True, blank=True)
+    last_status = models.CharField(max_length=32, blank=True, default="")
+    # A stable reason code, never a raw URL or response body.
+    last_error_code = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Remote add-on"
+        verbose_name_plural = "Remote add-ons"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "manifest_url"],
+                name="unique_remote_addon_per_user",
+            ),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"RemoteAddon({self.name or self.addon_id}, {self.user.username})"
+
+    def masked_url(self) -> str:
+        """Return the manifest URL with its path and query hidden.
+
+        A configured URL frequently carries the credential in its path, which
+        is exactly how the Stremio add-on protocol works.
+        """
+        from urllib.parse import urlparse
+
+        try:
+            parsed = urlparse(self.manifest_url)
+        except ValueError:
+            return "(invalid URL)"
+        if not parsed.hostname:
+            return "(invalid URL)"
+        return f"{parsed.scheme}://{parsed.hostname}/…"
+
+
 class SyncClientKind(models.TextChoices):
     """The kind of external system a binding points at."""
 
