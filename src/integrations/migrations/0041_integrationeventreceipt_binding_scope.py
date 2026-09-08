@@ -118,7 +118,7 @@ class Migration(migrations.Migration):
     """Replace the user-wide receipt constraint with a binding-scoped pair."""
 
     dependencies = [
-        ("integrations", "0039_outboundstatedelivery"),
+        ("integrations", "0040_embyaccount_kodiaccount_and_more"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
