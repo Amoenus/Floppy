@@ -1313,3 +1313,355 @@ class IntegrationEventReceipt(models.Model):
         return f"IntegrationEventReceipt({self.user.username}, {self.client_event_id})"
 
 
+
+
+class SyncClientKind(models.TextChoices):
+    """The kind of external system a binding points at."""
+
+    PLEX = "plex", "Plex"
+    JELLYFIN = "jellyfin", "Jellyfin"
+    EMBY = "emby", "Emby"
+    KODI = "kodi", "Kodi"
+    STREMIO = "stremio", "Stremio"
+    AUDIOBOOKSHELF = "audiobookshelf", "Audiobookshelf"
+    GENERIC = "generic", "Generic client"
+
+
+class SyncDirection(models.TextChoices):
+    """Which way state is allowed to travel for one resource."""
+
+    INBOUND = "inbound", "Provider to Floppy"
+    OUTBOUND = "outbound", "Floppy to provider"
+
+
+class SyncBindingStatus(models.TextChoices):
+    """Whether a binding may move state."""
+
+    PENDING = "pending", "Pending approval"
+    ACTIVE = "active", "Active"
+    NEEDS_REAPPROVAL = "needs_reapproval", "Needs reapproval"
+    DISABLED = "disabled", "Disabled"
+
+
+# Capability names. A direction ships enabled only where the adapter has been
+# shown to hold the contract, so these are declared per binding rather than
+# inferred from the provider's identity.
+CAPABILITY_WATCHED_READ = "watched.read"
+CAPABILITY_WATCHED_WRITE_PLAYED = "watched.write_played"
+CAPABILITY_WATCHED_WRITE_UNPLAYED = "watched.write_unplayed"
+CAPABILITY_WATCHED_PUSH_PLAYED = "watched.push_played"
+CAPABILITY_WATCHED_PUSH_UNPLAYED = "watched.push_unplayed"
+CAPABILITY_LISTEN_READ = "listen.read"
+
+
+class SyncBinding(models.Model):
+    """One approved relation between a Floppy user and one external profile.
+
+    Binding identity is what origin derivation, cursors, receipts and conflicts
+    scope to. An integration token's client identifier is not a substitute: one
+    token can address several servers, and one server has several profiles.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="sync_bindings",
+    )
+    client_kind = models.CharField(max_length=32, choices=SyncClientKind)
+    # Identifies the server or service instance. Empty until the first payload
+    # that carries it; filling an empty value in is a narrowing, not a change of
+    # identity, so it does not force reapproval.
+    instance_key = models.CharField(max_length=255, blank=True, default="")
+    # Identifies the user account on that instance. A change here always forces
+    # reapproval: writing another person's library is the failure this prevents.
+    profile_key = models.CharField(max_length=255, blank=True, default="")
+    # Stable opaque string stamped onto every change and delivery this binding
+    # produces, so a state movement can be traced back and never echoed home.
+    origin_key = models.CharField(max_length=128, unique=True)
+
+    approved_capabilities = models.JSONField(default=list)
+    approved_directions = models.JSONField(default=list)
+    status = models.CharField(
+        max_length=24,
+        choices=SyncBindingStatus,
+        default=SyncBindingStatus.PENDING.value,
+    )
+    # Operator stop switch. Independent of status so disabling for safety does
+    # not discard the user's approvals.
+    kill_switch = models.BooleanField(default=False)
+
+    label = models.CharField(max_length=255, blank=True, default="")
+    last_reconciled_at = models.DateTimeField(null=True, blank=True)
+    last_error_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    disabled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Sync binding"
+        verbose_name_plural = "Sync bindings"
+        ordering = ["user", "client_kind", "instance_key"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "client_kind", "instance_key", "profile_key"],
+                name="unique_sync_binding_identity",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "status"]),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"SyncBinding({self.client_kind}, {self.user.username})"
+
+    def is_operational(self) -> bool:
+        """Return whether this binding may move state right now."""
+        return self.status == SyncBindingStatus.ACTIVE.value and not self.kill_switch
+
+    def has_capability(self, capability: str) -> bool:
+        """Return whether the user approved one capability."""
+        return capability in (self.approved_capabilities or [])
+
+    def allows(self, direction: str, capability: str) -> bool:
+        """Return whether one direction and capability are both approved.
+
+        Both are required. An approved direction with an unverified capability
+        must not write, and a verified capability the user has not pointed in
+        that direction must not either.
+        """
+        if not self.is_operational():
+            return False
+        return direction in (
+            self.approved_directions or []
+        ) and self.has_capability(capability)
+
+
+class SyncCheckpoint(models.Model):
+    """The last applied position for one binding, resource and direction.
+
+    Advanced only after the page it describes has committed, and never stored
+    only in cache: a checkpoint lost to a restart re-reads, but a checkpoint
+    advanced ahead of its data skips silently.
+    """
+
+    binding = models.ForeignKey(
+        SyncBinding,
+        on_delete=models.CASCADE,
+        related_name="checkpoints",
+    )
+    resource = models.CharField(max_length=64)
+    direction = models.CharField(max_length=16, choices=SyncDirection)
+    # Opaque server cursor for Floppy-side change feeds.
+    cursor = models.CharField(max_length=512, blank=True, default="")
+    last_sequence = models.BigIntegerField(default=0)
+    # The provider's own cursor, where it has one: a playback-reporting row id,
+    # a millisecond sync stamp, a viewedAt watermark.
+    provider_cursor = models.CharField(max_length=512, blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Sync checkpoint"
+        verbose_name_plural = "Sync checkpoints"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["binding", "resource", "direction"],
+                name="unique_sync_checkpoint_position",
+            ),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"SyncCheckpoint({self.binding_id}, {self.resource}, {self.direction})"
+
+
+class ProviderStateObservation(models.Model):
+    """What a provider last told us, and what we held when it did.
+
+    This is the merge base. Without the local revision and digest captured at
+    observation time there is no way to tell "they moved" from "we moved", and
+    every disagreement collapses into last-write-wins.
+    """
+
+    binding = models.ForeignKey(
+        SyncBinding,
+        on_delete=models.CASCADE,
+        related_name="observations",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="provider_state_observations",
+    )
+    item = models.ForeignKey(
+        "app.Item",
+        on_delete=models.CASCADE,
+        related_name="provider_state_observations",
+    )
+    external_id = models.CharField(max_length=255, blank=True, default="")
+
+    watched = models.BooleanField(default=False)
+    play_count = models.PositiveIntegerField(default=0)
+    watched_at = models.DateTimeField(null=True, blank=True)
+    provider_digest = models.CharField(max_length=64, blank=True, default="")
+
+    local_revision_at_observation = models.PositiveIntegerField(default=0)
+    local_digest_at_observation = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+    )
+
+    source = models.CharField(max_length=32, blank=True, default="")
+    observed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Provider state observation"
+        verbose_name_plural = "Provider state observations"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["binding", "item"],
+                name="unique_provider_observation_per_item",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["binding", "observed_at"]),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"ProviderStateObservation({self.binding_id}, {self.item_id})"
+
+
+class StateConflictReason(models.TextChoices):
+    """Why an observation could not be applied without losing information."""
+
+    DIVERGENT_WATCHED = "divergent_watched", "Both sides changed watched state"
+    DIGEST_MISMATCH = "digest_mismatch", "States diverged"
+    UNATTRIBUTABLE_UNWATCH = (
+        "unattributable_unwatch",
+        "Nothing identifiable to retract",
+    )
+    AMBIGUOUS_MATCH = "ambiguous_match", "More than one item matched"
+
+
+class StateConflictStatus(models.TextChoices):
+    """Whether a conflict still blocks propagation."""
+
+    OPEN = "open", "Open"
+    RESOLVED = "resolved", "Resolved"
+
+
+class StateConflict(models.Model):
+    """A disagreement held for a person to settle.
+
+    Propagation pauses for this item and this binding only. Everything else
+    keeps flowing, because one unresolvable title must not stop a library.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="state_conflicts",
+    )
+    item = models.ForeignKey(
+        "app.Item",
+        on_delete=models.CASCADE,
+        related_name="state_conflicts",
+    )
+    binding = models.ForeignKey(
+        SyncBinding,
+        on_delete=models.CASCADE,
+        related_name="conflicts",
+    )
+    reason = models.CharField(max_length=32, choices=StateConflictReason)
+    status = models.CharField(
+        max_length=16,
+        choices=StateConflictStatus,
+        default=StateConflictStatus.OPEN.value,
+    )
+
+    local_snapshot = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+    remote_snapshot = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+    base_snapshot = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+
+    occurrence_count = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "State conflict"
+        verbose_name_plural = "State conflicts"
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "item", "binding", "reason"],
+                condition=models.Q(status="open"),
+                name="unique_open_state_conflict",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "status"]),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"StateConflict({self.reason}, item={self.item_id})"
+
+
+class UnresolvedReferenceReason(models.TextChoices):
+    """Why an external reference could not be turned into an item."""
+
+    UNKNOWN_ID = "unknown_id", "No matching item"
+    UNSUPPORTED_NAMESPACE = "unsupported_namespace", "Identifier type unsupported"
+    AMBIGUOUS = "ambiguous", "More than one item matched"
+    UNSUPPORTED_MEDIA_TYPE = "unsupported_media_type", "Media type unsupported"
+
+
+class UnresolvedExternalReference(models.Model):
+    """An external id that could not be resolved, deduplicated by occurrence.
+
+    Holds enough to explain the problem and nothing that could carry a secret:
+    a namespace, a value, a reason, and the media shape it claimed to be.
+    """
+
+    binding = models.ForeignKey(
+        SyncBinding,
+        on_delete=models.CASCADE,
+        related_name="unresolved_references",
+    )
+    namespace = models.CharField(max_length=32)
+    value = models.CharField(max_length=255)
+    reason_code = models.CharField(max_length=32, choices=UnresolvedReferenceReason)
+    context = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+
+    occurrence_count = models.PositiveIntegerField(default=1)
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+    dismissed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Unresolved external reference"
+        verbose_name_plural = "Unresolved external references"
+        ordering = ["-last_seen_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["binding", "namespace", "value", "reason_code"],
+                name="unique_unresolved_external_reference",
+            ),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"UnresolvedExternalReference({self.namespace}:{self.value})"
