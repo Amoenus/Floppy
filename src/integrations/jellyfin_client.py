@@ -29,7 +29,7 @@ class JellyfinClient:
 
     def _headers(self) -> dict[str, str]:
         return {
-            "X-Emby-Token": self.api_key,
+            "Authorization": f'MediaBrowser Token="{self.api_key}"',
             "Accept": "application/json",
         }
 
