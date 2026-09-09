@@ -1246,19 +1246,30 @@ class BaseWebhookProcessor:
         from app.services import metadata_resolution
 
         if self._is_unplayed(payload):
-            deleted, _ = app.models.Movie.objects.filter(
-                item__media_id=media_id,
-                item__source=Sources.TMDB.value,
-                item__media_type=MediaTypes.MOVIE.value,
-                user=user,
-            ).delete()
-            if deleted:
-                logger.info("Marked movie as unplayed: %s", media_id)
-            else:
+            # Marking unplayed reverts state; it does not delete history. The
+            # bare .delete() this replaces removed every rewatch row for the
+            # title, so one click in a media server could erase years of plays.
+            from app.services.unwatch import retract_watch
+
+            unplayed_item = app.models.Item.objects.filter(
+                media_id=media_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+            ).first()
+            if unplayed_item is None:
                 logger.debug(
-                    "Movie marked as unplayed but no instance exists: %s",
+                    "Movie marked as unplayed but no item exists: %s",
                     media_id,
                 )
+                return None
+
+            result = retract_watch(user, unplayed_item)
+            logger.info(
+                "Marked movie as unplayed: %s (rows reverted=%s, plays kept=%s)",
+                media_id,
+                result.rows_reverted,
+                result.preserved_plays,
+            )
             return None
 
         movie_metadata = app.providers.tmdb.movie(media_id)
@@ -1634,27 +1645,41 @@ class BaseWebhookProcessor:
         from app.services import metadata_resolution
 
         if self._is_unplayed(payload):
-            deleted, _ = app.models.Episode.objects.filter(
-                item__media_id=media_id,
-                item__source=Sources.TMDB.value,
-                item__season_number=season_number,
-                item__episode_number=episode_number,
-                related_season__user=user,
-            ).delete()
-            if deleted:
-                logger.info(
-                    "Marked episode as unplayed: %s S%02dE%02d",
-                    media_id,
-                    season_number,
-                    episode_number,
+            # As above: retract the latest play, keep the rest. Also scoped to
+            # the library bucket, because the same show can exist as both a TV
+            # and a grouped-anime item and retracting the wrong one is silent.
+            from app.services.unwatch import retract_watch
+
+            unplayed_items = app.models.Item.objects.filter(
+                media_id=media_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=season_number,
+                episode_number=episode_number,
+            )
+            if library_media_type is not None:
+                unplayed_items = unplayed_items.filter(
+                    library_media_type=library_media_type,
                 )
-            else:
+
+            unplayed_item = unplayed_items.first()
+            if unplayed_item is None:
                 logger.debug(
-                    "Episode marked as unplayed but no instance exists: %s S%02dE%02d",
+                    "Episode marked as unplayed but no item exists: %s S%02dE%02d",
                     media_id,
                     season_number,
                     episode_number,
                 )
+                return None
+
+            result = retract_watch(user, unplayed_item)
+            logger.info(
+                "Marked episode as unplayed: %s S%02dE%02d (plays kept=%s)",
+                media_id,
+                season_number,
+                episode_number,
+                result.preserved_plays,
+            )
             return None
 
         tv_metadata = app.providers.tmdb.tv_with_seasons(media_id, [season_number])

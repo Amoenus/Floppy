@@ -97,6 +97,7 @@ class SyncMetadataViewTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
 
+    @patch("app.tasks_imdb.refresh_imdb_game_credits_from_datasets.apply_async")
     @patch("app.metadata_sync_views._sync_plex_rating")
     @patch("app.views.Item.fetch_releases")
     @patch("app.views.game_length_services.refresh_game_lengths")
@@ -107,6 +108,7 @@ class SyncMetadataViewTests(TestCase):
         mock_refresh_game_lengths,
         mock_fetch_releases,
         mock_sync_plex_rating,
+        _mock_refresh_imdb_credits,
     ):
         mock_get_media_metadata.return_value = {
             "media_id": "325609",

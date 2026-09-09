@@ -157,6 +157,11 @@ def _smart_list_detail_response(
                     "completed_date_to",
                     saved_rules["completed_date_to"],
                 ),
+                **{
+                    key: request.GET.get(key, saved_rules[key])
+                    for field in smart_rules.RELATIVE_DATE_FIELDS
+                    for key in (f"{field}_within", f"{field}_within_unit")
+                },
                 "source": request.GET.get("source", saved_rules["source"]),
                 "language": request.GET.get("language", saved_rules["language"]),
                 "country": request.GET.get("country", saved_rules["country"]),
@@ -367,6 +372,10 @@ def _smart_list_detail_response(
             active_rules.get("date_added_to"),
             active_rules.get("completed_date_from"),
             active_rules.get("completed_date_to"),
+            *(
+                active_rules.get(f"{field}_within")
+                for field in smart_rules.RELATIVE_DATE_FIELDS
+            ),
             active_rules.get("source"),
             active_rules.get("language"),
             active_rules.get("country"),

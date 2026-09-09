@@ -51,6 +51,7 @@ from app.search_views import _mark_grouped_anime_route
 from app.services import metadata_resolution
 from app.templatetags import app_tags
 from app.tv_sort import _sort_tv_media_by_time_left
+from lists import smart_rules
 from users.models import (
     MediaSortChoices,
     MediaStatusChoices,
@@ -616,6 +617,10 @@ def build_filter_data_from_items(
         "show_formats": False,
         "show_authors": False,
         "show_providers": False,
+        "relative_date_units": [
+            {"value": value, "label": label}
+            for value, label in smart_rules.RELATIVE_DATE_UNIT_CHOICES
+        ],
     }
 
 
@@ -993,6 +998,24 @@ def media_list(request, media_type):
     completed_date_to = _normalize_completed_date_filter(
         request.GET.get("completed_date_to"),
     )
+    # "Completed in the last N units" is relative, so resolve it per request.
+    # Same helper the smart-list rules use, to keep one definition of the window.
+    # The raw amount/unit go back to the template so the choice round-trips;
+    # only the filtering below sees the resolved dates.
+    completed_window_raw = {
+        "completed_date_within": request.GET.get("completed_date_within", ""),
+        "completed_date_within_unit": request.GET.get("completed_date_within_unit", ""),
+    }
+    completed_window = smart_rules.resolve_relative_date_windows(completed_window_raw)
+    completed_date_within = ""
+    completed_date_within_unit = "days"
+    if completed_window.get("completed_date_from"):
+        completed_date_from = completed_window["completed_date_from"]
+        completed_date_to = completed_window["completed_date_to"]
+        completed_date_within = str(completed_window_raw["completed_date_within"]).strip()
+        completed_date_within_unit = smart_rules.normalize_relative_unit(
+            completed_window_raw["completed_date_within_unit"],
+        )
     release_filter = (request.GET.get("release") or "all").strip().lower()
     valid_release_filters = {"all", "released", "not_released"}
     if release_filter not in valid_release_filters:
@@ -2194,8 +2217,10 @@ def media_list(request, media_type):
         "current_genre": genre_filter,
         "current_implied_genre": implied_genre_filter,
         "current_year": year_filter,
-        "current_completed_date_from": completed_date_from,
-        "current_completed_date_to": completed_date_to,
+        "current_completed_date_from": "" if completed_date_within else completed_date_from,
+        "current_completed_date_to": "" if completed_date_within else completed_date_to,
+        "current_completed_date_within": completed_date_within,
+        "current_completed_date_within_unit": completed_date_within_unit,
         "current_release": release_filter,
         "current_source": source_filter,
         "current_media_status": media_status_filter,
