@@ -25,7 +25,7 @@ class ProviderBackfillTaskTests(TestCase):
             tasks_providers.WATCH_PROVIDERS_BACKFILL_ITEMS_SCHEDULED_KEY,
         )
 
-    def test_provider_items_queryset_scopes_to_tmdb_movie_tv_anime_missing_data(self):
+    def test_provider_items_queryset_includes_tmdb_media_and_mal_anime(self):
         needs_backfill = Item.objects.create(
             media_id="2001",
             source=Sources.TMDB.value,
@@ -51,15 +51,97 @@ class ProviderBackfillTaskTests(TestCase):
             media_type=MediaTypes.BOOK.value,
             title="Not a supported provider type",
         )
+        mal_anime = Item.objects.create(
+            media_id="52991",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Frieren",
+        )
+        mal_manga = Item.objects.create(
+            media_id="2",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.MANGA.value,
+            title="Berserk",
+        )
 
         queryset_ids = set(
             tasks_providers._provider_items_queryset().values_list("id", flat=True)
         )
 
         self.assertIn(needs_backfill.id, queryset_ids)
+        self.assertIn(mal_anime.id, queryset_ids)
         self.assertNotIn(already_has_data.id, queryset_ids)
         self.assertNotIn(non_tmdb_item.id, queryset_ids)
         self.assertNotIn(unsupported_media_type.id, queryset_ids)
+        self.assertNotIn(mal_manga.id, queryset_ids)
+
+    @patch("app.tasks_providers.services.get_media_metadata")
+    @patch("app.tasks_providers.metadata_resolution.resolve_provider_media_id")
+    def test_populate_providers_for_mal_anime_uses_mapped_tmdb_series(
+        self,
+        mock_resolve_provider_media_id,
+        mock_get_metadata,
+    ):
+        item = Item.objects.create(
+            media_id="52991",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Frieren",
+        )
+        mock_resolve_provider_media_id.return_value = "209867"
+        mock_get_metadata.return_value = {
+            "providers": {
+                "DE": {
+                    "flatrate": [
+                        {"provider_id": 283, "provider_name": "Crunchyroll"},
+                    ],
+                },
+            },
+        }
+
+        updated_count, error_count = tasks_providers._populate_providers_for_items(
+            [item]
+        )
+
+        self.assertEqual((updated_count, error_count), (1, 0))
+        mock_get_metadata.assert_called_once_with(
+            MediaTypes.ANIME.value,
+            "209867",
+            Sources.TMDB.value,
+        )
+        item.refresh_from_db()
+        self.assertEqual(
+            item.watch_providers["DE"]["flatrate"][0]["provider_name"],
+            "Crunchyroll",
+        )
+
+    @patch("app.tasks_providers.services.get_media_metadata")
+    @patch("app.tasks_providers.metadata_resolution.resolve_provider_media_id")
+    def test_populate_providers_for_unmapped_mal_anime_retries_later(
+        self,
+        mock_resolve_provider_media_id,
+        mock_get_metadata,
+    ):
+        item = Item.objects.create(
+            media_id="62811",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Unmapped Anime",
+        )
+        mock_resolve_provider_media_id.return_value = None
+
+        updated_count, error_count = tasks_providers._populate_providers_for_items(
+            [item]
+        )
+
+        self.assertEqual((updated_count, error_count), (0, 0))
+        mock_get_metadata.assert_not_called()
+        state = MetadataBackfillState.objects.get(
+            item=item,
+            field=MetadataBackfillField.WATCH_PROVIDERS,
+        )
+        self.assertEqual(state.last_error, "no TMDB mapping")
+        self.assertIsNotNone(state.next_retry_at)
 
     @patch("app.tasks_providers.services.get_media_metadata")
     def test_populate_providers_for_items_persists_watch_providers(

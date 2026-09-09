@@ -2796,6 +2796,82 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context["watch_providers"])
 
+    @patch("app.views.metadata_resolution.resolve_provider_media_id")
+    @patch("app.providers.services.get_media_metadata")
+    def test_media_details_enriches_mal_anime_with_tmdb_watch_providers(
+        self,
+        mock_get_metadata,
+        mock_resolve_provider_media_id,
+    ):
+        """A tracked MAL anime should use its mapped TMDB provider payload."""
+        self.user.watch_provider_region = "DE"
+        self.user.save(update_fields=["watch_provider_region"])
+        item = Item.objects.create(
+            media_id="52991",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Frieren",
+            image="https://example.com/frieren.jpg",
+        )
+        Anime.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.PLANNING.value,
+        )
+        mal_metadata = {
+            "media_id": "52991",
+            "title": "Frieren",
+            "media_type": MediaTypes.ANIME.value,
+            "source": Sources.MAL.value,
+            "image": "https://example.com/frieren.jpg",
+            "details": {"episodes": 28},
+            "related": {},
+            "cast": [],
+            "crew": [],
+            "studios_full": [],
+        }
+        tmdb_metadata = {
+            **mal_metadata,
+            "media_id": "209867",
+            "source": Sources.TMDB.value,
+            "providers": {
+                "DE": {
+                    "flatrate": [
+                        {
+                            "provider_id": 283,
+                            "provider_name": "Crunchyroll",
+                            "logo_path": "/crunchyroll.jpg",
+                        },
+                    ],
+                },
+            },
+        }
+        mock_get_metadata.side_effect = lambda *args, **_kwargs: (
+            tmdb_metadata if args[2] == Sources.TMDB.value else mal_metadata
+        )
+        mock_resolve_provider_media_id.return_value = "209867"
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.MAL.value,
+                    "media_type": MediaTypes.ANIME.value,
+                    "media_id": "52991",
+                    "title": "frieren",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["watch_providers"][0]["provider_name"], "Crunchyroll")
+        item.refresh_from_db()
+        self.assertEqual(
+            item.watch_providers["DE"]["flatrate"][0]["provider_name"],
+            "Crunchyroll",
+        )
+
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_persists_movie_recommendation_metadata(
         self, mock_get_metadata

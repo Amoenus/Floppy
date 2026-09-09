@@ -798,6 +798,32 @@ def _reconcile_competing_seasons(canonical_season, stray_season) -> None:
     canonical_season.save(update_fields=["status", "score", "notes"])
 
 
+def _tmdb_series_id_from_tvdb_id(tvdb_id: str) -> str | None:
+    """Return one exact TMDB TV result for a TVDB series ID."""
+    from app.providers import tmdb
+
+    try:
+        find_response = tmdb.find(tvdb_id, "tvdb_id")
+    except services.ProviderAPIError:
+        logger.warning(
+            "Skipping TMDB resolution for TVDB ID %s: provider request failed",
+            tvdb_id,
+        )
+        return None
+
+    tv_results = (
+        find_response.get("tv_results", [])
+        if isinstance(find_response, dict)
+        else []
+    )
+    tmdb_ids = {
+        str(result["id"])
+        for result in tv_results
+        if isinstance(result, dict) and result.get("id") not in (None, "")
+    }
+    return tmdb_ids.pop() if len(tmdb_ids) == 1 else None
+
+
 def resolve_provider_media_id(
     item: Item | None,
     provider: str,
@@ -852,7 +878,35 @@ def resolve_provider_media_id(
             item.media_id,
             provider,
         )
+        mapped_tvdb_id = None
+        if not mapped_series_id and provider == Sources.TMDB.value:
+            mapped_tvdb_id = anime_mapping.resolve_provider_series_id(
+                item.media_id,
+                Sources.TVDB.value,
+            )
+            if mapped_tvdb_id:
+                mapped_series_id = _tmdb_series_id_from_tvdb_id(mapped_tvdb_id)
+
         if mapped_series_id:
+            if mapped_tvdb_id:
+                upsert_provider_links(
+                    item,
+                    {
+                        "media_id": str(mapped_series_id),
+                        "provider_external_ids": {
+                            "tmdb_id": str(mapped_series_id),
+                            "tvdb_id": str(mapped_tvdb_id),
+                        },
+                    },
+                    provider=Sources.TMDB.value,
+                    provider_media_type=provider_media_type,
+                    season_number=season_number,
+                    persistence_mode=persistence_mode,
+                    retry_max_retries=retry_max_retries,
+                    on_deferred=on_deferred,
+                )
+                return str(mapped_series_id)
+
             run_retryable_db_operation(
                 lambda: update_or_create_race_safe(
                     ItemProviderLink.objects,
