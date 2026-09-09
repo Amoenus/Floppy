@@ -57,7 +57,7 @@ from app.models import (
 )
 from app.providers import services, tmdb
 from app.services import game_lengths as game_length_services
-from app.services.metadata_resolution import MetadataResolutionResult
+from app.services.metadata_resolution import AnimeTMDBIdentity, MetadataResolutionResult
 from integrations.models import PlexAccount
 from lists.models import CustomList, CustomListItem
 from users.models import DateFormatChoices, RatingScaleChoices, TimeFormatChoices
@@ -2796,12 +2796,12 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context["watch_providers"])
 
-    @patch("app.views.metadata_resolution.resolve_provider_media_id")
+    @patch("app.views.metadata_resolution.resolve_mal_tmdb_identity")
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_enriches_mal_anime_with_tmdb_watch_providers(
         self,
         mock_get_metadata,
-        mock_resolve_provider_media_id,
+        mock_resolve_mal_tmdb_identity,
     ):
         """A tracked MAL anime should use its mapped TMDB provider payload."""
         self.user.watch_provider_region = "DE"
@@ -2849,7 +2849,11 @@ class MediaDetailsViewTests(TestCase):
         mock_get_metadata.side_effect = lambda *args, **_kwargs: (
             tmdb_metadata if args[2] == Sources.TMDB.value else mal_metadata
         )
-        mock_resolve_provider_media_id.return_value = "209867"
+        mock_resolve_mal_tmdb_identity.return_value = AnimeTMDBIdentity(
+            media_id="209867",
+            media_type=MediaTypes.TV.value,
+            tvdb_id="407407",
+        )
 
         response = self.client.get(
             reverse(
@@ -2865,12 +2869,219 @@ class MediaDetailsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["watch_providers"][0]["provider_name"], "Crunchyroll")
+        self.assertEqual(
+            response.context["watch_providers"][0]["provider_name"], "Crunchyroll"
+        )
         item.refresh_from_db()
         self.assertEqual(
             item.watch_providers["DE"]["flatrate"][0]["provider_name"],
             "Crunchyroll",
         )
+
+    @patch("app.views.metadata_resolution.resolve_mal_tmdb_identity")
+    @patch("app.providers.services.get_media_metadata")
+    def test_untracked_mal_anime_details_show_series_and_movie_providers(
+        self,
+        mock_get_metadata,
+        mock_resolve_mal_tmdb_identity,
+    ):
+        """Search results should show providers before an anime is tracked."""
+        self.user.watch_provider_region = "DE"
+        self.user.save(update_fields=["watch_provider_region"])
+        cases = (
+            (
+                "52991",
+                "Frieren",
+                AnimeTMDBIdentity(
+                    media_id="209867",
+                    media_type=MediaTypes.TV.value,
+                    tvdb_id="407407",
+                ),
+                "Crunchyroll",
+            ),
+            (
+                "199",
+                "Spirited Away",
+                AnimeTMDBIdentity(
+                    media_id="129",
+                    media_type=MediaTypes.MOVIE.value,
+                    imdb_id="tt0245429",
+                ),
+                "Netflix",
+            ),
+        )
+
+        for mal_id, title, identity, provider_name in cases:
+            with self.subTest(title=title):
+                mock_get_metadata.reset_mock()
+                mock_resolve_mal_tmdb_identity.reset_mock()
+                mock_resolve_mal_tmdb_identity.return_value = identity
+
+                def metadata_side_effect(
+                    media_type,
+                    media_id,
+                    source,
+                    expected_identity=identity,
+                    expected_mal_id=mal_id,
+                    expected_title=title,
+                    expected_provider_name=provider_name,
+                    **_kwargs,
+                ):
+                    if source == Sources.TMDB.value:
+                        self.assertEqual(media_type, expected_identity.media_type)
+                        self.assertEqual(media_id, expected_identity.media_id)
+                        return {
+                            "providers": {
+                                "DE": {
+                                    "flatrate": [
+                                        {
+                                            "provider_id": 8,
+                                            "provider_name": expected_provider_name,
+                                            "logo_path": "/provider.jpg",
+                                        },
+                                    ],
+                                },
+                            },
+                        }
+                    return {
+                        "media_id": expected_mal_id,
+                        "title": expected_title,
+                        "media_type": MediaTypes.ANIME.value,
+                        "source": Sources.MAL.value,
+                        "image": "https://example.com/anime.jpg",
+                        "details": {},
+                        "related": {},
+                        "cast": [],
+                        "crew": [],
+                        "studios_full": [],
+                    }
+
+                mock_get_metadata.side_effect = metadata_side_effect
+                response = self.client.get(
+                    reverse(
+                        "media_details",
+                        kwargs={
+                            "source": Sources.MAL.value,
+                            "media_type": MediaTypes.ANIME.value,
+                            "media_id": mal_id,
+                            "title": title.lower().replace(" ", "-"),
+                        },
+                    ),
+                    {"fragment": "secondary"},
+                )
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    response.context["watch_providers"][0]["provider_name"],
+                    provider_name,
+                )
+                self.assertFalse(
+                    Item.objects.filter(
+                        media_id=mal_id,
+                        source=Sources.MAL.value,
+                        media_type=MediaTypes.ANIME.value,
+                    ).exists(),
+                )
+
+    @patch("app.views.metadata_resolution.resolve_mal_tmdb_identity")
+    @patch("app.providers.services.get_media_metadata")
+    def test_untracked_mal_anime_details_tolerate_mapping_failure(
+        self,
+        mock_get_metadata,
+        mock_resolve_mal_tmdb_identity,
+    ):
+        """Optional provider enrichment must not make MAL details unavailable."""
+        mock_get_metadata.return_value = {
+            "media_id": "4081",
+            "title": "Natsume's Book of Friends",
+            "media_type": MediaTypes.ANIME.value,
+            "source": Sources.MAL.value,
+            "image": "https://example.com/natsume.jpg",
+            "details": {"episodes": 13},
+            "related": {},
+            "cast": [],
+            "crew": [],
+            "studios_full": [],
+        }
+        mock_resolve_mal_tmdb_identity.side_effect = services.ProviderAPIError(
+            "ANIME_MAPPING",
+            RuntimeError("offline"),
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.MAL.value,
+                    "media_type": MediaTypes.ANIME.value,
+                    "media_id": "4081",
+                    "title": "natsume-yuujinchou",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["watch_providers"])
+
+    @patch("app.views.metadata_resolution.resolve_mal_tmdb_identity", return_value=None)
+    @patch("app.media_details_views._build_flat_anime_episode_preview")
+    @patch("app.providers.services.get_media_metadata")
+    def test_mal_anime_collection_stats_count_flat_episode_preview(
+        self,
+        mock_get_metadata,
+        mock_build_flat_anime_episode_preview,
+        _mock_resolve_mal_tmdb_identity,
+    ):
+        """A flat episode preview must be counted, not rendered as the total."""
+        Item.objects.create(
+            media_id="4081",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Natsume's Book of Friends",
+            image="https://example.com/natsume.jpg",
+        )
+        mock_get_metadata.return_value = {
+            "media_id": "4081",
+            "title": "Natsume's Book of Friends",
+            "media_type": MediaTypes.ANIME.value,
+            "source": Sources.MAL.value,
+            "image": "https://example.com/natsume.jpg",
+            "details": {},
+            "related": {},
+            "cast": [],
+            "crew": [],
+            "studios_full": [],
+            "providers": {},
+        }
+        mock_build_flat_anime_episode_preview.return_value = [
+            {
+                "media_id": "4081",
+                "media_type": MediaTypes.EPISODE.value,
+                "source": Sources.MAL.value,
+                "season_number": 1,
+                "episode_number": episode_number,
+                "title": f"Episode {episode_number}",
+            }
+            for episode_number in range(1, 4)
+        ]
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.MAL.value,
+                    "media_type": MediaTypes.ANIME.value,
+                    "media_id": "4081",
+                    "title": "natsume-yuujinchou",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["collection_stats"]["total_episodes"], 3)
+        self.assertContains(response, "0/3")
 
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_persists_movie_recommendation_metadata(

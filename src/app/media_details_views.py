@@ -1635,7 +1635,16 @@ def media_details(
                 # Use episode count from metadata if available to match Details pane
                 metadata_episode_count = media_metadata.get("details", {}).get(
                     "episodes"
-                ) or media_metadata.get("episodes")
+                )
+                if (
+                    not isinstance(metadata_episode_count, int)
+                    or metadata_episode_count <= 0
+                ):
+                    metadata_episodes = media_metadata.get("episodes")
+                    if isinstance(metadata_episodes, list):
+                        metadata_episode_count = len(metadata_episodes)
+                    elif isinstance(metadata_episodes, int):
+                        metadata_episode_count = metadata_episodes
                 collection_stats = get_tv_show_collection_stats(
                     request.user, item, metadata_episode_count=metadata_episode_count
                 )
@@ -1682,7 +1691,36 @@ def media_details(
         MediaTypes.ANIME.value,
     ]:
         watch_provider_payload = media_metadata.get("providers")
+        tmdb_media_id = None
+        tmdb_media_type = media_type
         if (
+            render_secondary_only
+            and media_type == MediaTypes.ANIME.value
+            and source == Sources.MAL.value
+            and not watch_provider_payload
+        ):
+            try:
+                identity = metadata_resolution.resolve_mal_tmdb_identity(media_id)
+            except (services.ProviderAPIError, TypeError, ValueError) as error:
+                logger.warning(
+                    "Skipping watch providers for MAL anime media_id=%s: "
+                    "mapping resolution failed: %s",
+                    media_id,
+                    exception_summary(error),
+                )
+                identity = None
+            if identity:
+                tmdb_media_id = identity.media_id
+                tmdb_media_type = identity.media_type
+                if detail_item:
+                    metadata_resolution.persist_mal_tmdb_identity(
+                        detail_item,
+                        identity,
+                        persistence_mode="best_effort",
+                        retry_max_retries=detail_db_max_retries,
+                        on_deferred=_mark_detail_persistence_deferred,
+                    )
+        elif (
             render_secondary_only
             and detail_item
             and media_type in (MediaTypes.TV.value, MediaTypes.ANIME.value)
@@ -1696,29 +1734,30 @@ def media_details(
                 retry_max_retries=detail_db_max_retries,
                 on_deferred=_mark_detail_persistence_deferred,
             )
-            if tmdb_media_id:
-                try:
-                    tmdb_metadata = services.get_media_metadata(
-                        media_type,
-                        tmdb_media_id,
-                        Sources.TMDB.value,
-                        language=metadata_resolution.metadata_language_default(
-                            request.user, detail_item
-                        ),
-                    )
-                except services.ProviderAPIError:
-                    # Watch providers are TMDB-only enrichment. A dead TMDB
-                    # mapping must not take down a page the tracking provider
-                    # can render on its own.
-                    logger.warning(
-                        "Skipping watch providers for %s media_id=%s: mapped TMDB "
-                        "ID %s could not be fetched",
-                        source,
-                        media_id,
-                        tmdb_media_id,
-                    )
-                else:
-                    watch_provider_payload = tmdb_metadata.get("providers")
+
+        if tmdb_media_id:
+            try:
+                tmdb_metadata = services.get_media_metadata(
+                    tmdb_media_type,
+                    tmdb_media_id,
+                    Sources.TMDB.value,
+                    language=metadata_resolution.metadata_language_default(
+                        request.user, detail_item
+                    ),
+                )
+            except services.ProviderAPIError:
+                # Watch providers are TMDB-only enrichment. A dead TMDB
+                # mapping must not take down a page the tracking provider
+                # can render on its own.
+                logger.warning(
+                    "Skipping watch providers for %s media_id=%s: mapped TMDB "
+                    "ID %s could not be fetched",
+                    source,
+                    media_id,
+                    tmdb_media_id,
+                )
+            else:
+                watch_provider_payload = tmdb_metadata.get("providers")
 
         if (
             detail_item

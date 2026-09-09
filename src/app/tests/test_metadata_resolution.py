@@ -515,10 +515,10 @@ class MetadataResolutionTests(TestCase):
         )
 
     @patch("app.providers.tmdb.find")
-    @patch("app.services.metadata_resolution.anime_mapping.resolve_provider_series_id")
+    @patch("app.services.metadata_resolution.anime_mapping.resolve_provider_id")
     def test_resolve_provider_media_id_maps_mal_to_tmdb_via_tvdb(
         self,
-        mock_resolve_provider_series_id,
+        mock_resolve_provider_id,
         mock_tmdb_find,
     ):
         """MAL anime should reuse exact TVDB IDs for TMDB resolution."""
@@ -528,7 +528,7 @@ class MetadataResolutionTests(TestCase):
             media_type=MediaTypes.ANIME.value,
             title="Frieren",
         )
-        mock_resolve_provider_series_id.side_effect = lambda _mal_id, provider: (
+        mock_resolve_provider_id.side_effect = lambda _mal_id, provider, **_kwargs: (
             "407407" if provider == Sources.TVDB.value else None
         )
         mock_tmdb_find.return_value = {"tv_results": [{"id": 209867}]}
@@ -554,10 +554,10 @@ class MetadataResolutionTests(TestCase):
         )
 
     @patch("app.providers.tmdb.find")
-    @patch("app.services.metadata_resolution.anime_mapping.resolve_provider_series_id")
+    @patch("app.services.metadata_resolution.anime_mapping.resolve_provider_id")
     def test_resolve_provider_media_id_rejects_ambiguous_tvdb_lookup(
         self,
-        mock_resolve_provider_series_id,
+        mock_resolve_provider_id,
         mock_tmdb_find,
     ):
         """An ambiguous external-ID response must not persist a guessed TMDB ID."""
@@ -567,7 +567,7 @@ class MetadataResolutionTests(TestCase):
             media_type=MediaTypes.ANIME.value,
             title="Frieren",
         )
-        mock_resolve_provider_series_id.side_effect = lambda _mal_id, provider: (
+        mock_resolve_provider_id.side_effect = lambda _mal_id, provider, **_kwargs: (
             "407407" if provider == Sources.TVDB.value else None
         )
         mock_tmdb_find.return_value = {"tv_results": [{"id": 1}, {"id": 2}]}
@@ -587,10 +587,10 @@ class MetadataResolutionTests(TestCase):
         )
 
     @patch("app.providers.tmdb.find")
-    @patch("app.services.metadata_resolution.anime_mapping.resolve_provider_series_id")
+    @patch("app.services.metadata_resolution.anime_mapping.resolve_provider_id")
     def test_resolve_provider_media_id_tolerates_tmdb_lookup_failure(
         self,
-        mock_resolve_provider_series_id,
+        mock_resolve_provider_id,
         mock_tmdb_find,
     ):
         """Provider enrichment must not make a MAL detail page unavailable."""
@@ -600,7 +600,7 @@ class MetadataResolutionTests(TestCase):
             media_type=MediaTypes.ANIME.value,
             title="Frieren",
         )
-        mock_resolve_provider_series_id.side_effect = lambda _mal_id, provider: (
+        mock_resolve_provider_id.side_effect = lambda _mal_id, provider, **_kwargs: (
             "407407" if provider == Sources.TVDB.value else None
         )
         mock_tmdb_find.side_effect = metadata_resolution.services.ProviderAPIError(
@@ -615,6 +615,53 @@ class MetadataResolutionTests(TestCase):
         )
 
         self.assertIsNone(provider_media_id)
+
+    @patch("app.providers.tmdb.find")
+    @patch("app.services.metadata_resolution.anime_mapping.resolve_provider_id")
+    def test_resolve_mal_tmdb_identity_maps_movie_via_imdb(
+        self,
+        mock_resolve_provider_id,
+        mock_tmdb_find,
+    ):
+        mock_resolve_provider_id.side_effect = lambda _mal_id, provider, **_kwargs: (
+            "tt0245429" if provider == Sources.IMDB.value else None
+        )
+        mock_tmdb_find.return_value = {"movie_results": [{"id": 129}]}
+
+        identity = metadata_resolution.resolve_mal_tmdb_identity("199")
+
+        self.assertEqual(
+            identity,
+            metadata_resolution.AnimeTMDBIdentity(
+                media_id="129",
+                media_type=MediaTypes.MOVIE.value,
+                imdb_id="tt0245429",
+            ),
+        )
+        mock_tmdb_find.assert_called_once_with("tt0245429", "imdb_id")
+
+        item = Item.objects.create(
+            media_id="199",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Spirited Away",
+        )
+        metadata_resolution.persist_mal_tmdb_identity(item, identity)
+        self.assertIsNone(
+            metadata_resolution.resolve_provider_media_id(
+                item,
+                Sources.TMDB.value,
+                route_media_type=MediaTypes.ANIME.value,
+            ),
+        )
+        self.assertTrue(
+            ItemProviderLink.objects.filter(
+                item=item,
+                provider=Sources.TMDB.value,
+                provider_media_id="129",
+                provider_media_type=MediaTypes.MOVIE.value,
+            ).exists(),
+        )
 
     @override_settings(TVDB_API_KEY="test-tvdb-key")
     @patch("app.services.metadata_resolution.services.get_media_metadata")

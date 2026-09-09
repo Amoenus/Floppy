@@ -103,13 +103,9 @@ def _populate_providers_for_items(items):
                 item.source == Sources.MAL.value
                 and item.media_type == MediaTypes.ANIME.value
             ):
-                provider_media_id = metadata_resolution.resolve_provider_media_id(
-                    item,
-                    Sources.TMDB.value,
-                    route_media_type=MediaTypes.ANIME.value,
-                )
+                identity = metadata_resolution.resolve_mal_tmdb_identity(item.media_id)
                 provider_source = Sources.TMDB.value
-                if not provider_media_id:
+                if not identity:
                     _record_backfill_pending(
                         item,
                         MetadataBackfillField.WATCH_PROVIDERS,
@@ -117,9 +113,14 @@ def _populate_providers_for_items(items):
                         strategy_version=WATCH_PROVIDERS_BACKFILL_VERSION,
                     )
                     continue
+                metadata_resolution.persist_mal_tmdb_identity(item, identity)
+                provider_media_id = identity.media_id
+                provider_media_type = identity.media_type
+            else:
+                provider_media_type = item.media_type.lower()
 
             metadata = services.get_media_metadata(
-                item.media_type.lower(),
+                provider_media_type,
                 provider_media_id,
                 provider_source,
             )
