@@ -2,7 +2,7 @@
 {# Named, scoped API tokens. The account token above stays for webhooks; these #}
 {# are what a third-party client should be given, because they can be revoked  #}
 {# one at a time and only reach what their permissions name.                   #}
-<div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6">
+<div id="app-tokens" class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6">
   <div class="flex items-center mb-3">
     {% include "app/icons/padlock.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
     <h3 class="text-base font-medium">App tokens</h3>
