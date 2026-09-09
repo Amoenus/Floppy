@@ -476,9 +476,34 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             return ids
 
         results = search_results.get("results") or []
-        year = str(original_date).split("-")[0] if original_date else None
-        matched = unique_title_match(results, search_title, year=year)
-        tmdb_id = matched.get("media_id") if matched else None
+
+        # Only ever accept a result whose title agrees with Plex's. Guessing on
+        # year alone is how unrelated titles get matched (see #510): for an
+        # episode, originallyAvailableAt is the *episode* air date, so it
+        # cheerfully matched whatever show happened to share that year - and
+        # matched a different one per season of the same series.
+        normalized_search_title = self._normalize_series_title(search_title)
+        title_matches = (
+            [
+                result
+                for result in results
+                if self._normalize_series_title(result.get("title"))
+                == normalized_search_title
+            ]
+            if normalized_search_title
+            else []
+        )
+
+        if original_date:
+            year = str(original_date).split("-")[0]
+            for result in title_matches:
+                result_year = result.get("year")
+                if result_year and str(result_year) == year:
+                    tmdb_id = result.get("media_id")
+                    break
+
+        if not tmdb_id and title_matches:
+            tmdb_id = title_matches[0].get("media_id")
 
         if tmdb_id:
             ids["tmdb_id"] = str(tmdb_id)

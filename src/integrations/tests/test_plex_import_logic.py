@@ -1915,6 +1915,14 @@ class TestPlexIdentityAndScorePreservation(TestCase):
         importer._current_server_owned = owned
         return importer
 
+    def test_episode_order_identity_check_is_cached(self):
+        """A normal import must not query active orders once per episode."""
+        importer = self._importer()
+
+        with self.assertNumQueries(1):
+            self.assertFalse(importer._has_active_episode_order("123", "tmdb"))
+            self.assertFalse(importer._has_active_episode_order("456", "tmdb"))
+
     def test_friend_server_owner_history_skipped(self):
         """Treat accountID 1 on a shared server as the friend, never this user."""
         importer = self._configured_importer(owned=False)
@@ -2207,6 +2215,53 @@ class TestPlexIdentityAndScorePreservation(TestCase):
             existing_tv.pk,
         )
         self.assertFalse(Item.objects.filter(media_id="273207").exists())
+    @patch("integrations.imports.plex.plex_api.fetch_metadata")
+    def test_show_level_tmdb_id_is_not_re_resolved_via_tvdb_episode_result(
+        self,
+        mock_fetch_metadata,
+    ):
+        """A show-level TVDB ID must not override Plex's show-level TMDB ID."""
+        mock_fetch_metadata.return_value = {
+            "type": "show",
+            "title": "Grey's Anatomy",
+            "year": 2005,
+            "Guid": [
+                {"id": "imdb://tt0413573"},
+                {"id": "tmdb://1416"},
+                {"id": "tvdb://73762"},
+            ],
+        }
+        importer = self._importer()
+        importer._current_section_uri = "http://plex"
+        importer.processor._find_tv_media_id = mock.Mock(
+            side_effect=[
+                ("1416", None, None),
+                ("2221", None, None),
+            ],
+        )
+        metadata = {
+            "type": "episode",
+            "title": "Get Lucky",
+            "grandparentTitle": "Grey's Anatomy",
+            "grandparentRatingKey": "gp1",
+            "parentIndex": 22,
+            "index": 12,
+            "viewedAt": 1700000000,
+            "ratingKey": "rk-ga-1",
+        }
+        ids = {
+            "tmdb_id": "1416",
+            "tvdb_id": None,
+            "imdb_id": None,
+            "anidb_id": None,
+            "plex_guid": None,
+        }
+
+        recorded = importer._record_episode_entry(metadata, ids)
+
+        self.assertTrue(recorded)
+        self.assertEqual(importer._episode_records[0]["tmdb_id"], "1416")
+        importer.processor._find_tv_media_id.assert_called_once()
 
 
 class TestPlexEpisodeResyncForExistingShow(TestCase):
