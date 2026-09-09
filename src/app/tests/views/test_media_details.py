@@ -2869,6 +2869,14 @@ class MediaDetailsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'data-watch-providers-placement="desktop"',
+        )
+        self.assertContains(
+            response,
+            'data-watch-providers-placement="mobile"',
+        )
         self.assertEqual(
             response.context["watch_providers"][0]["provider_name"], "Crunchyroll"
         )
