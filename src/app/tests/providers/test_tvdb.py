@@ -86,6 +86,45 @@ class TVDBProviderTests(TestCase):
         self.assertIn("details", result["related"]["seasons"][0])
 
     @patch("app.providers.tvdb._request")
+    def test_tv_coerces_non_numeric_episode_count_to_none(self, mock_request):
+        """A non-numeric episodeCount from TVDB should normalize to None, not a string."""
+        mock_request.return_value = {
+            "data": {
+                "id": 81189,
+                "name": {"language": "eng", "name": "Breaking Bad"},
+                "originalName": {"language": "eng", "name": "Breaking Bad"},
+                "overview": "Chemistry teacher becomes kingpin.",
+                "firstAired": "2008-01-20",
+                "lastAired": "2013-09-29",
+                "numberOfEpisodes": 62,
+                "averageRuntime": 47,
+                "status": {"name": "Ended"},
+                "siteRating": "9.5",
+                "siteRatingCount": "1000",
+                "score": 859244,
+                "remoteIds": [],
+                "seasons": [
+                    {
+                        "id": 101,
+                        "number": 0,
+                        "name": "Specials",
+                        "type": {"name": "Aired Order"},
+                        "episodeCount": "TBA",
+                        "episodes": [],
+                    },
+                ],
+                "genres": [{"name": "Drama"}],
+                "characters": [],
+            },
+        }
+
+        result = tvdb.tv("81189")
+
+        season = result["related"]["seasons"][0]
+        self.assertIsNone(season["episode_count"])
+        self.assertIsNone(season["max_progress"])
+
+    @patch("app.providers.tvdb._request")
     def test_tv_with_seasons_reuses_cached_series_extended_payload(
         self,
         mock_request,
@@ -276,6 +315,70 @@ class TVDBProviderTests(TestCase):
             result["season/0"]["episodes"][0]["image"],
             "https://example.com/special1.jpg",
         )
+
+    @patch("app.providers.tvdb.tv")
+    @patch("app.providers.tvdb._request")
+    def test_tv_with_seasons_coerces_non_numeric_episode_number(
+        self,
+        mock_request,
+        mock_tv,
+    ):
+        """A non-numeric episode number from TVDB should normalize to None, not a string."""
+        mock_tv.return_value = {
+            "media_id": "81189",
+            "source": Sources.TVDB.value,
+            "media_type": MediaTypes.TV.value,
+            "title": "Breaking Bad",
+            "original_title": "Breaking Bad",
+            "localized_title": "Breaking Bad",
+            "image": "https://example.com/show.jpg",
+            "synopsis": "Chemistry teacher becomes kingpin.",
+            "details": {"episodes": 62},
+            "related": {"seasons": [{"season_number": 5}]},
+            "external_links": {
+                "TVDB": "https://www.thetvdb.com/dereferrer/series/81189",
+            },
+        }
+        mock_request.side_effect = [
+            {
+                "data": {
+                    "id": 81189,
+                    "name": "Breaking Bad",
+                    "seasons": [
+                        {
+                            "id": 202,
+                            "number": 5,
+                            "name": "Season 5",
+                            "type": {"name": "Aired Order"},
+                        },
+                    ],
+                },
+            },
+            {"data": {}},
+            {
+                "data": {
+                    "id": 202,
+                    "number": 5,
+                    "name": "Season 5",
+                    "type": {"name": "Aired Order"},
+                    "episodes": [
+                        {
+                            "number": "TBA",
+                            "aired": None,
+                            "name": "Unannounced episode",
+                        },
+                    ],
+                },
+            },
+            {"data": {}},
+            {"data": {"episodes": []}, "links": {"next": None}},
+        ]
+
+        result = tvdb.tv_with_seasons("81189", [5])
+
+        episode = result["season/5"]["episodes"][0]
+        self.assertIsNone(episode["episode_number"])
+        self.assertIsNone(result["season/5"]["max_progress"])
 
     @patch("app.providers.tvdb.tv")
     @patch("app.providers.tvdb._request")

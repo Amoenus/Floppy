@@ -1868,3 +1868,19 @@ class NextEpisodeUrlTests(TestCase):
                 },
             ),
         )
+
+
+class SafeCountFilterTests(TestCase):
+    """Test the safe_count template filter used as blocktranslate's count arg."""
+
+    def test_passes_through_int(self):
+        self.assertEqual(app_tags.safe_count(5), 5)
+
+    def test_coerces_numeric_string(self):
+        self.assertEqual(app_tags.safe_count("7"), 7)
+
+    def test_none_defaults_to_zero(self):
+        self.assertEqual(app_tags.safe_count(None), 0)
+
+    def test_non_numeric_string_defaults_to_zero(self):
+        self.assertEqual(app_tags.safe_count("TBA"), 0)
