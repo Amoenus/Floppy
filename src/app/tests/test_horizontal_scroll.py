@@ -17,7 +17,11 @@ class HorizontalScrollContractTests(SimpleTestCase):
         self.assertIn('data-horizontal-drag="true"', row)
         self.assertIn('tabindex="0"', row)
         self.assertIn('role="region"', row)
-        self.assertIn('aria-label="{{ row.title|default:row.title_main }}"', row)
+        self.assertIn('aria-label="{% firstof row.title row.title_main %}"', row)
+        # Filter arguments raise VariableDoesNotExist when the key is missing,
+        # so the label must not resolve row.title_main as a `default` argument:
+        # rows built outside the home screen only carry `title`. See #1139.
+        self.assertNotIn("default:row.title_main", row)
 
     def test_base_loads_the_horizontal_drag_controller_once(self):
         base = self.read("templates/base.html")
