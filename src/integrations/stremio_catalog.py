@@ -92,6 +92,59 @@ DEFAULT_CATALOG_IDS = (
 )
 
 
+def resolve_addon_credential(token):
+    """Return (user, grant) for an add-on URL token, or (None, None).
+
+    Accepts a catalog grant first, then falls back to the legacy account token
+    so existing installs keep working. The fallback is the deprecation path,
+    not the design: an account token in a URL grants full API access.
+    """
+    from integrations.models import CatalogGrant
+    from users.models import User
+
+    if not token:
+        return (None, None)
+
+    grant = CatalogGrant.objects.select_related("user").filter(token=token).first()
+    if grant is not None:
+        if not grant.is_valid():
+            return (None, None)
+        return (grant.user, grant)
+
+    user = User.objects.filter(token=token).first()
+    return (user, None) if user is not None else (None, None)
+
+
+def touch_grant(grant, *, interval_minutes=60):
+    """Record grant use, at most once an hour.
+
+    Stremio polls catalogs continuously; writing a row per request would make
+    this the busiest table in the install for no added information.
+    """
+    from django.utils import timezone
+
+    now = timezone.now()
+    if grant.last_used_at and (now - grant.last_used_at).total_seconds() < (
+        interval_minutes * 60
+    ):
+        return
+    type(grant).objects.filter(pk=grant.pk).update(last_used_at=now)
+    grant.last_used_at = now
+
+
+def manifest_catalogs_for_grant(user, grant, selected=None):
+    """Build manifest catalogs limited to what the grant covers.
+
+    Composed with the install URL's own selection rather than replacing it: the
+    URL says which catalogs this install wants, the grant says which it is
+    allowed, and a catalog needs both.
+    """
+    catalogs = manifest_catalogs(user, selected)
+    if grant is None:
+        return catalogs
+    return [entry for entry in catalogs if grant.allows_catalog(entry["id"])]
+
+
 def parse_catalog_config(config):
     """Return the catalog ids selected by an install URL config segment.
 
@@ -343,3 +396,50 @@ def project_catalog(user, spec, skip):
         items = list_source_items(user, spec)
 
     return build_metas(items, spec, skip)
+
+
+def project_meta(user, stremio_type, imdb_id):
+    """Return the publishable meta for one item the user actually tracks.
+
+    Scoped to the user's own library on purpose. This endpoint is reachable by
+    anyone holding the install URL, so answering for arbitrary ids would turn a
+    catalog grant into an open metadata proxy over the whole item table.
+
+    Provider fields stay as Floppy holds them; nothing is fetched here, so a
+    metadata provider's terms are not extended by publishing this.
+    """
+    media_types = [
+        spec.media_type for spec in CATALOG_SPECS if spec.stremio_type == stremio_type
+    ]
+    if not media_types:
+        return None
+
+    owned_list_ids = CustomList.objects.filter(owner=user).values_list("id", flat=True)
+    membership = (
+        CustomListItem.objects.filter(
+            custom_list_id__in=list(owned_list_ids),
+            item__media_type__in=media_types,
+        )
+        .select_related("item")
+        .order_by("-date_added", "-id")
+    )
+
+    for entry in membership.iterator():
+        item = entry.item
+        if local_imdb_id(item) != imdb_id:
+            continue
+
+        meta = {
+            "id": imdb_id,
+            "type": stremio_type,
+            "name": item.title,
+        }
+        if item.image:
+            meta["poster"] = item.image
+            meta["background"] = item.image
+        if getattr(item, "synopsis", None):
+            meta["description"] = item.synopsis
+        return meta
+
+    return None
+

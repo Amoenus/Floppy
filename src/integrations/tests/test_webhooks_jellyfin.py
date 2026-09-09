@@ -1351,8 +1351,13 @@ class JellyfinWebhookTests(TestCase):
         self.assertEqual(Movie.objects.count(), 1)
 
     @tag("network")
-    def test_mark_unplayed_event_deletes_movie_when_enabled(self):
-        """Test MarkUnplayed events delete the tracked movie once opted in."""
+    def test_mark_unplayed_event_reverts_movie_when_enabled(self):
+        """MarkUnplayed reverts the movie's state and keeps its history.
+
+        This used to delete the tracking row outright, which took every
+        rewatch with it. Marking unwatched and deleting history are separate
+        operations, and only the first is what a media server is asking for.
+        """
         self.user.jellyfin_mark_unplayed_enabled = True
         self.user.save(update_fields=["jellyfin_mark_unplayed_enabled"])
 
@@ -1381,11 +1386,14 @@ class JellyfinWebhookTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(Movie.objects.count(), 0)
+        self.assertEqual(Movie.objects.count(), 1, "the row must survive")
+        movie = Movie.objects.get()
+        self.assertNotEqual(movie.status, Status.COMPLETED.value)
+        self.assertIsNone(movie.end_date)
 
     @tag("network")
-    def test_mark_unplayed_event_deletes_episode_when_enabled(self):
-        """Test MarkUnplayed events delete the tracked episode once opted in."""
+    def test_mark_unplayed_event_retracts_episode_when_enabled(self):
+        """MarkUnplayed retracts the latest episode play, not every play."""
         self.user.jellyfin_mark_unplayed_enabled = True
         self.user.save(update_fields=["jellyfin_mark_unplayed_enabled"])
 
@@ -1424,6 +1432,8 @@ class JellyfinWebhookTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+        # One play existed, so retracting it leaves none -- but the retraction
+        # removed that single play rather than every row matching the title.
         self.assertFalse(
             Episode.objects.filter(
                 item__media_id="1668",
