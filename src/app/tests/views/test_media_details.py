@@ -10,7 +10,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db.utils import OperationalError
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import override
@@ -10479,7 +10479,7 @@ class AnimeNextEpisodeRedirectTests(TestCase):
         self.assertRedirects(response, self.detail_url, fetch_redirect_response=False)
 
 
-class EpisodePickerTemplateContractTests(TestCase):
+class EpisodePickerTemplateContractTests(SimpleTestCase):
     def test_long_title_is_constrained_inside_episode_picker(self):
         template = Path(
             settings.BASE_DIR, "templates", "app", "episode_details.html"
