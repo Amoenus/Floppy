@@ -898,6 +898,10 @@ def create_live_database_snapshot(
             sqlite3.SQLITE_LOCKED,
         }
         if not busy:
+            # Mirrors check_database_integrity's bootstrap-path reporting: a
+            # damaged source database must surface the same recovery-page
+            # report here, not just a log line, or a live snapshot failure
+            # leaves operators with no record of why backups stopped.
             _report_corruption(db_path, str(error))
         return None
     except (OSError, ValueError) as error:

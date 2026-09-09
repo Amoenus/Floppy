@@ -131,6 +131,7 @@ SpecialModels = [
     "ApplicationSettings",
     "InstanceProviderCredential",
     "UserProviderCredential",
+    "ProgressChange",
     "WatchState",
     "WatchStateChange",
     "WatchStateSequence",

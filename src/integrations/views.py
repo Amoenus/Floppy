@@ -106,8 +106,11 @@ from integrations.models import (
     PSNAccount,
     RadarrInstance,
     SonarrInstance,
+    StateConflict,
+    StateConflictStatus,
     StorytellerAccount,
     StremioAccount,
+    SyncBinding,
     XboxAccount,
 )
 from integrations.plex_watchlist import (
@@ -115,6 +118,7 @@ from integrations.plex_watchlist import (
     WATCHLIST_TASK_NAME,
 )
 from integrations.pocketcasts_api import PocketCastsAuthError
+from integrations.state import outbound
 from integrations.webhooks.plex import extract_plex_webhook_usernames
 
 logger = logging.getLogger(__name__)
@@ -4104,7 +4108,7 @@ STREMIO_ADDON_MANIFEST = {
     "description": (
         "Floppy Watchlist catalogs and playback scrobbling for Stremio."
     ),
-    "resources": ["catalog", "subtitles"],
+    "resources": ["catalog", "meta", "subtitles"],
     "types": ["movie", "series"],
     "idPrefixes": ["tt"],
     "catalogs": [],
@@ -4136,9 +4140,8 @@ def stremio_addon_catalog(
     config=None,
 ):
     """Serve a Floppy Watchlist catalog to Stremio."""
-    try:
-        user = users.models.User.objects.get(token=token)
-    except ObjectDoesNotExist:
+    user, grant = stremio_catalog.resolve_addon_credential(token)
+    if user is None:
         logger.warning("Invalid token on Stremio addon catalog request")
         return _stremio_addon_response(
             {"error": "Invalid token"},
@@ -4148,6 +4151,17 @@ def stremio_addon_catalog(
     spec = stremio_catalog.get_catalog_spec(media_type, catalog_id)
     if spec is None:
         return _stremio_addon_response({"metas": []})
+
+    if grant is not None:
+        if not grant.allows_catalog(catalog_id):
+            # Not 403: the add-on protocol has no way to show one, and an empty
+            # catalog is the honest answer for something this install may not see.
+            logger.info(
+                "stremio_catalog grant_scope_excluded catalog_id=%s",
+                catalog_id,
+            )
+            return _stremio_addon_response({"metas": []})
+        stremio_catalog.touch_grant(grant)
 
     try:
         skip = stremio_catalog.parse_skip(extra)
@@ -4190,20 +4204,57 @@ def stremio_addon_configure(request, token, config=None):
 @require_GET
 def stremio_addon_manifest(request, token, config=None):
     """Serve the Stremio addon manifest for a user's install URL."""
-    try:
-        user = users.models.User.objects.get(token=token)
-    except ObjectDoesNotExist:
+    user, grant = stremio_catalog.resolve_addon_credential(token)
+    if user is None:
         logger.warning("Invalid token on Stremio addon manifest request")
         return _stremio_addon_response({"error": "Invalid token"}, status=401)
+
+    if grant is not None:
+        stremio_catalog.touch_grant(grant)
 
     selected = stremio_catalog.parse_catalog_config(config)
     manifest = STREMIO_ADDON_MANIFEST | {
         "logo": request.build_absolute_uri(
             static("favicon/apple-touch-icon.png"),
         ),
-        "catalogs": stremio_catalog.manifest_catalogs(user, selected),
+        # Both gates: the install URL picks the catalogs, the grant bounds them.
+        "catalogs": stremio_catalog.manifest_catalogs_for_grant(
+            user,
+            grant,
+            selected,
+        ),
     }
     return _stremio_addon_response(manifest)
+
+
+@login_not_required
+@csrf_exempt
+@require_GET
+def stremio_addon_meta(request, token, media_type, media_id):
+    """Serve metadata for one item the user tracks."""
+    user, grant = stremio_catalog.resolve_addon_credential(token)
+    if user is None:
+        logger.warning("Invalid token on Stremio addon meta request")
+        return _stremio_addon_response({"error": "Invalid token"}, status=401)
+
+    media_id = unquote(media_id)
+    if (
+        media_type not in {"movie", "series"}
+        or len(media_id) > STREMIO_MAX_MEDIA_ID_LENGTH
+        or not STREMIO_MEDIA_ID_PATTERN.fullmatch(media_id)
+    ):
+        return _stremio_addon_response({"meta": {}}, status=400)
+
+    if grant is not None:
+        stremio_catalog.touch_grant(grant)
+
+    meta = stremio_catalog.project_meta(user, media_type, media_id)
+    if meta is None:
+        # Empty rather than 404: the item is simply not in this library, and
+        # Stremio treats a 404 as the add-on being broken.
+        return _stremio_addon_response({"meta": {}})
+
+    return _stremio_addon_response({"meta": meta})
 
 
 @login_not_required
@@ -4213,11 +4264,15 @@ def stremio_addon_subtitles(request, token, media_type, media_id, config=None):
     """Record a playback-start scrobble from a Stremio subtitles request."""
     from django.core.cache import cache
 
-    try:
-        user = users.models.User.objects.get(token=token)
-    except ObjectDoesNotExist:
+    user, grant = stremio_catalog.resolve_addon_credential(token)
+    if user is None:
         logger.warning("Invalid token on Stremio addon subtitles request")
         return _stremio_addon_response({"error": "Invalid token"}, status=401)
+    if grant is not None and not grant.allow_playback_start:
+        # This route records a playback start, which is a write. A grant minted
+        # without that permission serves catalogs and nothing else.
+        logger.info("stremio_subtitles rejected reason=grant_excludes_playback_start")
+        return _stremio_addon_response({"subtitles": []})
 
     media_id = unquote(media_id)
     if (
@@ -4283,3 +4338,124 @@ def stremio_addon_subtitles(request, token, media_type, media_id, config=None):
             )
 
     return _stremio_addon_response({"subtitles": []})
+
+
+@require_POST
+def sync_direction_settings(request):
+    """Set which way watched state may travel for one connection.
+
+    The chosen direction is intersected with what the provider's adapter can
+    actually do, so picking "Both" on a read-only connection grants the reads
+    and grants no writes — rather than recording an approval that would never
+    be honoured and reporting it as if it had been.
+    """
+    from integrations.state import identity, settings_view
+
+    binding = SyncBinding.objects.filter(
+        pk=request.POST.get("binding_id"),
+        user=request.user,
+    ).first()
+    if binding is None:
+        messages.error(request, "That connection no longer exists.")
+        return redirect("integrations")
+
+    direction = request.POST.get("direction", settings_view.DIRECTION_OFF)
+    if direction not in settings_view.DIRECTION_LABELS:
+        messages.error(request, "Unknown synchronization direction.")
+        return redirect("integrations")
+
+    if direction == settings_view.DIRECTION_OFF:
+        identity.deactivate_binding(binding)
+        messages.success(
+            request,
+            f"Turned off watched-state sync for {binding.get_client_kind_display()}.",
+        )
+        return redirect("integrations")
+
+    adapter = outbound.get_adapter(binding)
+    supported = set(adapter.CAPABILITIES) if adapter is not None else set()
+    capabilities = settings_view.capabilities_for_direction(direction, supported)
+
+    if not capabilities:
+        messages.error(
+            request,
+            (
+                f"{binding.get_client_kind_display()} cannot do that yet. "
+                "Its adapter reports no matching capability."
+            ),
+        )
+        return redirect("integrations")
+
+    identity.activate_binding(
+        binding,
+        capabilities=capabilities,
+        directions=settings_view.directions_for_choice(direction, capabilities),
+    )
+
+    granted = settings_view.capabilities_for_direction(direction, supported)
+    requested = settings_view.capabilities_for_direction(
+        direction,
+        set(settings_view.CAPABILITY_LABELS),
+    )
+    if len(granted) < len(requested):
+        messages.warning(
+            request,
+            (
+                f"Enabled what {binding.get_client_kind_display()} supports. "
+                "The rest is listed as unavailable until its adapter is verified."
+            ),
+        )
+    else:
+        messages.success(
+            request,
+            f"Updated watched-state sync for {binding.get_client_kind_display()}.",
+        )
+    return redirect("integrations")
+
+
+@require_POST
+def sync_kill_switch(request):
+    """Stop or resume one connection without discarding its approvals."""
+    binding = SyncBinding.objects.filter(
+        pk=request.POST.get("binding_id"),
+        user=request.user,
+    ).first()
+    if binding is None:
+        messages.error(request, "That connection no longer exists.")
+        return redirect("integrations")
+
+    binding.kill_switch = request.POST.get("kill_switch") == "on"
+    binding.save(update_fields=["kill_switch", "updated_at"])
+
+    if binding.kill_switch:
+        messages.info(
+            request,
+            f"Paused {binding.get_client_kind_display()}. Your settings are kept.",
+        )
+    else:
+        messages.success(request, f"Resumed {binding.get_client_kind_display()}.")
+    return redirect("integrations")
+
+
+@require_POST
+def sync_resolve_conflict(request):
+    """Settle one held disagreement with the state the user chose."""
+    from integrations.state.apply import resolve_conflict
+
+    conflict = StateConflict.objects.filter(
+        pk=request.POST.get("conflict_id"),
+        user=request.user,
+        status=StateConflictStatus.OPEN.value,
+    ).first()
+    if conflict is None:
+        messages.error(request, "That conflict is no longer open.")
+        return redirect("integrations")
+
+    watched = request.POST.get("watched") == "true"
+    resolve_conflict(conflict, watched=watched)
+    messages.success(
+        request,
+        f"Resolved. {conflict.item} is now marked "
+        f"{'watched' if watched else 'unwatched'}.",
+    )
+    return redirect("integrations")

@@ -81,7 +81,7 @@ class StremioAddonViewTests(TestCase):
         self.assertEqual(response["Access-Control-Allow-Origin"], "*")
         manifest = json.loads(response.content)
         self.assertEqual(manifest["id"], "org.yamtrack.scrobbler")
-        self.assertEqual(manifest["resources"], ["catalog", "subtitles"])
+        self.assertEqual(manifest["resources"], ["catalog", "meta", "subtitles"])
         self.assertEqual(manifest["idPrefixes"], ["tt"])
         self.assertEqual(
             manifest["catalogs"],
