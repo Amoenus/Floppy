@@ -61,16 +61,32 @@ rather than about the plan. Two threads worked this programme in parallel;
 | A6 origin and unresolved | Done (other thread) | `origin_key`, `UnresolvedExternalReference`, `StateConflict` |
 | A7 diagnostics | Done | Connection position, lag, failed deliveries, unresolved counts |
 | A7 dry-run preview | Blocked | `_reconcile_binding` is still a stub; provider enumeration has not landed, so a preview would preview nothing |
-| A8 stabilization | Partial | Targeted, lint, migration hygiene and conformance gates run per change; upgrade replay and the container/Postgres matrix have not been run |
+| A8 stabilization | Partial | Per-change gates plus a full app-label sweep and a SQLite upgrade replay from v26.9.3. **Postgres not run: no local server.** Container matrix not run |
 | Adoption kit | Done | `docs/integrations/nuvio-client-guide.md` + `api.tests.test_nuvio_conformance` |
 | B1 catalog grants | Done | `CatalogGrant`, revocable per-install add-on credential |
 | B2 catalogs and meta | Done | `meta` resource, scoped to the user's own library |
-| B3 metadata projections | Not started | |
-| B4 safe fetch | Not started | |
-| B5 declarative add-ons | Not started | |
-| B6 collections | Not started | |
-| B7 writable list bindings | Not started | |
-| B8-B9 metadata prefs | Not started | |
+| B3 metadata projections | Done | `app/services/metadata_projection.py`, `Item.metadata_refreshed_at` |
+| B4 safe fetch | Done | `integrations/safe_fetch.py`, `docs/architecture/outbound-fetch.md` |
+| B5 declarative add-ons | Done | `RemoteAddon`, `addon_manifest.py`, `addons.py` |
+| B6 collections | Done | `lists/collection_descriptor.py` |
+| B7 writable list bindings | Done | `IntegrationToken.writable_list_ids`, `CanWriteBoundList` |
+| B8-B9 metadata overrides | **Not done — blocked by design** | See below |
+
+### B9 is blocked, and the blocker is structural
+
+Floppy writes a manual metadata edit onto the `Item` row itself. By the time a
+value reaches a reader, "the provider said this" and "a person typed this" are
+the same field, and nothing can tell them apart.
+
+So B9 is not a projection problem, it is a write-path problem: custom metadata
+has to be stored separately from provider metadata before anything can honour
+the rule that a refresh must not overwrite a user's correction. That change
+touches the manual-item metadata path across forms, views and the detail
+builders, and it needs its own plan.
+
+Until it lands, `metadata_projection` reports `authorship: "unseparated"` rather
+than implying a split it cannot make, and **no code should use the projection to
+decide whether a refresh may overwrite a field**.
 
 ### Corrections found while building
 
