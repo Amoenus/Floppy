@@ -422,6 +422,10 @@ EXPECTED_SCHEMA_ERRORS: frozenset[SchemaFinding] = frozenset(
         ),
         ("api.fork_views_podcast.PodcastShowsView", "serializer-unresolved"),
         (
+            "api.fork_views_progress_changes.ProgressChangeFeedView",
+            "serializer-unresolved",
+        ),
+        (
             "api.fork_views_statistics.StatisticsOverviewView",
             "serializer-unresolved",
         ),
