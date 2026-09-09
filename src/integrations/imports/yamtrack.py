@@ -113,6 +113,20 @@ def _normalize_status(value):
     return aliases.get(lowered, raw)
 
 
+def _is_ragged_row(row):
+    """Return whether a CSV row has more columns than the header declares.
+
+    ``csv.DictReader`` doesn't raise when a row has extra values - they're
+    silently dropped under a ``None`` key instead, which otherwise means an
+    unescaped delimiter earlier in the row shifted every field after it into
+    the wrong column. A *short* row is not flagged: several exported CSVs in
+    this codebase (e.g. list-item rows) intentionally omit trailing columns,
+    and ``csv.DictReader`` fills those in with ``None`` by design (via
+    ``restval``), not because anything shifted.
+    """
+    return bool(row.get(None))
+
+
 def _find_item_after_integrity_error(lookup, original_exc):
     """Return the Item that caused a UniqueViolation during update_or_create.
 
@@ -206,6 +220,11 @@ class YamtrackImporter:
 
         for i, row in enumerate(rows, start=1):
             import_progress.report(i, total, "Yamtrack")
+            if _is_ragged_row(row):
+                self.warnings.append(
+                    f"Skipping row {i}: it has more columns than the header.",
+                )
+                continue
             try:
                 self._process_row(row)
             except services.ProviderAPIError as error:
