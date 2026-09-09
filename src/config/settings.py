@@ -665,6 +665,7 @@ LANGUAGE_CODE = "en-us"
 
 LANGUAGES = [
     ("en", "English"),
+    ("de", "Deutsch"),
     ("es", "Español"),
 ]
 

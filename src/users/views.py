@@ -18,6 +18,7 @@ from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_not_required, login_required
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import IntegrityError
 from django.db.models import Count, Q
 from django.http import Http404, HttpResponse, JsonResponse, StreamingHttpResponse
@@ -25,6 +26,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.defaultfilters import pluralize
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.translation import gettext
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from django_celery_beat.models import PeriodicTask
 
@@ -764,7 +766,7 @@ def home_screen(request):
 
     context = {
         "home_screen_sections_json": json.dumps(
-            serialize_settings_sections(request.user)
+            serialize_settings_sections(request.user), cls=DjangoJSONEncoder
         ),
         "show_media_type_headers": request.user.home_show_media_type_headers,
         "home_screen_list_search_url": reverse("home_screen_list_search"),
@@ -911,7 +913,7 @@ def preferences(request):
         for library in request.user.get_active_media_types()
         if library in AUTO_PAUSE_MEDIA_TYPES
     ]
-    library_labels = {"all": "All Libraries"}
+    library_labels = {"all": gettext("All Libraries")}
     for library in active_libraries:
         library_labels[library] = app_tags.media_type_readable_plural(library)
     try:
@@ -926,6 +928,24 @@ def preferences(request):
         metadata_language_choices = [
             ("", f"Server Default ({settings.TMDB_LANG})"),
         ]
+    # Provider results are cached across users; localize UI options only here.
+    region_option_labels = {
+        "UNSET": gettext("Not set"),
+        "": gettext("Disabled"),
+    }
+    watch_provider_regions = [
+        (code, region_option_labels.get(code, label))
+        for code, label in watch_provider_regions
+    ]
+    metadata_language_choices = [
+        (
+            code,
+            gettext("Server Default (%(language)s)") % {"language": settings.TMDB_LANG}
+            if not code
+            else label,
+        )
+        for code, label in metadata_language_choices
+    ]
     tv_metadata_source_choices = [
         (choice.value, choice.label)
         for choice in metadata_resolution.available_metadata_sources(

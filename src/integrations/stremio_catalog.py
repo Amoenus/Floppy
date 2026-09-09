@@ -1,10 +1,12 @@
 """Local catalog projection for the Stremio addon."""
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import parse_qsl, unquote
 
-from app.models import MediaTypes, Sources
+from django.db.models import F, Max
+
+from app.models import TV, MediaTypes, Movie, Sources, Status
 from lists.models import CustomList, CustomListItem
 
 PAGE_SIZE = 100
@@ -18,7 +20,9 @@ class CatalogSpec:
     stremio_type: str
     catalog_id: str
     media_type: str
-    preferred_list_name: str
+    preferred_list_name: str = ""
+    display_name: str = ""
+    statuses: tuple[str, ...] = field(default_factory=tuple)
 
 
 CATALOG_SPECS = (
@@ -34,6 +38,57 @@ CATALOG_SPECS = (
         media_type=MediaTypes.TV.value,
         preferred_list_name="Series",
     ),
+    CatalogSpec(
+        stremio_type="movie",
+        catalog_id="floppy-history-movies",
+        media_type=MediaTypes.MOVIE.value,
+        display_name="History",
+        statuses=(Status.COMPLETED.value,),
+    ),
+    CatalogSpec(
+        stremio_type="series",
+        catalog_id="floppy-history-series",
+        media_type=MediaTypes.TV.value,
+        display_name="History",
+        statuses=(Status.COMPLETED.value,),
+    ),
+    CatalogSpec(
+        stremio_type="movie",
+        catalog_id="floppy-in-progress-movies",
+        media_type=MediaTypes.MOVIE.value,
+        display_name="In Progress",
+        statuses=(Status.IN_PROGRESS.value,),
+    ),
+    CatalogSpec(
+        stremio_type="series",
+        catalog_id="floppy-in-progress-series",
+        media_type=MediaTypes.TV.value,
+        display_name="In Progress",
+        statuses=(Status.IN_PROGRESS.value,),
+    ),
+    CatalogSpec(
+        stremio_type="series",
+        catalog_id="floppy-planning-series",
+        media_type=MediaTypes.TV.value,
+        display_name="Planning",
+        statuses=(Status.PLANNING.value,),
+    ),
+)
+
+TRACKED_MODELS = {
+    MediaTypes.MOVIE.value: Movie,
+    MediaTypes.TV.value: TV,
+}
+
+CONFIG_SEPARATOR = ","
+
+DEFAULT_CATALOG_IDS = (
+    "floppy-watchlist-movies",
+    "floppy-watchlist-series",
+    "floppy-history-movies",
+    "floppy-history-series",
+    "floppy-in-progress-movies",
+    "floppy-in-progress-series",
 )
 
 
@@ -77,12 +132,38 @@ def touch_grant(grant, *, interval_minutes=60):
     grant.last_used_at = now
 
 
-def manifest_catalogs_for_grant(user, grant):
-    """Build manifest catalogs limited to what the grant covers."""
-    catalogs = manifest_catalogs(user)
+def manifest_catalogs_for_grant(user, grant, selected=None):
+    """Build manifest catalogs limited to what the grant covers.
+
+    Composed with the install URL's own selection rather than replacing it: the
+    URL says which catalogs this install wants, the grant says which it is
+    allowed, and a catalog needs both.
+    """
+    catalogs = manifest_catalogs(user, selected)
     if grant is None:
         return catalogs
     return [entry for entry in catalogs if grant.allows_catalog(entry["id"])]
+
+
+def parse_catalog_config(config):
+    """Return the catalog ids selected by an install URL config segment.
+
+    Order is preserved so the install URL also decides the order catalogs
+    are published in. Unknown and duplicate ids are ignored so a stale URL
+    keeps working, and an empty or fully unrecognised segment falls back
+    to the defaults.
+    """
+    if not config:
+        return DEFAULT_CATALOG_IDS
+
+    supported = {spec.catalog_id for spec in CATALOG_SPECS}
+    selected = []
+    for part in unquote(config).split(CONFIG_SEPARATOR):
+        catalog_id = part.strip()
+        if catalog_id in supported and catalog_id not in selected:
+            selected.append(catalog_id)
+
+    return tuple(selected) if selected else DEFAULT_CATALOG_IDS
 
 
 def get_catalog_spec(stremio_type, catalog_id):
@@ -112,19 +193,44 @@ def select_source_list(user, spec):
     return owned_lists.filter(name__iexact="Watchlist").order_by("id").first()
 
 
-def manifest_catalogs(user):
-    """Build manifest catalogs from the same source rules used for projection."""
+def catalog_display_name(user, spec):
+    """Return the manifest name for a catalog, by source rule."""
+    if spec.statuses:
+        return spec.display_name
+
+    source_list = select_source_list(user, spec)
+    if source_list is not None:
+        return source_list.name
+    return spec.preferred_list_name
+
+
+def catalog_options(user):
+    """Return every catalog with its display label, for the configure page."""
+    return [
+        {
+            "id": spec.catalog_id,
+            "label": catalog_display_name(user, spec),
+            "stremio_type": spec.stremio_type,
+        }
+        for spec in CATALOG_SPECS
+    ]
+
+
+def manifest_catalogs(user, selected=None):
+    """Build manifest catalogs in the order the install URL asked for."""
+    enabled = selected if selected is not None else DEFAULT_CATALOG_IDS
+    specs = {spec.catalog_id: spec for spec in CATALOG_SPECS}
+
     catalogs = []
-    for spec in CATALOG_SPECS:
-        source_list = select_source_list(user, spec)
-        source_name = (
-            source_list.name if source_list is not None else spec.preferred_list_name
-        )
+    for catalog_id in enabled:
+        spec = specs.get(catalog_id)
+        if spec is None:
+            continue
         catalogs.append(
             {
                 "type": spec.stremio_type,
                 "id": spec.catalog_id,
-                "name": f"Floppy: {source_name}",
+                "name": f"Floppy: {catalog_display_name(user, spec)}",
                 "extra": [{"name": "skip", "isRequired": False}],
             }
         )
@@ -186,35 +292,23 @@ def catalog_readiness(user):
     """
     readiness = []
     for spec in CATALOG_SPECS:
-        source_list = select_source_list(user, spec)
-        if source_list is None:
-            continue
-
-        memberships = (
-            CustomListItem.objects.filter(
-                custom_list=source_list,
-                item__media_type=spec.media_type,
-            )
-            .select_related("item")
-            .only(
-                "item__source",
-                "item__media_id",
-                "item__provider_external_ids",
-            )
-        )
-
+        if spec.statuses:
+            items = status_source_items(user, spec)
+        else:
+            if select_source_list(user, spec) is None:
+                continue
+            items = list_source_items(user, spec)
         total = 0
         publishable = 0
-        for membership in memberships.iterator():
+        for item in items:
             total += 1
-            if local_imdb_id(membership.item) is not None:
+            if local_imdb_id(item) is not None:
                 publishable += 1
-
         if total:
             readiness.append(
                 {
                     "noun": "movies" if spec.stremio_type == "movie" else "series",
-                    "list_name": source_list.name,
+                    "list_name": catalog_display_name(user, spec),
                     "total": total,
                     "publishable": publishable,
                     "unresolved": total - publishable,
@@ -223,26 +317,12 @@ def catalog_readiness(user):
     return readiness
 
 
-def project_catalog(user, spec, skip):
+def build_metas(items, spec, skip):
     """Return one page of publishable metas and the scanned unresolved count."""
-    source_list = select_source_list(user, spec)
-    if source_list is None:
-        return [], 0
-
-    memberships = (
-        CustomListItem.objects.filter(
-            custom_list=source_list,
-            item__media_type=spec.media_type,
-        )
-        .select_related("item")
-        .order_by("-date_added", "-id")
-    )
-
     metas = []
     publishable_seen = 0
     unresolved_count = 0
-    for membership in memberships.iterator():
-        item = membership.item
+    for item in items:
         imdb_id = local_imdb_id(item)
         if imdb_id is None:
             unresolved_count += 1
@@ -260,6 +340,62 @@ def project_catalog(user, spec, skip):
             break
 
     return metas, unresolved_count
+
+
+def list_source_items(user, spec):
+    """Yield items from the catalog's source list, newest membership first."""
+    source_list = select_source_list(user, spec)
+    if source_list is None:
+        return
+
+    memberships = (
+        CustomListItem.objects.filter(
+            custom_list=source_list,
+            item__media_type=spec.media_type,
+        )
+        .select_related("item")
+        .order_by("-date_added", "-id")
+    )
+    for membership in memberships.iterator():
+        yield membership.item
+
+
+def last_watched_queryset(model, media_type, user, statuses):
+    """Filter tracked rows and expose a sortable last-watched date.
+
+    Movie stores end_date directly. TV derives it through properties over
+    its seasons and episodes, so the stored episode dates are aggregated
+    into an annotation instead.
+    """
+    tracked = model.objects.filter(user=user, status__in=statuses)
+    if media_type == MediaTypes.TV.value:
+        return tracked.annotate(last_watched=Max("seasons__episodes__end_date"))
+    return tracked.annotate(last_watched=F("end_date"))
+
+
+def status_source_items(user, spec):
+    """Yield tracked items matching the catalog's statuses, latest watched first."""
+    model = TRACKED_MODELS.get(spec.media_type)
+    if model is None:
+        return
+
+    tracked = (
+        last_watched_queryset(model, spec.media_type, user, spec.statuses)
+        .select_related("item")
+        .order_by(F("last_watched").desc(nulls_last=True), "-id")
+    )
+    for entry in tracked.iterator():
+        yield entry.item
+
+
+def project_catalog(user, spec, skip):
+    """Return one page of publishable metas and the scanned unresolved count."""
+    if spec.statuses:
+        items = status_source_items(user, spec)
+    else:
+        items = list_source_items(user, spec)
+
+    return build_metas(items, spec, skip)
 
 
 def project_meta(user, stremio_type, imdb_id):
@@ -306,3 +442,4 @@ def project_meta(user, stremio_type, imdb_id):
         return meta
 
     return None
+

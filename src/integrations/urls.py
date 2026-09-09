@@ -243,10 +243,38 @@ urlpatterns = [
         views.stremio_addon_manifest,
         name="stremio_addon_manifest",
     ),
+    path(
+        "stremio-addon/<str:token>/configure",
+        views.stremio_addon_configure,
+        name="stremio_addon_configure",
+    ),
+    path(
+        "stremio-addon/<str:token>/c/<str:config>/configure",
+        views.stremio_addon_configure,
+        name="stremio_addon_configure_configured",
+    ),
+    path(
+        "stremio-addon/<str:token>/c/<str:config>/manifest.json",
+        views.stremio_addon_manifest,
+        name="stremio_addon_manifest_configured",
+    ),
+    re_path(
+        r"^stremio-addon/(?P<token>[^/]+)/c/(?P<config>[^/]+)/catalog/"
+        r"(?P<media_type>movie|series)/"
+        r"(?P<catalog_id>[^/]+?)(?:/(?P<extra>[^/]*))?\.json$",
+        views.stremio_addon_catalog,
+        name="stremio_addon_catalog_configured",
+    ),
+    re_path(
+        r"^stremio-addon/(?P<token>[^/]+)/c/(?P<config>[^/]+)/subtitles/"
+        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)(?:/[^/]*)?\.json$",
+        views.stremio_addon_subtitles,
+        name="stremio_addon_subtitles_configured",
+    ),
     re_path(
         r"^stremio-addon/(?P<token>[^/]+)/catalog/"
         r"(?P<media_type>movie|series)/"
-        r"(?P<catalog_id>[^/]+?)(?:/(?P<extra>[^/]*))?\.json$",
+        r"(?P<catalog_id>[^/]+?)(?:/(?P<extra>.*))?\.json$",
         views.stremio_addon_catalog,
         name="stremio_addon_catalog",
     ),
@@ -259,7 +287,7 @@ urlpatterns = [
     ),
     re_path(
         r"^stremio-addon/(?P<token>[^/]+)/subtitles/"
-        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)(?:/[^/]*)?\.json$",
+        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)(?:/.*)?\.json$",
         views.stremio_addon_subtitles,
         name="stremio_addon_subtitles",
     ),
