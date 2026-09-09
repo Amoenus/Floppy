@@ -280,6 +280,10 @@ INSTALLED_APPS = [
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
+        # Enforced globally on purpose: a per-view opt-in is a control that gets
+        # forgotten. Views that must stay public set ``permission_classes = []``.
+        "api.authentication.HasScope",
+        "api.authentication.CanWriteBoundList",
     ],
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "api.authentication.BearerAuthentication",
@@ -288,7 +292,7 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ("api.renderers.ImageCacheJSONRenderer",),
     # ``format`` is a media-list filter, not a renderer override.
     "URL_FORMAT_OVERRIDE": None,
-    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_SCHEMA_CLASS": "api.scope_schema.ScopedAutoSchema",
 }
 
 SPECTACULAR_SETTINGS = {
@@ -1009,6 +1013,21 @@ BACKUP_DIR = config("BACKUP_DIR", default=str(BASE_DIR / "backups"))
 # exports above, which cannot replace a physically damaged db.sqlite3. Rides
 # the same BACKUP_DIR volume mount installs already have.
 DB_SNAPSHOT_ENABLED = config("DB_SNAPSHOT_ENABLED", default=True, cast=bool)
+# How long an idempotency receipt stays replayable. A client that retries after
+# this window gets a fresh operation, not the prior result, so keep it longer
+# than the longest client backoff. Measure real retry intervals before lowering.
+# How long an applied change stays in the watched-state log. A binding that has
+# not checked in within this window must take a fresh snapshot rather than pin
+# the log open forever. Compaction never crosses a live binding's checkpoint,
+# whatever this says.
+WATCH_STATE_CHANGE_RETENTION_DAYS = config(
+    "WATCH_STATE_CHANGE_RETENTION_DAYS", default=30, cast=int,
+)
+
+INTEGRATION_RECEIPT_RETENTION_DAYS = config(
+    "INTEGRATION_RECEIPT_RETENTION_DAYS", default=14, cast=int,
+)
+
 DB_SNAPSHOT_RETENTION_COUNT = config(
     "DB_SNAPSHOT_RETENTION_COUNT", default=7, cast=int,
 )
