@@ -5,9 +5,11 @@ import { fileURLToPath } from "node:url";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const listeners = new Map();
+const windowListeners = new Map();
 
 globalThis.window = globalThis;
 window.matchMedia = () => ({ matches: false });
+window.addEventListener = (type, handler) => windowListeners.set(type, handler);
 globalThis.document = {
   addEventListener(type, handler, options) {
     listeners.set(`${type}:${options === true ? "capture" : "bubble"}`, handler);
@@ -54,10 +56,20 @@ new Function(source)();
 const pointerDown = listeners.get("pointerdown:bubble");
 const pointerMove = listeners.get("pointermove:bubble");
 const pointerUp = listeners.get("pointerup:bubble");
+const pointerCancel = listeners.get("pointercancel:bubble");
+const dragStart = listeners.get("dragstart:bubble");
 const click = listeners.get("click:capture");
 const keyDown = listeners.get("keydown:bubble");
+const windowBlur = windowListeners.get("blur");
 
-assert.ok(pointerDown && pointerMove && pointerUp && click && keyDown);
+assert.ok(pointerDown && pointerMove && pointerUp && pointerCancel && dragStart && click && keyDown && windowBlur);
+
+let nativeDragPrevented = false;
+dragStart({
+  target: card,
+  preventDefault() { nativeDragPrevented = true; },
+});
+assert.equal(nativeDragPrevented, true);
 
 let ordinaryClickPrevented = false;
 click({
@@ -133,6 +145,14 @@ keyDown({
 });
 assert.equal(surface.lastScroll, null);
 
+keyDown({
+  altKey: true,
+  key: "ArrowLeft",
+  target: surface,
+  preventDefault() { throw new Error("modified arrow shortcut was intercepted"); },
+});
+assert.equal(surface.lastScroll, null);
+
 surface.capturedPointer = null;
 pointerDown({
   button: 0,
@@ -148,5 +168,34 @@ pointerMove({
   preventDefault() {},
 });
 assert.equal(surface.capturedPointer, null);
+
+pointerDown({
+  button: 0,
+  clientX: 200,
+  isPrimary: true,
+  pointerId: 9,
+  pointerType: "mouse",
+  target: card,
+});
+pointerMove({
+  buttons: 0,
+  clientX: 100,
+  pointerId: 9,
+  preventDefault() { throw new Error("buttonless move was treated as a drag"); },
+});
+assert.equal(surface.scrollLeft, 150);
+
+pointerDown({
+  button: 0,
+  clientX: 200,
+  isPrimary: true,
+  pointerId: 10,
+  pointerType: "mouse",
+  target: card,
+});
+pointerMove({ buttons: 1, clientX: 100, pointerId: 10, preventDefault() {} });
+assert.equal(classes.has("is-horizontal-dragging"), true);
+windowBlur({});
+assert.equal(classes.has("is-horizontal-dragging"), false);
 
 console.log("horizontal scroll self-check passed");

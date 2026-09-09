@@ -30,7 +30,7 @@
       clearTimeout(suppressionTimer);
       suppressionTimer = setTimeout(() => {
         suppressedSurface = null;
-      }, 300);
+      }, 0);
     }
   }
 
@@ -57,6 +57,10 @@
 
   function onPointerMove(event) {
     if (!drag || event.pointerId !== drag.pointerId) return;
+    if (event.buttons === 0) {
+      finishDrag(event);
+      return;
+    }
 
     const deltaX = event.clientX - drag.startX;
     if (!drag.moved) {
@@ -76,6 +80,8 @@
   }
 
   function onClick(event) {
+    if (!suppressedSurface) return;
+
     const target = event.target;
     if (!target || typeof target.closest !== "function") return;
     if (target.closest(rowSelector) !== suppressedSurface) return;
@@ -88,6 +94,7 @@
 
   function onKeyDown(event) {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
 
     const target = event.target;
     if (!target || typeof target.closest !== "function") return;
@@ -113,6 +120,13 @@
   document.addEventListener("pointerup", finishDrag);
   document.addEventListener("pointercancel", finishDrag);
   document.addEventListener("lostpointercapture", finishDrag);
+  document.addEventListener("dragstart", event => {
+    const target = event.target;
+    if (target && typeof target.closest === "function" && target.closest(rowSelector)) {
+      event.preventDefault();
+    }
+  });
   document.addEventListener("click", onClick, true);
   document.addEventListener("keydown", onKeyDown);
+  window.addEventListener("blur", finishDrag);
 })();

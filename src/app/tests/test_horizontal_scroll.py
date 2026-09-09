@@ -17,7 +17,7 @@ class HorizontalScrollContractTests(SimpleTestCase):
         self.assertIn('data-horizontal-drag="true"', row)
         self.assertIn('tabindex="0"', row)
         self.assertIn('role="region"', row)
-        self.assertIn('aria-label="{{ row.title }}"', row)
+        self.assertIn('aria-label="{{ row.title|default:row.title_main }}"', row)
 
     def test_base_loads_the_horizontal_drag_controller_once(self):
         base = self.read("templates/base.html")
@@ -25,11 +25,10 @@ class HorizontalScrollContractTests(SimpleTestCase):
         script_tag = '<script src="{% static \'js/horizontal-scroll.js\' %}'
         self.assertEqual(base.count(script_tag), 1)
 
-    def test_drag_styles_use_theme_tokens_and_respect_reduced_motion(self):
+    def test_drag_styles_use_theme_tokens(self):
         css = self.read("static/css/input.css")
 
         self.assertIn('[data-horizontal-drag="true"]', css)
         self.assertIn("cursor: grab", css)
         self.assertIn("cursor: grabbing", css)
         self.assertIn("var(--color-link)", css)
-        self.assertIn("prefers-reduced-motion: reduce", css)

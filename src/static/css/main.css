@@ -7116,11 +7116,6 @@ html.light .theme-toggle-icon-moon {
   outline: 2px solid var(--color-link);
   outline-offset: 2px;
 }
-@media (prefers-reduced-motion: reduce) {
-  [data-horizontal-drag="true"] {
-    scroll-behavior: auto;
-  }
-}
 @property --tw-translate-x {
   syntax: "*";
   inherits: false;
