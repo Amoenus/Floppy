@@ -123,6 +123,67 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.page.locator("#global-search").fill(query)
         self.page.locator('form:has(#global-search) button[type="submit"]').click()
 
+    def test_touch_media_card_reveals_and_executes_wrapped_actions(self):
+        """A coarse-pointer card reveals, dismisses, and accepts an action tap."""
+        touch_context = self.browser.new_context(
+            storage_state=self.context.storage_state(),
+            has_touch=True,
+            is_mobile=True,
+            viewport={"width": 390, "height": 844},
+        )
+        try:
+            touch_page = touch_context.new_page()
+            touch_page.goto(self.live_server_url + "/")
+            touch_page.locator("#global-search").fill("breaking bad")
+            touch_page.locator('form:has(#global-search) button[type="submit"]').click()
+            expect(touch_page.locator("h2", has_text="Search Results")).to_be_visible()
+
+            card = touch_page.locator(
+                '.media-card:has(a.media-card-title[title="Breaking Bad"])',
+            ).first
+            overlay = card.locator(".media-card-overlay")
+            expect(card).to_be_visible()
+            expect(overlay).not_to_be_visible()
+            card.evaluate("element => { element.style.width = '96px'; }")
+
+            card.locator(".media-card-poster").click()
+            expect(overlay).to_be_visible()
+            self.assertIn(
+                "media-card-revealed",
+                card.get_attribute("class") or "",
+            )
+            lists_action = card.get_by_title("Add to custom lists")
+            expect(lists_action).to_be_visible()
+            action_group = overlay.locator("div.relative.z-10.flex").first
+            self.assertEqual(
+                action_group.evaluate("element => getComputedStyle(element).flexWrap"),
+                "wrap",
+            )
+            card_box = card.bounding_box()
+            self.assertIsNotNone(card_box)
+            for action in overlay.locator("[title]").all():
+                action_box = action.bounding_box()
+                self.assertIsNotNone(action_box)
+                self.assertGreaterEqual(action_box["x"], card_box["x"])
+                self.assertLessEqual(
+                    action_box["x"] + action_box["width"],
+                    card_box["x"] + card_box["width"],
+                )
+
+            touch_page.locator("h2", has_text="Search Results").click()
+            self.assertNotIn(
+                "media-card-revealed",
+                card.get_attribute("class") or "",
+            )
+
+            card.locator(".media-card-poster").click()
+            with touch_page.expect_request(
+                lambda request: "lists_modal" in request.url,
+            ):
+                card.get_by_title("Add to custom lists").click()
+        finally:
+            touch_context.close()
+
     def set_date_input(self, locator, value):
         """Set a hidden date-picker input and dispatch its change events."""
         locator.evaluate(

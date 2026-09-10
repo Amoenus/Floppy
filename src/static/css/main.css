@@ -6541,9 +6541,12 @@ html.light .theme-toggle-icon-moon {
   }
 }
 @media (pointer: coarse) {
-  body[data-mobile-grid="compact"] .media-card-overlay.media-card-overlay-revealed {
+  body[data-mobile-grid="compact"] .media-card:not(.media-card-hide-overlay) .media-card-overlay.media-card-overlay-revealed {
     display: flex;
   }
+}
+.media-card.media-card-revealed .media-card-body, .media-card.media-card-revealed .media-status-chip, .media-card.media-card-revealed .media-score-chip, .media-card.media-card-revealed .media-progress-chip, .media-card.media-card-revealed .media-time-left-chip, .media-card.media-card-revealed .media-repeat-chip {
+  z-index: 4;
 }
 @media (pointer: coarse) {
   .search-result-card:hover .media-card-title-row, .search-result-card-square:hover .media-card-title-row {
