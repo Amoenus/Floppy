@@ -7,11 +7,9 @@ import json
 import logging
 import re
 import secrets
-import zipfile
 import zoneinfo
 from datetime import datetime, timedelta
 from http import HTTPStatus
-from io import BytesIO
 from urllib.parse import unquote
 
 import croniter
@@ -119,6 +117,13 @@ from integrations.plex_watchlist import (
 )
 from integrations.pocketcasts_api import PocketCastsAuthError
 from integrations.state import outbound
+from integrations.upload_staging import (
+    build_staged_zip,
+    discard_staged_upload,
+    enqueue_staged_task,
+    stage_uploaded_file,
+    staged_payload_is_zip,
+)
 from integrations.webhooks.plex import extract_plex_webhook_usernames
 
 logger = logging.getLogger(__name__)
@@ -127,16 +132,57 @@ RADARR_RECURRING_TASK_NAME = "Import from Radarr (Recurring)"
 JELLYFIN_PLAYBACK_REPORTING_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 SONARR_RECURRING_TASK_NAME = "Import from Sonarr (Recurring)"
 GPODDER_RECURRING_TASK_NAME = "Import from GPodder (Recurring)"
-# The upload rides in the Celery message, so bound what a single import can send.
-TRAKT_EXPORT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 TRAKT_DEVICE_SESSION_KEY = "trakt_device_auth"
-YAMTRACK_IMPORT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 
-def _read_uploaded_file(file):
-    """Read uploaded file bytes for safe Celery serialization."""
-    file.seek(0)
-    return file.read()
+def _stage_upload_or_message(request, upload, label="upload"):
+    """Stage an upload and report storage failures without returning a 500."""
+    try:
+        return str(stage_uploaded_file(upload))
+    except OSError:
+        logger.exception("Could not stage %s for background import", label)
+        messages.error(
+            request,
+            "The upload could not be queued. Check available disk space and try again.",
+        )
+        return None
+
+
+def _stage_uploads_or_message(request, uploads, label="upload"):
+    """Stage multiple uploads and roll back earlier files on failure."""
+    staged = []
+    for upload in uploads:
+        path = _stage_upload_or_message(request, upload, label)
+        if path is None:
+            for staged_path in staged:
+                discard_staged_upload(staged_path)
+            return None
+        staged.append(path)
+    return staged
+
+
+def _queue_staged_task_or_message(
+    request,
+    task,
+    *args,
+    staged_paths=(),
+    **kwargs,
+):
+    """Queue a staged task and turn broker failures into a user message."""
+    try:
+        return enqueue_staged_task(
+            task,
+            *args,
+            staged_paths=staged_paths,
+            **kwargs,
+        )
+    except Exception:
+        logger.exception("Could not queue background import task")
+        messages.error(
+            request,
+            "The import could not be queued. Check the worker and try again.",
+        )
+        return False
 
 
 def _integration_redirect(request, *, connected_slug=None, next_url=None):
@@ -1287,20 +1333,20 @@ def import_yamtrack(request):
         messages.error(request, "A CSV file is required.")
         return _integration_redirect(request)
 
-    if file.size > YAMTRACK_IMPORT_MAX_UPLOAD_BYTES:
-        messages.error(
-            request,
-            "That backup file is too large to import "
-            f"(limit {YAMTRACK_IMPORT_MAX_UPLOAD_BYTES // (1024 * 1024)} MB).",
-        )
+    staged_file = _stage_upload_or_message(request, file, "Floppy CSV")
+    if staged_file is None:
         return _integration_redirect(request)
 
     mode = request.POST["mode"]
-    tasks.import_yamtrack.delay(
+    if _queue_staged_task_or_message(
+        request,
+        tasks.import_yamtrack,
         user_id=request.user.id,
-        file=_read_uploaded_file(file),
+        file=staged_file,
         mode=mode,
-    )
+        staged_paths=(staged_file,),
+    ) is False:
+        return _integration_redirect(request, connected_slug="yamtrack")
     messages.info(
         request,
         "The task to import media from the CSV file has been queued.",
@@ -1317,25 +1363,26 @@ def import_clz(request):
         messages.error(request, "A CLZ CSV or XML export is required.")
         return _integration_redirect(request)
 
-    if file.size > YAMTRACK_IMPORT_MAX_UPLOAD_BYTES:
-        messages.error(
-            request,
-            "That export file is too large to import "
-            f"(limit {YAMTRACK_IMPORT_MAX_UPLOAD_BYTES // (1024 * 1024)} MB).",
-        )
+    staged_file = _stage_upload_or_message(request, file, "CLZ export")
+    if staged_file is None:
         return _integration_redirect(request)
 
     media_type = (request.POST.get("clz_media_type") or "").strip() or None
     if media_type and media_type not in MediaTypes.values:
+        discard_staged_upload(staged_file)
         messages.error(request, "Unknown media type for the CLZ import.")
         return _integration_redirect(request)
 
-    tasks.import_clz.delay(
+    if _queue_staged_task_or_message(
+        request,
+        tasks.import_clz,
         user_id=request.user.id,
-        file=_read_uploaded_file(file),
+        file=staged_file,
         mode=request.POST.get("mode", "new"),
         media_type=media_type,
-    )
+        staged_paths=(staged_file,),
+    ) is False:
+        return _integration_redirect(request, connected_slug="clz")
     messages.info(
         request,
         "The task to import your CLZ export has been queued.",
@@ -1348,8 +1395,8 @@ def import_trakt_export_file(request):
     """View for importing a Trakt data export: a .zip, loose .json files, or a .csv.
 
     Trakt now exports a .zip of flat .json files, but the older community CSV
-    format is still accepted. Loose .json uploads are repackaged into an
-    in-memory zip so the Celery task always receives a single blob of bytes.
+    format is still accepted. Loose .json uploads are repackaged into a
+    staged zip so the Celery task always receives a single path.
     """
     uploads = request.FILES.getlist("trakt_export") or request.FILES.getlist(
         "trakt_collection_csv",
@@ -1359,24 +1406,26 @@ def import_trakt_export_file(request):
         messages.error(request, "A Trakt export file is required.")
         return _integration_redirect(request)
 
-    total_size = sum(upload.size for upload in uploads)
-    if total_size > TRAKT_EXPORT_MAX_UPLOAD_BYTES:
-        messages.error(
-            request,
-            "That Trakt export is too large to import "
-            f"(limit {TRAKT_EXPORT_MAX_UPLOAD_BYTES // (1024 * 1024)} MB).",
-        )
+    staged_files = _stage_uploads_or_message(request, uploads, "Trakt export")
+    if staged_files is None:
         return _integration_redirect(request)
 
     mode = request.POST["mode"]
-    payloads = [(upload.name, _read_uploaded_file(upload)) for upload in uploads]
+    payloads = [
+        (upload.name, path)
+        for upload, path in zip(uploads, staged_files, strict=True)
+    ]
 
     if len(payloads) == 1 and not _is_trakt_export_payload(*payloads[0]):
-        tasks.import_trakt_collection_csv.delay(
+        if _queue_staged_task_or_message(
+            request,
+            tasks.import_trakt_collection_csv,
             user_id=request.user.id,
             file=payloads[0][1],
             mode=mode,
-        )
+            staged_paths=tuple(staged_files),
+        ) is False:
+            return _integration_redirect(request, connected_slug="trakt")
         messages.info(
             request,
             "The task to import collection data from the Trakt CSV file has been "
@@ -1384,11 +1433,32 @@ def import_trakt_export_file(request):
         )
         return _integration_redirect(request, connected_slug="trakt")
 
-    tasks.import_trakt_export.delay(
+    if len(payloads) == 1 and staged_payload_is_zip(payloads[0][1]):
+        archive_path = payloads[0][1]
+    else:
+        try:
+            archive_path = str(build_staged_zip(payloads))
+        except OSError:
+            for path in staged_files:
+                discard_staged_upload(path)
+            logger.exception("Could not build staged Trakt export archive")
+            messages.error(
+                request,
+                "The Trakt export could not be prepared. Check available disk space and try again.",
+            )
+            return _integration_redirect(request)
+        for path in staged_files:
+            discard_staged_upload(path)
+
+    if _queue_staged_task_or_message(
+        request,
+        tasks.import_trakt_export,
         user_id=request.user.id,
-        file=_build_trakt_export_archive(payloads),
+        file=archive_path,
         mode=mode,
-    )
+        staged_paths=(archive_path,),
+    ) is False:
+        return _integration_redirect(request, connected_slug="trakt")
     messages.info(
         request,
         "The task to import your Trakt data export has been queued.",
@@ -1396,21 +1466,9 @@ def import_trakt_export_file(request):
     return _integration_redirect(request, connected_slug="trakt")
 
 
-def _is_trakt_export_payload(name, content):
+def _is_trakt_export_payload(name, path):
     """Whether an upload is part of the JSON/zip export rather than the legacy CSV."""
-    return name.lower().endswith((".zip", ".json")) or content[:4] == b"PK\x03\x04"
-
-
-def _build_trakt_export_archive(payloads):
-    """Return export bytes: the zip as uploaded, or loose .json files zipped up."""
-    if len(payloads) == 1 and payloads[0][1][:4] == b"PK\x03\x04":
-        return payloads[0][1]
-
-    buffer = BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        for name, content in payloads:
-            archive.writestr(name.rsplit("/", 1)[-1], content)
-    return buffer.getvalue()
+    return name.lower().endswith((".zip", ".json")) or staged_payload_is_zip(path)
 
 
 @require_POST
@@ -1422,12 +1480,20 @@ def import_hltb(request):
         messages.error(request, "HowLongToBeat CSV file is required.")
         return _integration_redirect(request)
 
+    staged_file = _stage_upload_or_message(request, file, "HowLongToBeat CSV")
+    if staged_file is None:
+        return _integration_redirect(request)
+
     mode = request.POST["mode"]
-    tasks.import_hltb.delay(
+    if _queue_staged_task_or_message(
+        request,
+        tasks.import_hltb,
         user_id=request.user.id,
-        file=_read_uploaded_file(file),
+        file=staged_file,
         mode=mode,
-    )
+        staged_paths=(staged_file,),
+    ) is False:
+        return _integration_redirect(request, connected_slug="hltb")
     messages.info(
         request,
         "The task to import media from HowLongToBeat CSV file has been queued.",
@@ -1444,12 +1510,20 @@ def import_grouvee(request):
         messages.error(request, "A Grouvee export file is required.")
         return _integration_redirect(request)
 
+    staged_file = _stage_upload_or_message(request, file, "Grouvee export")
+    if staged_file is None:
+        return _integration_redirect(request)
+
     mode = request.POST["mode"]
-    tasks.import_grouvee.delay(
+    if _queue_staged_task_or_message(
+        request,
+        tasks.import_grouvee,
         user_id=request.user.id,
-        file=_read_uploaded_file(file),
+        file=staged_file,
         mode=mode,
-    )
+        staged_paths=(staged_file,),
+    ) is False:
+        return _integration_redirect(request, connected_slug="grouvee")
     messages.info(
         request,
         "The task to import media from the Grouvee export has been queued.",
@@ -1792,16 +1866,27 @@ def jellyfin_playback_reporting_import(request):
         messages.error(request, "The Playback Reporting export is larger than 50 MB.")
         return redirect("integrations")
 
-    payload = uploaded_file.read()
-    if not payload:
+    if uploaded_file.size == 0:
         messages.error(request, "The Playback Reporting export is empty.")
         return redirect("integrations")
 
-    tasks.import_jellyfin_playback_reporting.delay(
-        payload,
+    staged_file = _stage_upload_or_message(
+        request,
+        uploaded_file,
+        "Jellyfin Playback Reporting export",
+    )
+    if staged_file is None:
+        return redirect("integrations")
+
+    if _queue_staged_task_or_message(
+        request,
+        tasks.import_jellyfin_playback_reporting,
+        staged_file,
         request.user.id,
         "new",
-    )
+        staged_paths=(staged_file,),
+    ) is False:
+        return redirect("integrations")
     messages.info(request, "Jellyfin Playback Reporting import queued.")
     return redirect("integrations")
 
@@ -3700,12 +3785,20 @@ def import_imdb(request):
         messages.error(request, "IMDB CSV file is required.")
         return _integration_redirect(request)
 
+    staged_file = _stage_upload_or_message(request, file, "IMDB CSV")
+    if staged_file is None:
+        return _integration_redirect(request)
+
     mode = request.POST["mode"]
-    tasks.import_imdb.delay(
+    if _queue_staged_task_or_message(
+        request,
+        tasks.import_imdb,
         user_id=request.user.id,
-        file=_read_uploaded_file(file),
+        file=staged_file,
         mode=mode,
-    )
+        staged_paths=(staged_file,),
+    ) is False:
+        return _integration_redirect(request, connected_slug="imdb")
     messages.info(
         request,
         "The task to import media from IMDB CSV file has been queued.",
@@ -3722,12 +3815,20 @@ def import_goodreads(request):
         messages.error(request, "Goodreads CSV file is required.")
         return _integration_redirect(request)
 
+    staged_file = _stage_upload_or_message(request, file, "Goodreads CSV")
+    if staged_file is None:
+        return _integration_redirect(request)
+
     mode = request.POST["mode"]
-    tasks.import_goodreads.delay(
+    if _queue_staged_task_or_message(
+        request,
+        tasks.import_goodreads,
         user_id=request.user.id,
-        file=_read_uploaded_file(file),
+        file=staged_file,
         mode=mode,
-    )
+        staged_paths=(staged_file,),
+    ) is False:
+        return _integration_redirect(request, connected_slug="goodreads")
     messages.info(
         request,
         "The task to import media from Goodreads CSV file has been queued.",
@@ -3750,12 +3851,20 @@ def import_hardcover(request):
         messages.success(request, "Hardcover API key saved.")
 
     if file:
+        staged_file = _stage_upload_or_message(request, file, "Hardcover CSV")
+        if staged_file is None:
+            return _integration_redirect(request, connected_slug="hardcover")
+
         mode = request.POST["mode"]
-        tasks.import_hardcover.delay(
+        if _queue_staged_task_or_message(
+            request,
+            tasks.import_hardcover,
             user_id=request.user.id,
-            file=_read_uploaded_file(file),
+            file=staged_file,
             mode=mode,
-        )
+            staged_paths=(staged_file,),
+        ) is False:
+            return _integration_redirect(request, connected_slug="hardcover")
         messages.info(
             request,
             "The task to import media from Hardcover CSV file has been queued.",
@@ -3773,12 +3882,20 @@ def import_storygraph(request):
         messages.error(request, "StoryGraph CSV file is required.")
         return _integration_redirect(request)
 
+    staged_file = _stage_upload_or_message(request, file, "StoryGraph CSV")
+    if staged_file is None:
+        return _integration_redirect(request)
+
     mode = request.POST["mode"]
-    tasks.import_storygraph.delay(
+    if _queue_staged_task_or_message(
+        request,
+        tasks.import_storygraph,
         user_id=request.user.id,
-        file=_read_uploaded_file(file),
+        file=staged_file,
         mode=mode,
-    )
+        staged_paths=(staged_file,),
+    ) is False:
+        return _integration_redirect(request, connected_slug="storygraph")
     messages.info(
         request,
         "The task to import media from StoryGraph CSV file has been queued.",
@@ -3799,19 +3916,38 @@ def import_tvtime(request):
         )
         return _integration_redirect(request)
 
+    uploads = [upload for upload in (shows_file, movies_file) if upload]
+    staged_files = _stage_uploads_or_message(request, uploads, "TV Time CSV")
+    if staged_files is None:
+        return _integration_redirect(request)
+
     mode = request.POST["mode"]
+    staged_index = 0
     if shows_file:
-        tasks.import_tvtime_shows.delay(
+        staged_file = staged_files[staged_index]
+        staged_index += 1
+        if _queue_staged_task_or_message(
+            request,
+            tasks.import_tvtime_shows,
             user_id=request.user.id,
-            file=_read_uploaded_file(shows_file),
+            file=staged_file,
             mode=mode,
-        )
+            staged_paths=(staged_file,),
+        ) is False:
+            for path in staged_files[staged_index:]:
+                discard_staged_upload(path)
+            return _integration_redirect(request, connected_slug="tvtime")
     if movies_file:
-        tasks.import_tvtime_movies.delay(
+        staged_file = staged_files[staged_index]
+        if _queue_staged_task_or_message(
+            request,
+            tasks.import_tvtime_movies,
             user_id=request.user.id,
-            file=_read_uploaded_file(movies_file),
+            file=staged_file,
             mode=mode,
-        )
+            staged_paths=(staged_file,),
+        ) is False:
+            return _integration_redirect(request, connected_slug="tvtime")
     messages.info(
         request,
         "The task to import media from TV Time CSV file(s) has been queued.",
