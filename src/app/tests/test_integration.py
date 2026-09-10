@@ -582,14 +582,28 @@ class IntegrationTest(StaticLiveServerTestCase):
 
         end_date_input = create_modal.locator('input[name="end_date"]')
         start_date_input = create_modal.locator('input[name="start_date"]')
-        clear_buttons = create_modal.get_by_role("button", name="Clear date")
-        clear_buttons.first.click()
         end_quick_actions = create_modal.get_by_role(
             "group", name="End date quick actions"
         )
         start_quick_actions = create_modal.get_by_role(
             "group", name="Start date quick actions"
         )
+        end_clear = (
+            create_modal.locator(".date-picker-closed-field")
+            .nth(1)
+            .get_by_role("button", name="Clear date")
+        )
+        start_clear = (
+            create_modal.locator(".date-picker-closed-field")
+            .first
+            .get_by_role("button", name="Clear date")
+        )
+        # mediaForm may auto-fill end_date after the create modal opens.
+        expect(end_clear.or_(end_quick_actions)).to_be_visible()
+        if end_clear.is_visible():
+            end_clear.click()
+        if start_clear.is_visible():
+            start_clear.click()
         expect(end_quick_actions).to_be_visible()
         expect(start_quick_actions).to_be_visible()
         expect(create_modal.get_by_text("Select date", exact=True)).to_have_count(0)

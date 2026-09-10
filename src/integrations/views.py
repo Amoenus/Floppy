@@ -37,6 +37,7 @@ from django.views.decorators.http import require_GET, require_POST
 import users
 from app import helpers as app_helpers
 from app import image_cache
+from app.db_retry import run_retryable_db_operation
 from app.log_safety import exception_summary
 from app.models import TV, Item, MediaTypes, Movie, Sources
 from app.providers import credentials, services
@@ -278,6 +279,33 @@ def _periodic_task_filter_for_instance(instance_id):
         | Q(kwargs__contains=f'"instance_id": {instance_id},')
         | Q(kwargs__contains=f'"instance_id": {instance_id}' + "}")
     )
+
+
+def _run_with_lock_retry(operation_name, fn):
+    """Run an integration connect/disconnect DB write with retry on SQLite locks.
+
+    Connect/disconnect views create or delete `django_celery_beat`
+    `PeriodicTask` rows, which fire a signal that writes to a shared
+    singleton row (`PeriodicTasks.changed()`) — a serialization hotspot on
+    SQLite. Wrapping the write in a retried transaction turns a transient
+    lock into a short delay instead of a 503 (see issue #1112).
+
+    `max_retries=1` (2 attempts total) rather than the helper's default of
+    5: each attempt can block for up to `SQLITE_BUSY_TIMEOUT_SECONDS`
+    (30s by default) before raising, and nginx.conf sets no explicit
+    `proxy_read_timeout` (nginx's own default is 60s) — more attempts would
+    risk the proxy returning a gateway timeout to the user while this view
+    keeps retrying underneath it, so the write could still commit after the
+    client has already seen a failure.
+    """
+
+    def _atomic_fn():
+        with transaction.atomic():
+            return fn()
+
+    return run_retryable_db_operation(
+        _atomic_fn, operation_name=operation_name, max_retries=1
+    ).value
 
 
 def _next_arr_sync_start(now=None):
@@ -982,9 +1010,12 @@ def plex_callback(request):
         defaults["server_name"] = sections[0].get("server_name")
         defaults["machine_identifier"] = sections[0].get("machine_identifier")
 
-    PlexAccount.objects.update_or_create(
-        user=request.user,
-        defaults=defaults,
+    _run_with_lock_retry(
+        "connect Plex",
+        lambda: PlexAccount.objects.update_or_create(
+            user=request.user,
+            defaults=defaults,
+        ),
     )
 
     account_username = account.get("username") or "your Plex account"
@@ -1001,9 +1032,13 @@ def plex_callback(request):
 @require_POST
 def plex_disconnect(request):
     """Remove stored Plex credentials."""
-    _disable_plex_watchlist_schedule(request.user)
-    PlexWebhookShare.objects.filter(owner=request.user).delete()
-    PlexAccount.objects.filter(user=request.user).delete()
+
+    def _disconnect():
+        _disable_plex_watchlist_schedule(request.user)
+        PlexWebhookShare.objects.filter(owner=request.user).delete()
+        PlexAccount.objects.filter(user=request.user).delete()
+
+    _run_with_lock_retry("disconnect Plex", _disconnect)
     messages.info(request, "Disconnected Plex.")
     return redirect("import_data")
 
@@ -1585,13 +1620,15 @@ def radarr_connect(request):
         return _integration_redirect(request)
 
     try:
-        with transaction.atomic():
-            instance = RadarrInstance.objects.create(
+        instance = _run_with_lock_retry(
+            "create Radarr instance",
+            lambda: RadarrInstance.objects.create(
                 user=request.user,
                 name=name,
                 base_url=base_url,
                 api_key=helpers.encrypt(api_key),
-            )
+            ),
+        )
     except IntegrityError:
         messages.error(
             request, "You already have a Radarr instance connected at this URL."
@@ -1615,14 +1652,18 @@ def radarr_disconnect(request):
     instance = get_object_or_404(
         RadarrInstance, pk=request.POST.get("instance_id"), user=request.user
     )
-    PeriodicTask.objects.filter(
-        _periodic_task_filter_for_instance(instance.id),
-        task=RADARR_RECURRING_TASK_NAME,
-    ).delete()
-    CollectionSourceState.objects.filter(
-        user=request.user, source="radarr", source_instance_id=instance.id
-    ).delete()
-    instance.delete()
+
+    def _disconnect():
+        PeriodicTask.objects.filter(
+            _periodic_task_filter_for_instance(instance.id),
+            task=RADARR_RECURRING_TASK_NAME,
+        ).delete()
+        CollectionSourceState.objects.filter(
+            user=request.user, source="radarr", source_instance_id=instance.id
+        ).delete()
+        instance.delete()
+
+    _run_with_lock_retry("disconnect Radarr", _disconnect)
     messages.info(request, "Disconnected Radarr.")
     return redirect("import_data")
 
@@ -1657,13 +1698,15 @@ def sonarr_connect(request):
         return _integration_redirect(request)
 
     try:
-        with transaction.atomic():
-            instance = SonarrInstance.objects.create(
+        instance = _run_with_lock_retry(
+            "create Sonarr instance",
+            lambda: SonarrInstance.objects.create(
                 user=request.user,
                 name=name,
                 base_url=base_url,
                 api_key=helpers.encrypt(api_key),
-            )
+            ),
+        )
     except IntegrityError:
         messages.error(
             request, "You already have a Sonarr instance connected at this URL."
@@ -1687,14 +1730,18 @@ def sonarr_disconnect(request):
     instance = get_object_or_404(
         SonarrInstance, pk=request.POST.get("instance_id"), user=request.user
     )
-    PeriodicTask.objects.filter(
-        _periodic_task_filter_for_instance(instance.id),
-        task=SONARR_RECURRING_TASK_NAME,
-    ).delete()
-    CollectionSourceState.objects.filter(
-        user=request.user, source="sonarr", source_instance_id=instance.id
-    ).delete()
-    instance.delete()
+
+    def _disconnect():
+        PeriodicTask.objects.filter(
+            _periodic_task_filter_for_instance(instance.id),
+            task=SONARR_RECURRING_TASK_NAME,
+        ).delete()
+        CollectionSourceState.objects.filter(
+            user=request.user, source="sonarr", source_instance_id=instance.id
+        ).delete()
+        instance.delete()
+
+    _run_with_lock_retry("disconnect Sonarr", _disconnect)
     messages.info(request, "Disconnected Sonarr.")
     return redirect("import_data")
 
@@ -1767,17 +1814,21 @@ def jellyfin_connect(request):
             },
         )
 
-    account, _ = JellyfinAccount.objects.update_or_create(
-        user=request.user,
-        defaults=defaults,
-    )
+    def _connect():
+        account, _ = JellyfinAccount.objects.update_or_create(
+            user=request.user,
+            defaults=defaults,
+        )
+        if account.pull_history_enabled:
+            _ensure_jellyfin_pull_schedule(request.user, account)
+        return account
+
+    _run_with_lock_retry("connect Jellyfin", _connect)
 
     # Seamless by default: queue an automatic history pull right away so a
     # newly connected user sees their watch history without any manual
     # export/upload step, and keep it running on a schedule going forward.
     tasks.pull_jellyfin_history.delay(user_id=request.user.id)
-    if account.pull_history_enabled:
-        _ensure_jellyfin_pull_schedule(request.user, account)
 
     messages.success(
         request,
@@ -1789,9 +1840,13 @@ def jellyfin_connect(request):
 @require_POST
 def jellyfin_disconnect(request):
     """Disconnect the Jellyfin integration."""
-    _disable_jellyfin_push_schedule(request.user)
-    _disable_jellyfin_pull_schedule(request.user)
-    JellyfinAccount.objects.filter(user=request.user).delete()
+
+    def _disconnect():
+        _disable_jellyfin_push_schedule(request.user)
+        _disable_jellyfin_pull_schedule(request.user)
+        JellyfinAccount.objects.filter(user=request.user).delete()
+
+    _run_with_lock_retry("disconnect Jellyfin", _disconnect)
     messages.info(request, "Disconnected Jellyfin.")
     return redirect("integrations")
 
@@ -1969,17 +2024,19 @@ def audiobookshelf_connect(request):
         messages.error(request, f"Failed to connect to Audiobookshelf: {exc}")
         return _integration_redirect(request)
 
-    AudiobookshelfAccount.objects.update_or_create(
-        user=request.user,
-        defaults={
-            "base_url": base_url,
-            "api_token": helpers.encrypt(api_token),
-            "connection_broken": False,
-            "last_error_message": "",
-        },
-    )
+    def _connect():
+        AudiobookshelfAccount.objects.update_or_create(
+            user=request.user,
+            defaults={
+                "base_url": base_url,
+                "api_token": helpers.encrypt(api_token),
+                "connection_broken": False,
+                "last_error_message": "",
+            },
+        )
+        _ensure_audiobookshelf_schedule(request.user)
 
-    _ensure_audiobookshelf_schedule(request.user)
+    _run_with_lock_retry("connect Audiobookshelf", _connect)
     tasks.import_audiobookshelf.delay(user_id=request.user.id, mode="new")
     messages.success(request, "Connected Audiobookshelf. Initial import queued.")
     return _integration_redirect(request, connected_slug="audiobookshelf")
@@ -1990,11 +2047,14 @@ def audiobookshelf_disconnect(request):
     """Disconnect Audiobookshelf integration."""
     from django_celery_beat.models import PeriodicTask
 
-    PeriodicTask.objects.filter(
-        task="Import from Audiobookshelf (Recurring)",
-        kwargs__contains=f'"user_id": {request.user.id}',
-    ).delete()
-    AudiobookshelfAccount.objects.filter(user=request.user).delete()
+    def _disconnect():
+        PeriodicTask.objects.filter(
+            task="Import from Audiobookshelf (Recurring)",
+            kwargs__contains=f'"user_id": {request.user.id}',
+        ).delete()
+        AudiobookshelfAccount.objects.filter(user=request.user).delete()
+
+    _run_with_lock_retry("disconnect Audiobookshelf", _disconnect)
     messages.info(request, "Disconnected Audiobookshelf.")
     return redirect("import_data")
 
@@ -2466,18 +2526,22 @@ def storyteller_poll(request):
 
     access_token = data.get("access_token") if isinstance(data, dict) else None
     if access_token:
-        StorytellerAccount.objects.update_or_create(
-            user=request.user,
-            defaults={
-                "server_url": pending["server_url"],
-                "auth_token": helpers.encrypt(access_token),
-                "connection_broken": False,
-                "last_error_message": "",
-            },
-        )
+
+        def _connect():
+            StorytellerAccount.objects.update_or_create(
+                user=request.user,
+                defaults={
+                    "server_url": pending["server_url"],
+                    "auth_token": helpers.encrypt(access_token),
+                    "connection_broken": False,
+                    "last_error_message": "",
+                },
+            )
+            _ensure_storyteller_schedule(request.user)
+
+        _run_with_lock_retry("connect Storyteller", _connect)
         request.session.pop(STORYTELLER_PENDING_SESSION_KEY, None)
         tasks.import_storyteller.delay(user_id=request.user.id, mode="new")
-        _ensure_storyteller_schedule(request.user)
         return JsonResponse({"status": "connected"})
 
     error = data.get("error") if isinstance(data, dict) else None
@@ -2504,11 +2568,14 @@ def storyteller_disconnect(request):
     """Disconnect the Storyteller integration."""
     from django_celery_beat.models import PeriodicTask
 
-    PeriodicTask.objects.filter(
-        task=STORYTELLER_RECURRING_TASK_NAME,
-        kwargs__contains=f'"user_id": {request.user.id}',
-    ).delete()
-    StorytellerAccount.objects.filter(user=request.user).delete()
+    def _disconnect():
+        PeriodicTask.objects.filter(
+            task=STORYTELLER_RECURRING_TASK_NAME,
+            kwargs__contains=f'"user_id": {request.user.id}',
+        ).delete()
+        StorytellerAccount.objects.filter(user=request.user).delete()
+
+    _run_with_lock_retry("disconnect Storyteller", _disconnect)
     messages.info(request, "Disconnected Storyteller.")
     return redirect("import_data")
 
@@ -2600,16 +2667,19 @@ def koreader_connect(request):
         messages.error(request, f"Could not reach KOReader sync server: {exc}")
         return redirect("import_data")
 
-    KoreaderAccount.objects.update_or_create(
-        user=request.user,
-        defaults={
-            "server_url": server_url,
-            "username": username,
-            "auth_key": helpers.encrypt(auth_key),
-            **options,
-            "connection_broken": False,
-            "last_error_message": "",
-        },
+    _run_with_lock_retry(
+        "connect KOReader",
+        lambda: KoreaderAccount.objects.update_or_create(
+            user=request.user,
+            defaults={
+                "server_url": server_url,
+                "username": username,
+                "auth_key": helpers.encrypt(auth_key),
+                **options,
+                "connection_broken": False,
+                "last_error_message": "",
+            },
+        ),
     )
 
     if frequency == "once":
@@ -2709,12 +2779,15 @@ def koreader_disconnect(request):
     """Disconnect the KOReader integration."""
     from django_celery_beat.models import PeriodicTask
 
-    PeriodicTask.objects.filter(
-        task=KOREADER_IMPORT_TASK_NAME,
-        kwargs__contains=f'"user_id": {request.user.id}',
-    ).delete()
-    KoreaderDocumentLink.objects.filter(user=request.user).delete()
-    KoreaderAccount.objects.filter(user=request.user).delete()
+    def _disconnect():
+        PeriodicTask.objects.filter(
+            task=KOREADER_IMPORT_TASK_NAME,
+            kwargs__contains=f'"user_id": {request.user.id}',
+        ).delete()
+        KoreaderDocumentLink.objects.filter(user=request.user).delete()
+        KoreaderAccount.objects.filter(user=request.user).delete()
+
+    _run_with_lock_retry("disconnect KOReader", _disconnect)
     messages.info(request, "Disconnected KOReader.")
     return redirect("import_data")
 
@@ -2813,17 +2886,20 @@ def stremio_connect(request):
         messages.error(request, f"Failed to connect to Stremio: {error}")
         return _integration_redirect(request)
 
-    StremioAccount.objects.update_or_create(
-        user=request.user,
-        defaults={
-            "auth_key": helpers.encrypt(auth_key),
-            "email": helpers.encrypt(email) if email else "",
-            "connection_broken": False,
-            "last_error_message": "",
-        },
-    )
+    def _connect():
+        StremioAccount.objects.update_or_create(
+            user=request.user,
+            defaults={
+                "auth_key": helpers.encrypt(auth_key),
+                "email": helpers.encrypt(email) if email else "",
+                "connection_broken": False,
+                "last_error_message": "",
+            },
+        )
+        _ensure_stremio_schedule(request.user)
+
+    _run_with_lock_retry("connect Stremio", _connect)
     tasks.import_stremio.delay(user_id=request.user.id, mode="new")
-    _ensure_stremio_schedule(request.user)
     messages.success(
         request,
         "Connected to Stremio. Initial import queued; your library will sync every 2 hours.",
@@ -2836,11 +2912,14 @@ def stremio_disconnect(request):
     """Disconnect the Stremio integration."""
     from django_celery_beat.models import PeriodicTask
 
-    PeriodicTask.objects.filter(
-        task=STREMIO_RECURRING_TASK_NAME,
-        kwargs__contains=f'"user_id": {request.user.id}',
-    ).delete()
-    StremioAccount.objects.filter(user=request.user).delete()
+    def _disconnect():
+        PeriodicTask.objects.filter(
+            task=STREMIO_RECURRING_TASK_NAME,
+            kwargs__contains=f'"user_id": {request.user.id}',
+        ).delete()
+        StremioAccount.objects.filter(user=request.user).delete()
+
+    _run_with_lock_retry("disconnect Stremio", _disconnect)
     messages.info(request, "Disconnected Stremio.")
     return redirect("import_data")
 
@@ -3050,18 +3129,26 @@ def xbox_connect(request):
         )
         return redirect("import_data")
 
-    XboxAccount.objects.update_or_create(
-        user=request.user,
-        defaults={
-            "api_key": helpers.encrypt(api_key),
-            "xuid": xuid,
-            "gamertag": gamertag,
-            "connection_broken": False,
-            "last_error_message": "",
-        },
+    _run_with_lock_retry(
+        "connect Xbox",
+        lambda: XboxAccount.objects.update_or_create(
+            user=request.user,
+            defaults={
+                "api_key": helpers.encrypt(api_key),
+                "xuid": xuid,
+                "gamertag": gamertag,
+                "connection_broken": False,
+                "last_error_message": "",
+            },
+        ),
     )
     messages.success(request, f"Connected to Xbox as {gamertag or xuid}.")
-    _start_console_import(request, "Xbox", tasks.import_xbox, XBOX_RECURRING_TASK_NAME)
+    _run_with_lock_retry(
+        "schedule Xbox import",
+        lambda: _start_console_import(
+            request, "Xbox", tasks.import_xbox, XBOX_RECURRING_TASK_NAME
+        ),
+    )
     return redirect("import_data")
 
 
@@ -3070,11 +3157,14 @@ def xbox_disconnect(request):
     """Disconnect the Xbox integration."""
     from django_celery_beat.models import PeriodicTask
 
-    PeriodicTask.objects.filter(
-        _periodic_task_filter_for_user(request.user.id),
-        task=XBOX_RECURRING_TASK_NAME,
-    ).delete()
-    XboxAccount.objects.filter(user=request.user).delete()
+    def _disconnect():
+        PeriodicTask.objects.filter(
+            _periodic_task_filter_for_user(request.user.id),
+            task=XBOX_RECURRING_TASK_NAME,
+        ).delete()
+        XboxAccount.objects.filter(user=request.user).delete()
+
+    _run_with_lock_retry("disconnect Xbox", _disconnect)
     messages.info(request, "Disconnected Xbox.")
     return redirect("import_data")
 
@@ -3116,21 +3206,29 @@ def psn_connect(request):
         )
         return redirect("import_data")
 
-    PSNAccount.objects.update_or_create(
-        user=request.user,
-        defaults={
-            "npsso": helpers.encrypt(npsso),
-            "account_id": account_id,
-            "online_id": online_id,
-            "connection_broken": False,
-            "last_error_message": "",
-        },
+    _run_with_lock_retry(
+        "connect PSN",
+        lambda: PSNAccount.objects.update_or_create(
+            user=request.user,
+            defaults={
+                "npsso": helpers.encrypt(npsso),
+                "account_id": account_id,
+                "online_id": online_id,
+                "connection_broken": False,
+                "last_error_message": "",
+            },
+        ),
     )
     messages.success(
         request,
         f"Connected to PlayStation Network as {online_id or account_id}.",
     )
-    _start_console_import(request, "PSN", tasks.import_psn, PSN_RECURRING_TASK_NAME)
+    _run_with_lock_retry(
+        "schedule PSN import",
+        lambda: _start_console_import(
+            request, "PSN", tasks.import_psn, PSN_RECURRING_TASK_NAME
+        ),
+    )
     return redirect("import_data")
 
 
@@ -3139,11 +3237,14 @@ def psn_disconnect(request):
     """Disconnect the PlayStation Network integration."""
     from django_celery_beat.models import PeriodicTask
 
-    PeriodicTask.objects.filter(
-        _periodic_task_filter_for_user(request.user.id),
-        task=PSN_RECURRING_TASK_NAME,
-    ).delete()
-    PSNAccount.objects.filter(user=request.user).delete()
+    def _disconnect():
+        PeriodicTask.objects.filter(
+            _periodic_task_filter_for_user(request.user.id),
+            task=PSN_RECURRING_TASK_NAME,
+        ).delete()
+        PSNAccount.objects.filter(user=request.user).delete()
+
+    _run_with_lock_retry("disconnect PSN", _disconnect)
     messages.info(request, "Disconnected PlayStation Network.")
     return redirect("import_data")
 
@@ -3207,28 +3308,31 @@ def pocketcasts_connect(request):
         # Parse expiration from JWT
         token_expires_at = pocketcasts_api.parse_token_expiration(access_token)
 
-        PocketCastsAccount.objects.update_or_create(
-            user=request.user,
-            defaults={
-                "email": encrypted_email,
-                "password": encrypted_password,
-                "access_token": encrypted_access,
-                "refresh_token": encrypted_refresh,
-                "token_expires_at": token_expires_at,
-                "connection_broken": False,  # Clear broken flag on successful connection
-            },
-        )
-
-        # Set up 2-hour recurring import if it doesn't exist
         from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
-        existing_task = PeriodicTask.objects.filter(
-            task="Import from Pocket Casts (Recurring)",
-            kwargs__contains=f'"user_id": {request.user.id}',
-            enabled=True,
-        ).first()
+        def _connect():
+            PocketCastsAccount.objects.update_or_create(
+                user=request.user,
+                defaults={
+                    "email": encrypted_email,
+                    "password": encrypted_password,
+                    "access_token": encrypted_access,
+                    "refresh_token": encrypted_refresh,
+                    "token_expires_at": token_expires_at,
+                    "connection_broken": False,  # Clear broken flag on successful connection
+                },
+            )
 
-        if not existing_task:
+            # Set up 2-hour recurring import if it doesn't exist
+            existing_task = PeriodicTask.objects.filter(
+                task="Import from Pocket Casts (Recurring)",
+                kwargs__contains=f'"user_id": {request.user.id}',
+                enabled=True,
+            ).first()
+
+            if existing_task:
+                return False
+
             # Create crontab for every 2 hours (0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22)
             crontab, _ = CrontabSchedule.objects.get_or_create(
                 minute=0,
@@ -3254,7 +3358,11 @@ def pocketcasts_connect(request):
                 start_time=timezone.now(),
                 enabled=True,
             )
+            return True
 
+        newly_scheduled = _run_with_lock_retry("connect Pocket Casts", _connect)
+
+        if newly_scheduled:
             # Run initial import
             tasks.import_pocketcasts.delay(
                 user_id=request.user.id,
@@ -3279,14 +3387,17 @@ def pocketcasts_disconnect(request):
     """Remove stored Pocket Casts credentials and delete periodic import task."""
     from django_celery_beat.models import PeriodicTask
 
-    # Delete periodic import task if it exists
-    PeriodicTask.objects.filter(
-        task="Import from Pocket Casts (Recurring)",
-        kwargs__contains=f'"user_id": {request.user.id}',
-    ).delete()
+    def _disconnect():
+        # Delete periodic import task if it exists
+        PeriodicTask.objects.filter(
+            task="Import from Pocket Casts (Recurring)",
+            kwargs__contains=f'"user_id": {request.user.id}',
+        ).delete()
 
-    # Clear all credentials (full disconnect)
-    PocketCastsAccount.objects.filter(user=request.user).delete()
+        # Clear all credentials (full disconnect)
+        PocketCastsAccount.objects.filter(user=request.user).delete()
+
+    _run_with_lock_retry("disconnect Pocket Casts", _disconnect)
     messages.info(request, "Disconnected Pocket Casts and removed scheduled imports.")
     return redirect("import_data")
 
@@ -3326,27 +3437,30 @@ def gpodder_connect(request):
     device_id = f"yamtrack-{request.user.id}"
 
     try:
-        GPodderAccount.objects.update_or_create(
-            user=request.user,
-            defaults={
-                "server_url": helpers.encrypt(server_url),
-                "username": helpers.encrypt(username),
-                "password": helpers.encrypt(password),
-                "device_id": device_id,
-                "device_filter": device_filter,
-                "connection_broken": False,
-                "last_error_message": "",
-            },
-        )
-
         from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
-        existing_task = PeriodicTask.objects.filter(
-            task=GPODDER_RECURRING_TASK_NAME,
-            kwargs__contains=f'"user_id": {request.user.id}',
-            enabled=True,
-        ).first()
-        if not existing_task:
+        def _connect():
+            GPodderAccount.objects.update_or_create(
+                user=request.user,
+                defaults={
+                    "server_url": helpers.encrypt(server_url),
+                    "username": helpers.encrypt(username),
+                    "password": helpers.encrypt(password),
+                    "device_id": device_id,
+                    "device_filter": device_filter,
+                    "connection_broken": False,
+                    "last_error_message": "",
+                },
+            )
+
+            existing_task = PeriodicTask.objects.filter(
+                task=GPODDER_RECURRING_TASK_NAME,
+                kwargs__contains=f'"user_id": {request.user.id}',
+                enabled=True,
+            ).first()
+            if existing_task:
+                return False
+
             crontab, _ = CrontabSchedule.objects.get_or_create(
                 minute=0,
                 hour="*/2",
@@ -3363,6 +3477,11 @@ def gpodder_connect(request):
                 start_time=timezone.now(),
                 enabled=True,
             )
+            return True
+
+        newly_scheduled = _run_with_lock_retry("connect GPodder", _connect)
+
+        if newly_scheduled:
             tasks.import_gpodder.delay(user_id=request.user.id, mode="new")
             messages.success(
                 request,
@@ -3383,11 +3502,14 @@ def gpodder_disconnect(request):
     """Remove stored GPodder credentials and scheduled imports."""
     from django_celery_beat.models import PeriodicTask
 
-    PeriodicTask.objects.filter(
-        task=GPODDER_RECURRING_TASK_NAME,
-        kwargs__contains=f'"user_id": {request.user.id}',
-    ).delete()
-    GPodderAccount.objects.filter(user=request.user).delete()
+    def _disconnect():
+        PeriodicTask.objects.filter(
+            task=GPODDER_RECURRING_TASK_NAME,
+            kwargs__contains=f'"user_id": {request.user.id}',
+        ).delete()
+        GPodderAccount.objects.filter(user=request.user).delete()
+
+    _run_with_lock_retry("disconnect GPodder", _disconnect)
     messages.info(request, "Disconnected GPodder and removed scheduled imports.")
     return redirect("import_data")
 
@@ -3436,21 +3558,23 @@ def lastfm_connect(request):
 
         current_timestamp = int(time.time())
 
-        lastfm_account, _ = LastFMAccount.objects.update_or_create(
-            user=request.user,
-            defaults={
-                "lastfm_username": username,
-                "last_fetch_timestamp_uts": current_timestamp,
-                "connection_broken": False,
-                "failure_count": 0,
-                "last_error_code": "",
-                "last_error_message": "",
-                "last_failed_at": None,
-            },
-        )
-        _save_lastfm_history_reset(lastfm_account, current_timestamp - 1)
+        def _connect():
+            lastfm_account, _ = LastFMAccount.objects.update_or_create(
+                user=request.user,
+                defaults={
+                    "lastfm_username": username,
+                    "last_fetch_timestamp_uts": current_timestamp,
+                    "connection_broken": False,
+                    "failure_count": 0,
+                    "last_error_code": "",
+                    "last_error_message": "",
+                    "last_failed_at": None,
+                },
+            )
+            _save_lastfm_history_reset(lastfm_account, current_timestamp - 1)
+            _ensure_lastfm_poll_schedule()
 
-        _ensure_lastfm_poll_schedule()
+        _run_with_lock_retry("connect Last.fm", _connect)
         poll_interval_minutes = getattr(settings, "LASTFM_POLL_INTERVAL_MINUTES", 15)
         tasks.poll_lastfm_for_user.delay(user_id=request.user.id)
         tasks.import_lastfm_history.delay(user_id=request.user.id, reset=False)
@@ -3585,20 +3709,22 @@ def koito_connect(request):
         messages.error(request, f"Failed to connect to Koito: {exc}")
         return _integration_redirect(request)
 
-    KoitoAccount.objects.update_or_create(
-        user=request.user,
-        defaults={
-            "base_url": base_url,
-            "api_key": helpers.encrypt(api_key),
-            "last_fetch_timestamp_uts": int(timezone.now().timestamp()),
-            "connection_broken": False,
-            "failure_count": 0,
-            "last_error_message": "",
-            "last_failed_at": None,
-        },
-    )
+    def _connect():
+        KoitoAccount.objects.update_or_create(
+            user=request.user,
+            defaults={
+                "base_url": base_url,
+                "api_key": helpers.encrypt(api_key),
+                "last_fetch_timestamp_uts": int(timezone.now().timestamp()),
+                "connection_broken": False,
+                "failure_count": 0,
+                "last_error_message": "",
+                "last_failed_at": None,
+            },
+        )
+        _ensure_koito_poll_schedule(request.user)
 
-    _ensure_koito_poll_schedule(request.user)
+    _run_with_lock_retry("connect Koito", _connect)
     tasks.poll_koito_for_user.delay(user_id=request.user.id)
     tasks.import_koito_history.delay(user_id=request.user.id, reset=True)
     messages.success(request, "Connected Koito. Full history import queued.")
@@ -3610,11 +3736,14 @@ def koito_disconnect(request):
     """Disconnect the Koito integration."""
     from django_celery_beat.models import PeriodicTask
 
-    PeriodicTask.objects.filter(
-        task=tasks.KOITO_POLL_TASK_NAME,
-        kwargs__contains=f'"user_id": {request.user.id}',
-    ).delete()
-    KoitoAccount.objects.filter(user=request.user).delete()
+    def _disconnect():
+        PeriodicTask.objects.filter(
+            task=tasks.KOITO_POLL_TASK_NAME,
+            kwargs__contains=f'"user_id": {request.user.id}',
+        ).delete()
+        KoitoAccount.objects.filter(user=request.user).delete()
+
+    _run_with_lock_retry("disconnect Koito", _disconnect)
     messages.info(request, "Disconnected Koito.")
     return redirect("import_data")
 

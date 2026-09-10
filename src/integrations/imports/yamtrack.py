@@ -121,6 +121,20 @@ def _normalize_status(value):
     return aliases.get(lowered, raw)
 
 
+def _is_ragged_row(row):
+    """Return whether a CSV row has more columns than the header declares.
+
+    ``csv.DictReader`` doesn't raise when a row has extra values - they're
+    silently dropped under a ``None`` key instead, which otherwise means an
+    unescaped delimiter earlier in the row shifted every field after it into
+    the wrong column. A *short* row is not flagged: several exported CSVs in
+    this codebase (e.g. list-item rows) intentionally omit trailing columns,
+    and ``csv.DictReader`` fills those in with ``None`` by design (via
+    ``restval``), not because anything shifted.
+    """
+    return bool(row.get(None))
+
+
 def _find_item_after_integrity_error(lookup, original_exc):
     """Return the Item that caused a UniqueViolation during update_or_create.
 
@@ -267,7 +281,7 @@ class YamtrackImporter:
 
     def _process_phase(self, phase, *, media_type=None):
         """Process one dependency-safe row phase from the staged CSV."""
-        for row in self._iter_rows():
+        for row_number, row in enumerate(self._iter_rows(), start=1):
             row_type = (row.get("row_type") or "").strip().lower()
             if phase == "media":
                 row_media_type = (row.get("media_type") or "").strip().lower()
@@ -276,24 +290,37 @@ class YamtrackImporter:
             elif row_type != phase:
                 continue
 
-            self._process_row_with_error_handling(row)
+            self._process_row_with_error_handling(row, row_number)
             if phase == "media":
                 self._flush_media_batch_if_needed()
 
     def _process_unknown_rows(self):
         """Preserve warnings for row types not handled by known phases."""
-        known_types = {"", "media", "list", "list_item", "collection_schema", "collection"}
+        known_types = {
+            "",
+            "media",
+            "list",
+            "list_item",
+            "collection_schema",
+            "collection",
+        }
         known_media_types = set(_MEDIA_IMPORT_TYPES)
-        for row in self._iter_rows():
+        for row_number, row in enumerate(self._iter_rows(), start=1):
             row_type = (row.get("row_type") or "").strip().lower()
             row_media_type = (row.get("media_type") or "").strip().lower()
             if row_type not in known_types or (
                 row_type in ("", "media") and row_media_type not in known_media_types
             ):
-                self._process_row_with_error_handling(row)
+                self._process_row_with_error_handling(row, row_number)
 
-    def _process_row_with_error_handling(self, row):
+    def _process_row_with_error_handling(self, row, row_number):
         """Process a row and retain the importer's existing error messages."""
+        if _is_ragged_row(row):
+            self.warnings.append(
+                f"Skipping row {row_number}: it has more columns than the header.",
+            )
+            return
+
         self.processed_media_rows += 1
         import_progress.report(
             self.processed_media_rows,
@@ -314,7 +341,10 @@ class YamtrackImporter:
 
     def _flush_media_batch_if_needed(self):
         """Persist the current media buffers once they reach the batch size."""
-        if sum(len(media_list) for media_list in self.bulk_media.values()) >= YAMTRACK_IMPORT_BATCH_SIZE:
+        if (
+            sum(len(media_list) for media_list in self.bulk_media.values())
+            >= YAMTRACK_IMPORT_BATCH_SIZE
+        ):
             self._flush_media_batch()
 
     def _flush_media_batch(self):
@@ -479,9 +509,14 @@ class YamtrackImporter:
             row["media_id"],
             self.mode,
         )
-        if not should_process and self.mode == "new" and media_type in (
-            MediaTypes.SEASON.value,
-            MediaTypes.EPISODE.value,
+        if (
+            not should_process
+            and self.mode == "new"
+            and media_type
+            in (
+                MediaTypes.SEASON.value,
+                MediaTypes.EPISODE.value,
+            )
         ):
             # The parent show already existing shouldn't block a season/episode
             # it doesn't have yet - check this row's own granularity instead.

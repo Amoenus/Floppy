@@ -7106,6 +7106,19 @@ html.light .theme-toggle-icon-moon {
   font-size: 15px;
   margin-top: 3px;
 }
+@media (pointer: fine) {
+  [data-horizontal-drag="true"] {
+    cursor: grab;
+  }
+  [data-horizontal-drag="true"].is-horizontal-dragging, [data-horizontal-drag="true"].is-horizontal-dragging * {
+    cursor: grabbing;
+    user-select: none;
+  }
+}
+[data-horizontal-drag="true"]:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
 @property --tw-translate-x {
   syntax: "*";
   inherits: false;

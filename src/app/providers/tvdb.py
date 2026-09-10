@@ -911,7 +911,7 @@ def _season_related_entry(
     """Return a related-season card entry."""
     season_no = _season_number(season_data)
     episode_rows = _coerce_list(season_data.get("episodes"))
-    episode_count = season_data.get("episodeCount")
+    episode_count = _coerce_int(season_data.get("episodeCount"))
     if episode_count is None and episode_rows:
         episode_count = len(episode_rows)
     first_air = None
@@ -1209,7 +1209,9 @@ def _normalize_episode_rows(
         )
         normalized.append(
             {
-                "episode_number": episode.get("number") or episode.get("episodeNumber"),
+                "episode_number": _coerce_int(
+                    episode.get("number") or episode.get("episodeNumber"),
+                ),
                 "air_date": air_date,
                 "still_path": None,
                 "image": _get_image(episode, language),
