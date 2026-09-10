@@ -3,13 +3,42 @@
 from django.db import migrations, models
 
 
+def _column_exists(schema_editor, table_name, column_name):
+    """Return True when a database column already exists."""
+    connection = schema_editor.connection
+    if connection.vendor == "postgresql":
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_schema = current_schema() "
+                "AND table_name = %s AND column_name = %s",
+                [table_name, column_name],
+            )
+            return cursor.fetchone() is not None
+    with connection.cursor() as cursor:
+        description = connection.introspection.get_table_description(cursor, table_name)
+        columns = {getattr(column, "name", column[0]) for column in description}
+        return column_name in columns
+
+
+class AddFieldIfNotExists(migrations.AddField):
+    """Add a field only when the backing column doesn't already exist."""
+
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        to_model = to_state.apps.get_model(app_label, self.model_name)
+        field = to_model._meta.get_field(self.name)
+        if _column_exists(schema_editor, to_model._meta.db_table, field.column):
+            return
+        super().database_forwards(app_label, schema_editor, from_state, to_state)
+
+
 class Migration(migrations.Migration):
     dependencies = [
         ("users", "0131_alter_user_ui_language"),
     ]
 
     operations = [
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="custom_logo_data",
             field=models.TextField(
@@ -18,7 +47,7 @@ class Migration(migrations.Migration):
                 help_text="Normalized custom navigation logo",
             ),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="custom_theme",
             field=models.JSONField(
@@ -27,7 +56,7 @@ class Migration(migrations.Migration):
                 help_text="Validated custom application color palette",
             ),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="detail_page_layouts",
             field=models.JSONField(
@@ -36,7 +65,7 @@ class Migration(migrations.Migration):
                 help_text="Visible and ordered sections for each detail page family",
             ),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="logo_text",
             field=models.CharField(
@@ -45,7 +74,7 @@ class Migration(migrations.Migration):
                 max_length=32,
             ),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="logo_text_font",
             field=models.CharField(
@@ -60,7 +89,7 @@ class Migration(migrations.Migration):
                 max_length=12,
             ),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="logo_text_size",
             field=models.PositiveSmallIntegerField(
@@ -69,7 +98,7 @@ class Migration(migrations.Migration):
                 help_text="Font size used by the navigation wordmark",
             ),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="logo_text_spacing",
             field=models.SmallIntegerField(
@@ -78,7 +107,7 @@ class Migration(migrations.Migration):
                 help_text="Letter spacing used by the navigation wordmark",
             ),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="logo_text_weight",
             field=models.PositiveSmallIntegerField(
