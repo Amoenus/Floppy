@@ -181,6 +181,7 @@ class PlexWatchlistSyncItem(models.Model):
     )
     source_username = models.CharField(max_length=255, blank=True, default="")
     source_account_id = models.CharField(max_length=255, blank=True, default="")
+    source_server_id = models.CharField(max_length=255, blank=True, default="")
     plex_rating_key = models.CharField(max_length=50, blank=True, default="")
     plex_guid = models.CharField(max_length=255, blank=True, default="")
     tmdb_id = models.CharField(max_length=32, blank=True, default="")
@@ -199,13 +200,14 @@ class PlexWatchlistSyncItem(models.Model):
         verbose_name_plural = "Plex watchlist sync items"
         constraints = [
             models.UniqueConstraint(
-                fields=["user", "item", "source_username"],
-                name="integrations_plexwatchlistsyncitem_unique_user_item_source",
+                fields=["user", "item", "source_username", "source_server_id"],
+                name="integrations_plexwatchlistsyncitem_unique_user_item_server",
             ),
         ]
         indexes = [
             models.Index(fields=["user", "is_active"]),
             models.Index(fields=["user", "source_username"]),
+            models.Index(fields=["user", "source_server_id"]),
         ]
 
     def __str__(self):
@@ -1822,6 +1824,97 @@ class UnresolvedReferenceReason(models.TextChoices):
     UNSUPPORTED_NAMESPACE = "unsupported_namespace", "Identifier type unsupported"
     AMBIGUOUS = "ambiguous", "More than one item matched"
     UNSUPPORTED_MEDIA_TYPE = "unsupported_media_type", "Media type unsupported"
+
+
+class ExternalReferenceReviewStatus(models.TextChoices):
+    """Resolution state for a user-owned integration identity."""
+
+    RESOLVED = "resolved", "Resolved automatically"
+    NEEDS_REVIEW = "needs_review", "Needs review"
+    CORRECTED = "corrected", "Corrected"
+    IGNORED = "ignored", "Ignored"
+
+
+class ExternalReference(models.Model):
+    """A user-scoped, stable source identity and its Floppy match.
+
+    The source identity is intentionally independent of the destination Item.
+    In particular, Plex rating keys are scoped by server/account and Trakt ids
+    are scoped by source account, so a bad destination match can be corrected
+    without losing the key used by the next import.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="external_references",
+    )
+    integration = models.CharField(max_length=32)
+    source_account = models.CharField(max_length=255, blank=True, default="")
+    external_namespace = models.CharField(max_length=32)
+    external_identity = models.CharField(max_length=500)
+    media_type = models.CharField(
+        max_length=10,
+        choices=(
+            ("tv", "TV Show"),
+            ("movie", "Movie"),
+            ("episode", "Episode"),
+        ),
+    )
+    matched_item = models.ForeignKey(
+        "app.Item",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="matched_external_references",
+    )
+    corrected_item = models.ForeignKey(
+        "app.Item",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="corrected_external_references",
+    )
+    review_status = models.CharField(
+        max_length=20,
+        choices=ExternalReferenceReviewStatus.choices,
+        default=ExternalReferenceReviewStatus.RESOLVED.value,
+    )
+    # Source episode coordinate -> destination coordinate.  Kept on the
+    # show reference so one correction applies to every future episode event.
+    episode_mapping = models.JSONField(default=dict, blank=True)
+    # Only allow-listed, non-secret display/context fields are written here.
+    metadata = models.JSONField(default=dict, blank=True, encoder=DjangoJSONEncoder)
+    decision_note = models.CharField(max_length=500, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "user",
+                    "integration",
+                    "source_account",
+                    "external_namespace",
+                    "external_identity",
+                    "media_type",
+                ],
+                name="unique_user_external_reference",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "review_status"]),
+            models.Index(fields=["user", "integration", "source_account"]),
+            models.Index(fields=["matched_item", "media_type"]),
+        ]
+
+    def __str__(self):
+        """Return a safe readable identity."""
+        return f"ExternalReference({self.integration}:{self.external_identity})"
 
 
 class UnresolvedExternalReference(models.Model):

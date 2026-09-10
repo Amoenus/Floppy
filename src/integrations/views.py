@@ -16,7 +16,7 @@ import croniter
 import requests
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth.decorators import login_not_required
+from django.contrib.auth.decorators import login_not_required, login_required
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError, transaction
 from django.db.models import Q
@@ -38,8 +38,8 @@ import users
 from app import helpers as app_helpers
 from app import image_cache
 from app.log_safety import exception_summary
-from app.models import MediaTypes
-from app.providers import credentials
+from app.models import TV, Item, MediaTypes, Movie, Sources
+from app.providers import credentials, services
 from integrations import (
     audiobookshelf_cover as abs_cover_proxy,
 )
@@ -88,9 +88,18 @@ from integrations.lastfm_api import (
     LastFMClientError,
     LastFMRateLimitError,
 )
+from integrations.match_corrections import (
+    InvalidMatchCorrectionError,
+    MissingEpisodeMappingError,
+    StaleCorrectionPreviewError,
+    apply_match_correction,
+    preview_match_correction,
+)
 from integrations.models import (
     AudiobookshelfAccount,
     CollectionSourceState,
+    ExternalReference,
+    ExternalReferenceReviewStatus,
     GPodderAccount,
     JellyfinAccount,
     KoitoAccount,
@@ -654,8 +663,9 @@ def trakt_oauth(request):
     }
     state_token = secrets.token_urlsafe(32)
     request.session[state_token] = state
+    client_id = credentials.get("trakt", "client_id")
     return redirect(
-        f"{url}?client_id={credentials.get("trakt", "client_id")}&redirect_uri={redirect_uri}&response_type=code&state={state_token}",
+        f"{url}?client_id={client_id}&redirect_uri={redirect_uri}&response_type=code&state={state_token}",
     )
 
 
@@ -4594,4 +4604,208 @@ def sync_resolve_conflict(request):
         f"Resolved. {conflict.item} is now marked "
         f"{'watched' if watched else 'unwatched'}.",
     )
+    return redirect("integrations")
+
+
+def _match_source_for_user(request, item_id):
+    """Return a movie/TV source item that this user actually tracks."""
+    item = get_object_or_404(
+        Item,
+        pk=item_id,
+        media_type__in=(MediaTypes.MOVIE.value, MediaTypes.TV.value),
+    )
+    tracked = (
+        Movie.objects.filter(user=request.user, item=item).exists()
+        if item.media_type == MediaTypes.MOVIE.value
+        else TV.objects.filter(user=request.user, item=item).exists()
+    )
+    if not tracked:
+        from django.http import Http404
+
+        raise Http404
+    return item
+
+
+def _match_destination_from_result(result, media_type):
+    """Materialize a same-type TMDB search result for preview/apply."""
+    media_id = result.get("media_id") or result.get("id")
+    title = result.get("title") or result.get("name")
+    if not media_id or not title:
+        return None
+    defaults = {
+        "title": title,
+        "original_title": result.get("original_title") or result.get("original_name"),
+        "localized_title": result.get("localized_title"),
+        "image": result.get("image") or result.get("poster_path") or "",
+    }
+    destination, _created = Item.objects.get_or_create(
+        media_id=str(media_id),
+        source=Sources.TMDB.value,
+        media_type=media_type,
+        defaults=defaults,
+    )
+    return destination
+
+
+def _match_reference_ids(user, source_item):
+    """Return only this user's source references affected by the correction."""
+    item_ids = [source_item.pk]
+    if source_item.media_type == MediaTypes.TV.value:
+        item_ids.extend(
+            Item.objects.filter(
+                media_id=source_item.media_id,
+                source=source_item.source,
+                media_type=MediaTypes.EPISODE.value,
+            ).values_list("pk", flat=True),
+        )
+    return list(
+        ExternalReference.objects.filter(
+            user=user,
+        ).filter(
+            Q(matched_item_id__in=item_ids) | Q(corrected_item_id__in=item_ids),
+        ).values_list("id", flat=True),
+    )
+
+
+@login_required
+def match_fix(request, item_id):
+    """Search, preview, and apply a same-type match correction."""
+    source_item = _match_source_for_user(request, item_id)
+    query = request.GET.get("q", "").strip()
+    candidates = []
+    if query:
+        try:
+            candidates = services.search(
+                source_item.media_type,
+                query,
+                1,
+                source=Sources.TMDB.value,
+                user=request.user,
+            ).get("results", [])
+        except services.ProviderAPIError as error:
+            messages.error(request, f"Could not search TMDB: {error}")
+
+    preview = None
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "preview":
+            destination = Item.objects.filter(
+                pk=request.POST.get("destination_item_id"),
+                source=Sources.TMDB.value,
+                media_type=source_item.media_type,
+            ).first()
+            if destination is None:
+                messages.error(request, "Choose a valid same-type destination.")
+            else:
+                try:
+                    mapping = json.loads(request.POST.get("mapping_json") or "{}")
+                    preview = preview_match_correction(
+                        request.user,
+                        source_item,
+                        destination,
+                        episode_mapping=mapping or None,
+                    )
+                    request.session["match_correction_preview"] = {
+                        "source_item_id": source_item.pk,
+                        "destination_item_id": destination.pk,
+                        "token": preview["token"],
+                        "reference_ids": _match_reference_ids(
+                            request.user,
+                            source_item,
+                        ),
+                    }
+                except (ValueError, json.JSONDecodeError) as error:
+                    messages.error(request, str(error))
+        elif action == "apply":
+            stored = request.session.get("match_correction_preview") or {}
+            if stored.get("source_item_id") != source_item.pk:
+                messages.error(request, "Refresh the correction preview before applying.")
+            else:
+                try:
+                    mapping = json.loads(request.POST.get("mapping_json") or "{}")
+                    decisions = {
+                        key.removeprefix("decision_"): value
+                        for key, value in request.POST.items()
+                        if key.startswith("decision_") and value
+                    }
+                    destination_item = apply_match_correction(
+                        request.user,
+                        stored["source_item_id"],
+                        stored["destination_item_id"],
+                        stored["token"],
+                        episode_mapping=mapping or None,
+                        decisions=decisions,
+                        reference_ids=stored.get("reference_ids", []),
+                        note=request.POST.get("note", ""),
+                    )
+                except (
+                    InvalidMatchCorrectionError,
+                    MissingEpisodeMappingError,
+                    StaleCorrectionPreviewError,
+                ) as error:
+                    messages.error(request, str(error))
+                else:
+                    request.session.pop("match_correction_preview", None)
+                    messages.success(
+                        request,
+                        "Match corrected and future imports mapped.",
+                    )
+                    return redirect(
+                        "media_details",
+                        source=Sources.TMDB.value,
+                        media_type=source_item.media_type,
+                        media_id=destination_item.media_id,
+                        title=destination_item.title,
+                    )
+
+    context = {
+        "source_item": source_item,
+        "candidates": [
+            {
+                "result": result,
+                "item": _match_destination_from_result(result, source_item.media_type),
+            }
+            for result in candidates
+        ],
+        "preview": preview,
+        "preview_mapping_json": (
+            json.dumps(preview["episode_mapping"], sort_keys=True)
+            if preview
+            else ""
+        ),
+        "reference_count": len(_match_reference_ids(request.user, source_item)),
+    }
+    return render(request, "integrations/match_fix.html", context)
+
+
+@login_required
+@require_POST
+def match_reference_status(request, reference_id, status):
+    """Ignore or restore one user-scoped external reference."""
+    reference = get_object_or_404(
+        ExternalReference,
+        pk=reference_id,
+        user=request.user,
+    )
+    if status == ExternalReferenceReviewStatus.IGNORED.value:
+        reference.review_status = status
+        reference.save(update_fields=["review_status", "updated_at"])
+        messages.success(request, "Future imports will ignore this source identity.")
+    elif status == "remove":
+        reference.review_status = ExternalReferenceReviewStatus.RESOLVED.value
+        reference.corrected_item = None
+        reference.episode_mapping = {}
+        reference.decision_note = ""
+        reference.save(
+            update_fields=[
+                "review_status",
+                "corrected_item",
+                "episode_mapping",
+                "decision_note",
+                "updated_at",
+            ],
+        )
+        messages.success(request, "The saved correction was removed.")
+    else:
+        messages.error(request, "Unknown match decision.")
     return redirect("integrations")

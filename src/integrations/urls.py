@@ -3,6 +3,16 @@ from django.urls import path, re_path
 from integrations import views
 
 urlpatterns = [
+    path(
+        "matches/<int:item_id>/",
+        views.match_fix,
+        name="match_fix",
+    ),
+    path(
+        "matches/<int:reference_id>/<str:status>/",
+        views.match_reference_status,
+        name="match_reference_status",
+    ),
     path("import/trakt-oauth", views.trakt_oauth, name="trakt_oauth"),
     path(
         "import/trakt/private",

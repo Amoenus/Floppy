@@ -54,6 +54,8 @@ from integrations.imports import trakt as trakt_imports
 from integrations.models import (
     DEFAULT_INTEGRATION_SCOPES,
     CatalogGrant,
+    ExternalReference,
+    ExternalReferenceReviewStatus,
     ImportRun,
     IntegrationToken,
     LastFMAccount,
@@ -1411,6 +1413,25 @@ def integrations(request):
         .select_related("owner")
         .order_by("owner__username")
     )
+    match_review_references = list(
+        ExternalReference.objects.filter(
+            user=user,
+            review_status=ExternalReferenceReviewStatus.NEEDS_REVIEW.value,
+        )
+        .select_related("matched_item", "corrected_item")
+        .order_by("-updated_at")[:100]
+    )
+    match_saved_references = list(
+        ExternalReference.objects.filter(
+            user=user,
+            review_status__in=(
+                ExternalReferenceReviewStatus.CORRECTED.value,
+                ExternalReferenceReviewStatus.IGNORED.value,
+            ),
+        )
+        .select_related("matched_item", "corrected_item")
+        .order_by("-updated_at")[:100]
+    )
     all_plex_library_values = [option["value"] for option in plex_library_options]
     for share in plex_webhook_shares:
         share.selected_libraries_json = json.dumps(
@@ -1439,6 +1460,8 @@ def integrations(request):
             ),
             "plex_webhook_shares": plex_webhook_shares,
             "received_plex_webhook_shares": received_plex_webhook_shares,
+            "match_review_references": match_review_references,
+            "match_saved_references": match_saved_references,
             "plex_share_recipients": plex_share_recipients,
             "plex_connected": bool(plex_account and plex_account.plex_token),
             "jellyfin_account": jellyfin_account,
