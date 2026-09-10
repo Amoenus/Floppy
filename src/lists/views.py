@@ -1,3 +1,4 @@
+import json
 import logging
 
 from django.contrib import messages
@@ -31,6 +32,7 @@ from lists.views_helpers import (
     _adapt_list_items_for_table,
     _attach_media_with_aggregation,
     _build_collection_platforms_by_item_id,
+    _build_list_count_trigger,
     _build_list_url_template,
     _build_media_type_breakdown,
     _date_sort_value,
@@ -537,9 +539,17 @@ def list_detail(request, list_reference):
     # HTMX partial response
     if layout == "table":
         if is_pagination:
-            return render(request, "app/components/table_items.html", context)
-        return render(request, "lists/components/list_table.html", context)
-    return render(request, "lists/components/media_grid.html", context)
+            template_name = "app/components/table_items.html"
+        else:
+            template_name = "lists/components/list_table.html"
+    else:
+        template_name = "lists/components/media_grid.html"
+
+    response = render(request, template_name, context)
+    response["HX-Trigger"] = json.dumps(
+        _build_list_count_trigger(total_items_count),
+    )
+    return response
 
 
 @login_not_required

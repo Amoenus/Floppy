@@ -439,7 +439,8 @@
       if (isOrderEditing) initListSortable(layout);
     });
     $watch('isOrderEditing', v => v ? initListSortable(layout) : destroyListSortable());
-  ">
+  "
+  @list-count-updated.camel.window="itemsCount = Number($event.detail.count)">
 
     <div class="mb-6">
       <div class="w-full min-w-0">
@@ -448,7 +449,7 @@
         </div>
         <div class="mb-3 text-sm font-medium text-[var(--color-text-muted)]">
           <div class="flex flex-wrap items-center gap-y-1">
-            <span x-text="itemsCountLabel()">{% blocktranslate trimmed with value_1=items_count count count=items_count %}{{ value_1 }} item{% plural %}{{ value_1 }} items{% endblocktranslate %}</span>
+            <span data-list-item-count x-text="itemsCountLabel()">{% blocktranslate trimmed with value_1=items_count count count=items_count %}{{ value_1 }} item{% plural %}{{ value_1 }} items{% endblocktranslate %}</span>
             {% if is_public_view %}
               <span class="mx-2 text-gray-600">•</span>
               <a href="{% url 'user_profile' custom_list.owner.username %}"

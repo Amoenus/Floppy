@@ -12,6 +12,7 @@ from django.apps import apps
 from django.conf import settings
 from django.db.models import Count, F, Q
 from django.urls import reverse
+from django.utils.translation import ngettext
 
 from app.models import CollectionEntry, Item, MediaManager, MediaTypes, Status
 from app.providers import services
@@ -52,6 +53,14 @@ ASCENDING_LIST_SORTS = {
     ListDetailSortChoices.START_DATE,
     ListDetailSortChoices.PLATFORM,
 }
+
+
+def _build_list_count_trigger(count: int) -> dict:
+    """Return the HTMX payload for an updated list item count."""
+    label = ngettext("%(count)s item", "%(count)s items", count) % {
+        "count": count,
+    }
+    return {"listCountUpdated": {"count": count, "label": label}}
 
 
 # ---------------------------------------------------------------------------

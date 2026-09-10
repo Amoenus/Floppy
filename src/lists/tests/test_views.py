@@ -1187,6 +1187,45 @@ class ListDetailViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "lists/components/media_grid.html")
         self.assertNotIn("form", response.context)
+        trigger = json.loads(response["HX-Trigger"])
+        self.assertEqual(trigger["listCountUpdated"]["count"], 3)
+        self.assertEqual(trigger["listCountUpdated"]["label"], "3 items")
+
+    def test_list_detail_htmx_count_tracks_membership_toggle(self):
+        """A refreshed manual-list response reports the committed item count."""
+        response = self.client.post(
+            reverse("list_item_toggle"),
+            {
+                "item_id": self.movie_item.id,
+                "custom_list_id": self.custom_list.id,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.get(
+            reverse("list_detail", args=[self.custom_list.public_reference]),
+            headers={"hx-request": "true"},
+        )
+        trigger = json.loads(response["HX-Trigger"])
+        self.assertEqual(trigger["listCountUpdated"]["count"], 2)
+        self.assertEqual(trigger["listCountUpdated"]["label"], "2 items")
+
+        response = self.client.post(
+            reverse("list_item_toggle"),
+            {
+                "item_id": self.movie_item.id,
+                "custom_list_id": self.custom_list.id,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.get(
+            reverse("list_detail", args=[self.custom_list.public_reference]),
+            headers={"hx-request": "true"},
+        )
+        trigger = json.loads(response["HX-Trigger"])
+        self.assertEqual(trigger["listCountUpdated"]["count"], 3)
+        self.assertEqual(trigger["listCountUpdated"]["label"], "3 items")
 
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
@@ -1512,6 +1551,51 @@ class ListDetailViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "lists/smart_list_detail.html")
         self.assertTrue(response.context["is_smart_list"])
+        self.assertContains(response, "data-list-item-count", html=False)
+        self.assertContains(response, "list-count-updated.camel.window", html=False)
+
+    def test_smart_list_htmx_count_tracks_linked_manual_membership(self):
+        """Smart-list partials report counts after linked-list membership changes."""
+        manual_list = CustomList.objects.create(
+            name="Linked Manual List",
+            owner=self.user,
+        )
+        CustomListItem.objects.create(
+            custom_list=manual_list,
+            item=self.movie_item,
+        )
+        smart_list = CustomList.objects.create(
+            name="Linked Smart List",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.MOVIE.value],
+            smart_filters={"list": [manual_list.id]},
+        )
+
+        response = self.client.get(
+            reverse("list_detail", args=[smart_list.public_reference]),
+            headers={"hx-request": "true"},
+        )
+        trigger = json.loads(response["HX-Trigger"])
+        self.assertEqual(trigger["listCountUpdated"]["count"], 1)
+        self.assertEqual(trigger["listCountUpdated"]["label"], "1 item")
+
+        response = self.client.post(
+            reverse("list_item_toggle"),
+            {
+                "item_id": self.movie_item.id,
+                "custom_list_id": manual_list.id,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.get(
+            reverse("list_detail", args=[smart_list.public_reference]),
+            headers={"hx-request": "true"},
+        )
+        trigger = json.loads(response["HX-Trigger"])
+        self.assertEqual(trigger["listCountUpdated"]["count"], 0)
+        self.assertEqual(trigger["listCountUpdated"]["label"], "0 items")
 
     def test_smart_filter_form_carries_every_persisted_rule_key(self):
         """Every saved rule must have a form input, or it silently saves empty.
@@ -3119,6 +3203,9 @@ class ListItemToggleTests(TestCase):
         self.assertContains(response, "__floppyListToggleRefreshHandler")
         self.assertContains(response, "removeEventListener(")
         self.assertContains(response, "itemsView.isConnected")
+        self.assertContains(response, "data-list-item-count", html=False)
+        self.assertContains(response, "__floppyListCountUpdatedHandler")
+        self.assertContains(response, "listCountUpdated")
 
     def test_list_item_toggle_response_no_longer_relies_on_self_swap_hx_on(self):
         """The toggle button must not re-introduce the non-firing hx-on hook.
@@ -3274,6 +3361,7 @@ class ListItemToggleTests(TestCase):
         trigger = json.loads(response.headers["HX-Trigger"])
         self.assertEqual(trigger["showToast"]["type"], "error")
         self.assertIn("try again", trigger["showToast"]["message"])
+        self.assertNotIn("listCountUpdated", trigger)
 
         # Nothing committed: the item is still in the list.
         self.assertIn(self.item, self.list.items.all())
@@ -3300,6 +3388,7 @@ class ListItemToggleTests(TestCase):
         self.assertEqual(response.status_code, 500)
         trigger = json.loads(response.headers["HX-Trigger"])
         self.assertEqual(trigger["showToast"]["type"], "error")
+        self.assertNotIn("listCountUpdated", trigger)
 
         # Nothing committed: the item was never added.
         self.assertNotIn(self.item, self.list.items.all())
