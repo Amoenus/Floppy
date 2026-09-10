@@ -2295,10 +2295,12 @@ class MediaSyncView(drf_views.APIView):
                     status=HTTP.ACCEPTED,
                 )
 
+        language = metadata_resolution.metadata_language_default(request.user)
         provider_cache_keys = metadata_utils.provider_metadata_cache_keys(
             source,
             media_type,
             media_id,
+            language=language,
         )
         cache_key = provider_cache_keys[0]
 
@@ -2322,7 +2324,7 @@ class MediaSyncView(drf_views.APIView):
                 media_type,
                 media_id,
                 source,
-                language=metadata_resolution.metadata_language_default(request.user),
+                language=language,
             )
 
             # FORK: bucket-aware resolution + localized title fields, mirroring
@@ -3405,11 +3407,13 @@ class MediaSeasonSyncView(drf_views.APIView):
                 status=HTTP.BAD_REQUEST,
             )
 
+        language = metadata_resolution.metadata_language_default(request.user)
         provider_cache_keys = metadata_utils.provider_metadata_cache_keys(
             source,
             MediaTypes.SEASON.value,
             media_id,
             season_number=season_number,
+            language=language,
         )
         cache_key = provider_cache_keys[0]
 
@@ -3434,7 +3438,7 @@ class MediaSeasonSyncView(drf_views.APIView):
                 media_id,
                 source,
                 [season_number],
-                language=metadata_resolution.metadata_language_default(request.user),
+                language=language,
             )
 
             # FORK: bucket-aware resolution + localized title fields, mirroring
