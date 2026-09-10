@@ -1149,6 +1149,92 @@ class ListDetailViewTests(TestCase):
         # Third item should have lowest rating (7.5)
         self.assertEqual(items[2].media.score, 7.5)
 
+    def test_python_sort_paginates_after_batched_media_scan(self):
+        """Derived list sorts hydrate batches, then only the requested page."""
+        items = [
+            Item(
+                media_id=f"batch-movie-{index}",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title=f"Batch Movie {index:02d}",
+            )
+            for index in range(20)
+        ]
+        Item.objects.bulk_create(items)
+        items = list(
+            Item.objects.filter(media_id__startswith="batch-movie-").order_by("id")
+        )
+        Movie.objects.bulk_create(
+            [
+                Movie(
+                    item=item,
+                    user=self.user,
+                    status=Status.IN_PROGRESS.value,
+                    score=index,
+                )
+                for index, item in enumerate(items)
+            ]
+        )
+        CustomListItem.objects.bulk_create(
+            [CustomListItem(custom_list=self.custom_list, item=item) for item in items]
+        )
+
+        response = self.client.get(
+            reverse("list_detail", args=[self.custom_list.public_reference])
+            + "?sort=rating&page=2",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["items_count"], 23)
+        self.assertEqual(response.context["filtered_items_count"], 23)
+        self.assertEqual(len(response.context["items"].object_list), 7)
+        self.assertEqual(response.context["items"].object_list[0].media.score, 3)
+
+    def test_smart_python_sort_keeps_count_and_page_size(self):
+        """Smart-list derived sorts preserve count while paging page-sized media."""
+        items = [
+            Item(
+                media_id=f"smart-batch-movie-{index}",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title=f"Smart Batch Movie {index:02d}",
+            )
+            for index in range(20)
+        ]
+        Item.objects.bulk_create(items)
+        items = list(
+            Item.objects.filter(media_id__startswith="smart-batch-movie-").order_by("id")
+        )
+        Movie.objects.bulk_create(
+            [
+                Movie(
+                    item=item,
+                    user=self.user,
+                    status=Status.IN_PROGRESS.value,
+                    score=index,
+                )
+                for index, item in enumerate(items)
+            ]
+        )
+        smart_list = CustomList.objects.create(
+            name="Smart Batch List",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.MOVIE.value],
+            smart_filters={"status": "all", "sort": "rating"},
+        )
+
+        response = self.client.get(
+            reverse("list_detail", args=[smart_list.public_reference])
+            + "?page=2",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["items_count"], 20)
+        self.assertEqual(response.context["filtered_items_count"], 20)
+        self.assertEqual(len(response.context["items"].object_list), 4)
+        self.assertEqual(response.context["items"].object_list[0].media.score, 3)
+
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
     def test_list_detail_view_htmx_request(
