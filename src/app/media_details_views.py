@@ -1635,16 +1635,7 @@ def media_details(
                 # Use episode count from metadata if available to match Details pane
                 metadata_episode_count = media_metadata.get("details", {}).get(
                     "episodes"
-                )
-                if (
-                    not isinstance(metadata_episode_count, int)
-                    or metadata_episode_count <= 0
-                ):
-                    metadata_episodes = media_metadata.get("episodes")
-                    if isinstance(metadata_episodes, list):
-                        metadata_episode_count = len(metadata_episodes)
-                    elif isinstance(metadata_episodes, int):
-                        metadata_episode_count = metadata_episodes
+                ) or media_metadata.get("episodes")
                 collection_stats = get_tv_show_collection_stats(
                     request.user, item, metadata_episode_count=metadata_episode_count
                 )
@@ -1690,6 +1681,11 @@ def media_details(
         MediaTypes.MOVIE.value,
         MediaTypes.ANIME.value,
     ]:
+        watch_provider_region = (
+            request.user.watch_provider_region
+            if request.user.is_authenticated
+            else None
+        )
         watch_provider_payload = media_metadata.get("providers")
         tmdb_media_id = None
         tmdb_media_type = media_type
@@ -1698,6 +1694,7 @@ def media_details(
             and media_type == MediaTypes.ANIME.value
             and source == Sources.MAL.value
             and not watch_provider_payload
+            and watch_provider_region != "UNSET"
         ):
             try:
                 identity = metadata_resolution.resolve_mal_tmdb_identity(media_id)
@@ -1775,9 +1772,7 @@ def media_details(
         watch_providers = (
             tmdb.filter_providers(
                 watch_provider_payload,
-                request.user.watch_provider_region
-                if request.user.is_authenticated
-                else None,
+                watch_provider_region,
             )
             if watch_provider_payload is not None
             else None

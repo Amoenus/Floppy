@@ -14,6 +14,7 @@ from app.models import (
     MetadataBackfillState,
     Sources,
 )
+from app.providers import services
 from app.services import metadata_resolution
 from app.tasks_backfill_state import METADATA_BACKFILL_MAX_ATTEMPTS
 from app.tasks_providers import RECONCILE_KEY
@@ -174,7 +175,7 @@ class ProviderBackfillTaskTests(TestCase):
 
     @patch("app.tasks_providers.services.get_media_metadata")
     @patch("app.tasks_providers.metadata_resolution.resolve_mal_tmdb_identity")
-    def test_populate_providers_for_unmapped_mal_anime_retries_later(
+    def test_populate_providers_for_unmapped_mal_anime_completes_strategy(
         self,
         mock_resolve_mal_tmdb_identity,
         mock_get_metadata,
@@ -197,7 +198,43 @@ class ProviderBackfillTaskTests(TestCase):
             item=item,
             field=MetadataBackfillField.WATCH_PROVIDERS,
         )
-        self.assertEqual(state.last_error, "no TMDB mapping")
+        self.assertEqual(
+            state.strategy_version,
+            tasks_providers.WATCH_PROVIDERS_BACKFILL_VERSION,
+        )
+        self.assertIsNotNone(state.last_success_at)
+        self.assertIsNone(state.next_retry_at)
+
+    @patch("app.tasks_providers.services.get_media_metadata")
+    @patch("app.tasks_providers.metadata_resolution.resolve_mal_tmdb_identity")
+    def test_populate_providers_for_mal_mapping_failure_retries_later(
+        self,
+        mock_resolve_mal_tmdb_identity,
+        mock_get_metadata,
+    ):
+        item = Item.objects.create(
+            media_id="52991",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Frieren",
+        )
+        mock_resolve_mal_tmdb_identity.side_effect = services.ProviderAPIError(
+            Sources.TMDB.value,
+            RuntimeError("offline"),
+        )
+
+        updated_count, error_count = tasks_providers._populate_providers_for_items(
+            [item]
+        )
+
+        self.assertEqual((updated_count, error_count), (0, 1))
+        mock_get_metadata.assert_not_called()
+        state = MetadataBackfillState.objects.get(
+            item=item,
+            field=MetadataBackfillField.WATCH_PROVIDERS,
+        )
+        self.assertEqual(state.fail_count, 1)
+        self.assertIsNone(state.last_success_at)
         self.assertIsNotNone(state.next_retry_at)
 
     @patch("app.tasks_providers.services.get_media_metadata")

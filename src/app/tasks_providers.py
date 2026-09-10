@@ -106,10 +106,12 @@ def _populate_providers_for_items(items):
                 identity = metadata_resolution.resolve_mal_tmdb_identity(item.media_id)
                 provider_source = Sources.TMDB.value
                 if not identity:
-                    _record_backfill_pending(
+                    # No exact mapping is a completed result for this pinned
+                    # mapping strategy. A later strategy-version bump will
+                    # reconsider the item without retrying it every day now.
+                    _record_backfill_success(
                         item,
                         MetadataBackfillField.WATCH_PROVIDERS,
-                        "no TMDB mapping",
                         strategy_version=WATCH_PROVIDERS_BACKFILL_VERSION,
                     )
                     continue

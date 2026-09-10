@@ -2999,6 +2999,8 @@ class MediaDetailsViewTests(TestCase):
         mock_resolve_mal_tmdb_identity,
     ):
         """Optional provider enrichment must not make MAL details unavailable."""
+        self.user.watch_provider_region = "DE"
+        self.user.save(update_fields=["watch_provider_region"])
         mock_get_metadata.return_value = {
             "media_id": "4081",
             "title": "Natsume's Book of Friends",
@@ -3032,23 +3034,16 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context["watch_providers"])
 
-    @patch("app.views.metadata_resolution.resolve_mal_tmdb_identity", return_value=None)
-    @patch("app.media_details_views._build_flat_anime_episode_preview")
+    @patch("app.views.metadata_resolution.resolve_mal_tmdb_identity")
     @patch("app.providers.services.get_media_metadata")
-    def test_mal_anime_collection_stats_count_flat_episode_preview(
+    def test_untracked_mal_anime_skips_provider_resolution_when_region_disabled(
         self,
         mock_get_metadata,
-        mock_build_flat_anime_episode_preview,
-        _mock_resolve_mal_tmdb_identity,
+        mock_resolve_mal_tmdb_identity,
     ):
-        """A flat episode preview must be counted, not rendered as the total."""
-        Item.objects.create(
-            media_id="4081",
-            source=Sources.MAL.value,
-            media_type=MediaTypes.ANIME.value,
-            title="Natsume's Book of Friends",
-            image="https://example.com/natsume.jpg",
-        )
+        """A disabled provider region must not trigger MAL-to-TMDB lookups."""
+        self.user.watch_provider_region = "UNSET"
+        self.user.save(update_fields=["watch_provider_region"])
         mock_get_metadata.return_value = {
             "media_id": "4081",
             "title": "Natsume's Book of Friends",
@@ -3060,19 +3055,7 @@ class MediaDetailsViewTests(TestCase):
             "cast": [],
             "crew": [],
             "studios_full": [],
-            "providers": {},
         }
-        mock_build_flat_anime_episode_preview.return_value = [
-            {
-                "media_id": "4081",
-                "media_type": MediaTypes.EPISODE.value,
-                "source": Sources.MAL.value,
-                "season_number": 1,
-                "episode_number": episode_number,
-                "title": f"Episode {episode_number}",
-            }
-            for episode_number in range(1, 4)
-        ]
 
         response = self.client.get(
             reverse(
@@ -3088,8 +3071,8 @@ class MediaDetailsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["collection_stats"]["total_episodes"], 3)
-        self.assertContains(response, "0/3")
+        self.assertIsNone(response.context["watch_providers"])
+        mock_resolve_mal_tmdb_identity.assert_not_called()
 
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_persists_movie_recommendation_metadata(

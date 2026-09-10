@@ -817,15 +817,7 @@ def _tmdb_identity_from_external_id(
     """Return one exact TMDB result for an external provider ID."""
     from app.providers import tmdb
 
-    try:
-        find_response = tmdb.find(external_id, external_source)
-    except services.ProviderAPIError:
-        logger.warning(
-            "Skipping TMDB resolution for %s=%s: provider request failed",
-            external_source,
-            external_id,
-        )
-        return None
+    find_response = tmdb.find(external_id, external_source)
 
     if not isinstance(find_response, dict):
         return None
@@ -990,7 +982,15 @@ def resolve_provider_media_id(
         and provider in GROUPED_ANIME_PROVIDERS
     ):
         if provider == Sources.TMDB.value:
-            identity = resolve_mal_tmdb_identity(item.media_id)
+            try:
+                identity = resolve_mal_tmdb_identity(item.media_id)
+            except services.ProviderAPIError:
+                logger.warning(
+                    "Skipping TMDB resolution for MAL anime media_id=%s: "
+                    "provider request failed",
+                    item.media_id,
+                )
+                return None
             if not identity or identity.media_type != MediaTypes.TV.value:
                 return None
             persist_mal_tmdb_identity(
