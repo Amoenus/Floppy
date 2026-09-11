@@ -527,6 +527,7 @@ def home_rest_fragment(request):
             ],
             "MediaTypes": MediaTypes,
             "IMG_NONE": settings.IMG_NONE,
+            "return_url": reverse("home"),
         },
     )
 
