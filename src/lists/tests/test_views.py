@@ -3676,6 +3676,30 @@ class ListJsonExportTests(TestCase):
         self.assertEqual(len(data), 1)
         self.assertIn({"id": 12345}, data)
 
+    def test_radarr_json_preserves_custom_list_order(self):
+        """Return public movie IDs in the list's persisted custom order."""
+        second_movie = Item.objects.create(
+            media_id="99999",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Second Movie",
+        )
+        CustomListItem.objects.create(
+            custom_list=self.custom_list,
+            item=second_movie,
+        )
+        CustomListItem.objects.filter(
+            custom_list=self.custom_list,
+            item=self.movie_item,
+        ).update(date_added=timezone.now() + timedelta(minutes=1))
+
+        response = self.client.get(
+            reverse("list_json", args=[self.custom_list.id]) + "?arr=radarr",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), [{"id": 99999}, {"id": 12345}])
+
     def test_radarr_json_accepts_slug(self):
         """JSON exports should resolve custom public slugs."""
         self.custom_list.public_slug = "public-json-list"

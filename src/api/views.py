@@ -503,7 +503,10 @@ class ListDetailView(drf_views.APIView):
                 status=HTTP.FORBIDDEN,
             )
 
-        items = user_list.items.all()
+        items = user_list.items.order_by(
+            "customlistitem__date_added",
+            "customlistitem__pk",
+        )
 
         search_query = request.GET.get("search", "")
         sort_filter = request.GET.get("sort", "")
@@ -671,7 +674,10 @@ class ListItemsView(drf_views.APIView):
                 status=HTTP.FORBIDDEN,
             )
 
-        items = user_list.items.all()
+        items = user_list.items.order_by(
+            "customlistitem__date_added",
+            "customlistitem__pk",
+        )
 
         search_query = request.GET.get("search", "")
         sort_filter = request.GET.get("sort", "")
