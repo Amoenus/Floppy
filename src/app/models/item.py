@@ -267,6 +267,11 @@ class Item(CalendarTriggerMixin, models.Model):
             "sourced from the media server so progress can still complete"
         ),
     )
+    provider_episode_count = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Total episode count reported by the metadata provider",
+    )
     series_name = models.TextField(null=True, blank=True)
     series_position = models.FloatField(null=True, blank=True)
     metadata_migration_pinned_at = models.DateTimeField(
