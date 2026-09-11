@@ -21,6 +21,8 @@
            @media-card-revealed.window="if ($event.detail !== $root) revealed = false"
            @click.window="if (revealed && !$root.contains($event.target)) revealed = false"
            :class="revealed ? 'media-card-revealed' : ''">
+        {% comment %}Kometa's parser only recognizes TVDB-shaped episode anchors.{% endcomment %}
+        {% if item.kometa_episode_url %}<a href="{{ item.kometa_episode_url }}" class="hidden" aria-hidden="true" tabindex="-1"></a>{% endif %}
         <div class="media-card-visual relative">
           {% if recommend_mode %}
             <div class="cursor-pointer">

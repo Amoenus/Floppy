@@ -31,6 +31,7 @@ from lists.forms import CustomListForm
 from lists.models import CustomListItem
 from lists.views_helpers import (
     _adapt_list_items_for_table,
+    _attach_kometa_episode_urls,
     _attach_media_with_aggregation,
     _build_collection_platforms_by_item_id,
     _build_list_count_trigger,
@@ -312,6 +313,7 @@ def _smart_list_detail_response(
         filtered_items_count = paginator.count
         _attach_media_with_aggregation(items_page, media_user)
 
+    _attach_kometa_episode_urls(items_page)
     prefill_display_release_years(items_page)
 
     if layout == "table":

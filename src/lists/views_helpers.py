@@ -14,9 +14,18 @@ from django.conf import settings
 from django.core.paginator import Paginator
 from django.db.models import Count, Exists, F, OuterRef, Q
 from django.urls import reverse
+from django.utils.text import slugify
 from django.utils.translation import ngettext
 
-from app.models import CollectionEntry, Item, MediaManager, MediaTypes, Status
+from app.models import (
+    CollectionEntry,
+    Item,
+    ItemProviderLink,
+    MediaManager,
+    MediaTypes,
+    Sources,
+    Status,
+)
 from app.providers import services
 from integrations.imports import helpers as import_helpers
 from integrations.models import TraktAccount
@@ -679,6 +688,82 @@ def _attach_media_with_aggregation(item_list, media_user):
     for item in item_list:
         item.media = media_by_item_id.get(item.id)
     _attach_list_card_overrides(item_list)
+
+
+def _attach_kometa_episode_urls(items_page):
+    """Attach TVDB-shaped episode links for Kometa list-page discovery.
+
+    Kometa's Floppy/Yamtrack builder extracts IDs from detail-page anchors. Its
+    episode-aware parser recognises TVDB paths, while a TMDB episode path is
+    reduced to the parent show. Keep Floppy's normal link as the visible target
+    and add a parser-compatible link only when the local library already knows
+    the show's numeric TVDB ID.
+    """
+    items = list(getattr(items_page, "object_list", items_page) or [])
+    episode_items = [
+        item
+        for item in items
+        if item.media_type == MediaTypes.EPISODE.value
+        and item.source == Sources.TMDB.value
+    ]
+    if not episode_items:
+        return
+
+    parent_keys = {(item.source, item.media_id) for item in episode_items}
+    parent_items = Item.objects.filter(
+        source__in={source for source, _media_id in parent_keys},
+        media_id__in={media_id for _source, media_id in parent_keys},
+        media_type__in=(MediaTypes.TV.value, MediaTypes.ANIME.value),
+        season_number__isnull=True,
+        episode_number__isnull=True,
+    ).only("id", "source", "media_id", "title", "provider_external_ids")
+
+    tvdb_by_parent_key = {}
+    parent_item_ids = []
+    parent_key_by_id = {}
+    parent_title_by_key = {}
+    for parent in parent_items:
+        parent_item_ids.append(parent.id)
+        parent_key = (parent.source, parent.media_id)
+        parent_key_by_id[parent.id] = parent_key
+        parent_title_by_key[parent_key] = parent.title
+        tvdb_id = (parent.provider_external_ids or {}).get("tvdb_id")
+        if str(tvdb_id or "").isdigit():
+            tvdb_by_parent_key.setdefault(parent_key, (str(tvdb_id), parent.title))
+
+    if parent_item_ids:
+        provider_links = ItemProviderLink.objects.filter(
+            item_id__in=parent_item_ids,
+            provider=Sources.TVDB.value,
+            provider_media_type=MediaTypes.TV.value,
+            season_number__isnull=True,
+        ).values_list("item_id", "provider_media_id")
+        for parent_id, provider_media_id in provider_links:
+            parent_key = parent_key_by_id.get(parent_id)
+            if parent_key and str(provider_media_id or "").isdigit():
+                tvdb_by_parent_key.setdefault(
+                    parent_key,
+                    (str(provider_media_id), parent_title_by_key.get(parent_key)),
+                )
+
+    for item in episode_items:
+        tvdb_id, parent_title = tvdb_by_parent_key.get(
+            (item.source, item.media_id),
+            ("", None),
+        )
+        if not tvdb_id.isdigit():
+            continue
+
+        item.kometa_episode_url = reverse(
+            "episode_details",
+            kwargs={
+                "source": Sources.TVDB.value,
+                "media_id": tvdb_id,
+                "title": slugify(parent_title or "") or tvdb_id,
+                "season_number": item.season_number,
+                "episode_number": item.episode_number,
+            },
+        )
 
 
 def _paginate_python_sorted_items(
