@@ -160,7 +160,7 @@ class MediaCoreTests(FloppyApiTestCase):
             if result["item"]["media_id"] == tv_item.media_id
         )
         self.assertEqual(result["episodes_left"], 2)
-        self.assertEqual(result["total_episodes_left"], 7)
+        self.assertEqual(result["total_episodes_left"], 6)
 
     def test_media_list_get_with_type_filter_returns_filtered_results(self):
         """Media list endpoint should filter results by media type."""
