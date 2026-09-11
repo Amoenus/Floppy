@@ -73,6 +73,11 @@ urlpatterns = [
         name="list_reorder_all",
     ),
     path(
+        "list/bulk-add",
+        views_list_actions.bulk_list_add,
+        name="bulk_list_add",
+    ),
+    path(
         "list/<int:list_id>/add",
         views_add_reorder.add_list_item_page,
         name="list_add_item",
