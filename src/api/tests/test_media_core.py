@@ -8,6 +8,7 @@ from django.db.utils import OperationalError
 from django.utils import timezone
 
 from app.models import (
+    Episode,
     Item,
     MediaTypes,
     Movie,
@@ -46,6 +47,9 @@ class MediaCoreTests(FloppyApiTestCase):
         tv_item.save(update_fields=["provider_episode_count"])
 
         now = timezone.now()
+        Episode.objects.filter(
+            pk__in=[episode_media.pk for episode_media in self.episode_medias],
+        ).update(status=Status.IN_PROGRESS.value)
         for episode_media in self.episode_medias:
             episode_item = episode_media.item
             episode_item.release_datetime = now - timezone.timedelta(days=1)
@@ -54,8 +58,10 @@ class MediaCoreTests(FloppyApiTestCase):
             episode_item.save(update_fields=["release_datetime"])
 
         watched_episode = self.episode_medias[0]
-        watched_episode.end_date = now
-        watched_episode.save(update_fields=["end_date"])
+        Episode.objects.filter(pk=watched_episode.pk).update(
+            status=Status.COMPLETED.value,
+            end_date=now,
+        )
 
     def test_media_list_get_returns_paginated_payload(self):
         """Media list endpoint should return standard pagination payload."""
@@ -154,7 +160,7 @@ class MediaCoreTests(FloppyApiTestCase):
             if result["item"]["media_id"] == tv_item.media_id
         )
         self.assertEqual(result["episodes_left"], 2)
-        self.assertEqual(result["total_episodes_left"], 6)
+        self.assertEqual(result["total_episodes_left"], 7)
 
     def test_media_list_get_with_type_filter_returns_filtered_results(self):
         """Media list endpoint should filter results by media type."""
