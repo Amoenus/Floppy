@@ -23,7 +23,7 @@ from health_check.mixins import CheckMixin
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
-from app import metadata_utils
+from app import history_cache, metadata_utils
 from app.activity_builders import (
     _get_game_lengths_refresh_lock,
     _queue_game_lengths_refresh,
@@ -37,7 +37,7 @@ from app.media_list_filters import (
     get_next_episode_map,
     parse_media_list_filters,
 )
-from app.models import BasicMedia, Item, MediaTypes, Sources
+from app.models import BasicMedia, Episode, Item, MediaTypes, Sources
 from app.providers import services, tmdb
 from app.services import metadata_resolution
 from app.services.metadata_sync import enrich_synced_item, sync_podcast_show_from_rss
@@ -3562,6 +3562,7 @@ class MediaSeasonSyncView(drf_views.APIView):
             }
 
             episodes_to_update = []
+            episode_item_ids_with_title_changes = set()
 
             for episode_data in metadata["episodes"]:
                 episode_number = episode_data["episode_number"]
@@ -3569,10 +3570,15 @@ class MediaSeasonSyncView(drf_views.APIView):
                     episode_item = existing_episodes[episode_number]
                     episode_title_fields = Item.title_fields_from_episode_metadata(
                         episode_data,
-                        fallback_title=item.title,
                     )
-                    for field, value in episode_title_fields.items():
-                        setattr(episode_item, field, value)
+                    if episode_title_fields["title"]:
+                        if any(
+                            getattr(episode_item, field) != value
+                            for field, value in episode_title_fields.items()
+                        ):
+                            episode_item_ids_with_title_changes.add(episode_item.pk)
+                        for field, value in episode_title_fields.items():
+                            setattr(episode_item, field, value)
                     episode_item.image = episode_data["image"]
                     episodes_to_update.append(episode_item)
 
@@ -3582,6 +3588,17 @@ class MediaSeasonSyncView(drf_views.APIView):
                     ["title", "original_title", "localized_title", "image"],
                     batch_size=100,
                 )
+
+            if episode_item_ids_with_title_changes:
+                history_user_ids = (
+                    Episode.objects.filter(
+                        item_id__in=episode_item_ids_with_title_changes,
+                    )
+                    .values_list("related_season__user_id", flat=True)
+                    .distinct()
+                )
+                for user_id in history_user_ids:
+                    history_cache.invalidate_history_cache(user_id, force=True)
 
             item.fetch_releases(delay=False)
 
