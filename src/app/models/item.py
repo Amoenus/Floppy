@@ -56,6 +56,11 @@ class Item(CalendarTriggerMixin, models.Model):
     )  # if add default, custom media entry will show the value
     season_number = models.PositiveIntegerField(null=True, blank=True)
     episode_number = models.PositiveIntegerField(null=True, blank=True)
+    episode_order = models.ForeignKey(
+        "app.EpisodeOrder", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="items",
+    )
+    provider_episode_id = models.CharField(max_length=255, blank=True, default="")
     runtime_minutes = models.PositiveIntegerField(
         null=True, blank=True, help_text="Runtime in minutes"
     )
@@ -763,6 +768,12 @@ class Item(CalendarTriggerMixin, models.Model):
             return
 
         from events import tasks as event_tasks  # avoid a module-load cycle
+
+        if self.episode_order_id:
+            from app.services.order_calendar import refresh_order_events
+
+            refresh_order_events(self.episode_order)
+            return
 
         if self.media_type == MediaTypes.SEASON.value:
             # Get or create the TV item for this season

@@ -92,7 +92,7 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
 
     # Episodes
     episodes = (
-        Episode.objects.filter(
+        Episode.all_objects.filter(
             related_season__user=user,
             end_date__gte=day_start,
             end_date__lt=day_end,

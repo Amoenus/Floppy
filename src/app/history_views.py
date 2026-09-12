@@ -412,7 +412,7 @@ def _build_release_history_days(
 
     if include_episodes:
         Episode = apps.get_model("app", "Episode")
-        episode_qs = Episode.objects.filter(
+        episode_qs = Episode.all_objects.filter(
             related_season__user=user,
             item__release_datetime__isnull=False,
         ).select_related(
@@ -1045,7 +1045,7 @@ def history_genres(request):
                     str(g).strip() for g in implied_genres_list if _is_valid_genre(g)
                 )
 
-    for genres_list in Episode.objects.filter(
+    for genres_list in Episode.all_objects.filter(
         related_season__user=request.user
     ).values_list("related_season__related_tv__item__genres", flat=True):
         if genres_list:
