@@ -120,25 +120,25 @@ def import_media(
     # library (and holding the single celery-queue worker) for no reason.
     if has_imported_media(imported_counts):
         events.tasks.reload_calendar.delay()
+
+        # Importers rely heavily on bulk_create_with_history, which bypasses model signals.
+        # Force-clear history cache so month view index pages don't keep stale "empty month"
+        # payloads after imports (notably reproducible with SIMKL imports).
+        history_cache.invalidate_history_cache(user.id, force=True)
+
+        # bulk_create also bypasses the post_save signals that normally schedule a statistics
+        # cache refresh. Trigger it explicitly so the hours card and activity overview reflect
+        # the newly imported media without requiring a manual page reload or waiting for the
+        # next scheduled Celery beat.
+        from app import statistics_cache as _statistics_cache
+
+        _statistics_cache.schedule_all_ranges_refresh(user.id)
     else:
         logger.info(
             "calendar_reload_skipped reason=no_items_imported importer=%s user_id=%s",
             getattr(importer_func, "__name__", importer_func),
             user_id,
         )
-
-    # Importers rely heavily on bulk_create_with_history, which bypasses model signals.
-    # Force-clear history cache so month view index pages don't keep stale "empty month"
-    # payloads after imports (notably reproducible with SIMKL imports).
-    history_cache.invalidate_history_cache(user.id, force=True)
-
-    # bulk_create also bypasses the post_save signals that normally schedule a statistics
-    # cache refresh. Trigger it explicitly so the hours card and activity overview reflect
-    # the newly imported media without requiring a manual page reload or waiting for the
-    # next scheduled Celery beat.
-    from app import statistics_cache as _statistics_cache
-
-    _statistics_cache.schedule_all_ranges_refresh(user.id)
 
     # Queue collection metadata update task for media server imports
     _queue_post_import_collection_update(user_id, importer_func)
