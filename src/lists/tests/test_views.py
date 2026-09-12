@@ -117,6 +117,74 @@ class ListsViewTests(TestCase):
         self.assertIn("custom_lists", response.context)
         self.assertIn("form", response.context)
 
+    def test_cards_do_not_materialize_memberships(self):
+        """Card summaries stay in SQL, including watched sorting and completion."""
+        self.client.force_login(self.user)
+        Movie.objects.bulk_create(
+            [
+                Movie(
+                    item=self.item1,
+                    user=self.user,
+                    status=Status.COMPLETED.value,
+                    end_date=timezone.now(),
+                ),
+            ]
+        )
+        for sort in ("name", "last_watched"):
+            with (
+                self.subTest(sort=sort),
+                patch.object(
+                    CustomListItem,
+                    "from_db",
+                    wraps=CustomListItem.from_db,
+                ) as load_membership,
+            ):
+                response = self.client.get(reverse("lists"), {"sort": sort})
+                self.assertEqual(response.status_code, 200)
+                cards = {card.id: card for card in response.context["custom_lists"]}
+                self.assertEqual(cards[self.list1.id].completed_count, 1)
+                self.assertEqual(cards[self.list1.id].completion_percent, 100)
+                load_membership.assert_not_called()
+
+    def test_last_watched_paginated_before_card_hydration(self):
+        """Only one page of full list rows is loaded even for a Python sort."""
+        CustomList.objects.bulk_create(
+            [
+                CustomList(owner=self.user, name=f"Extra {index:03}")
+                for index in range(30)
+            ]
+        )
+        self.client.force_login(self.user)
+        with patch.object(CustomList, "from_db", wraps=CustomList.from_db) as load:
+            response = self.client.get(reverse("lists"), {"sort": "last_watched"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["custom_lists"]), 20)
+        self.assertEqual(response.context["custom_lists"].paginator.count, 32)
+        self.assertEqual(load.call_count, 20)
+
+    def test_cover_loads_only_first_membership(self):
+        """The cover endpoint must not prefetch the entire list."""
+        CustomListItem.objects.create(
+            custom_list=self.list1,
+            item=self.item2,
+            added_by=self.user,
+        )
+        self.client.force_login(self.user)
+        with (
+            patch.object(
+                CustomListItem,
+                "from_db",
+                wraps=CustomListItem.from_db,
+            ) as load,
+            patch.object(CustomList, "_get_tmdb_backdrop", return_value=None),
+        ):
+            response = self.client.get(
+                reverse("list_cover_image", args=[self.list1.id])
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(load.call_count, 1)
+        self.assertContains(response, self.item1.image)
+
     @patch.object(get_user_model(), "update_preference")
     def test_lists_view_search_filter(self, mock_update_preference):
         """Test the lists view with search filter."""

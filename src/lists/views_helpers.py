@@ -12,7 +12,7 @@ from itertools import islice
 from django.apps import apps
 from django.conf import settings
 from django.core.paginator import Paginator
-from django.db.models import Count, Exists, F, OuterRef, Q
+from django.db.models import Count, Exists, F, Max, OuterRef, Q
 from django.urls import reverse
 from django.utils.text import slugify
 from django.utils.translation import ngettext
@@ -228,33 +228,81 @@ def _get_item_last_watched_dates(user, item_ids):
     return item_last_watched
 
 
+def _get_list_completed_counts(user, list_ids):
+    """Count completed memberships in SQL without loading the list contents."""
+    completed = Q(pk__in=[])
+    for media_type in MediaTypes.values:
+        if media_type == MediaTypes.EPISODE.value:
+            continue
+        try:
+            model = apps.get_model("app", media_type)
+        except LookupError:
+            continue
+        completed |= Q(
+            item_id__in=model.objects.filter(
+                user=user,
+                status=Status.COMPLETED.value,
+            ).values("item_id"),
+        )
+    return dict(
+        CustomListItem.objects.filter(completed, custom_list_id__in=list_ids)
+        .order_by()
+        .values("custom_list_id")
+        .annotate(completed_count=Count("item_id", distinct=True))
+        .values_list("custom_list_id", "completed_count"),
+    )
+
+
 def _get_list_last_watched_dates(user, list_ids):
-    """Return the latest watched timestamp for each list ID."""
+    """Aggregate watch dates per list in SQL, retaining only one date per list."""
     if not list_ids:
         return {}
 
-    item_ids_by_list = {}
-    all_item_ids = set()
-    for list_id, item_id in CustomListItem.objects.filter(
-        custom_list_id__in=list_ids,
-    ).values_list("custom_list_id", "item_id"):
-        item_ids_by_list.setdefault(list_id, set()).add(item_id)
-        all_item_ids.add(item_id)
-
-    item_last_watched = _get_item_last_watched_dates(user, all_item_ids)
-
-    list_last_watched = {}
-    for list_id, item_ids in item_ids_by_list.items():
-        latest_watch = None
-        for item_id in item_ids:
-            watched_at = item_last_watched.get(item_id)
-            if watched_at is not None and (
-                latest_watch is None or watched_at > latest_watch
+    latest_by_list = {}
+    for media_type in MediaTypes.values:
+        try:
+            model = apps.get_model("app", media_type)
+        except LookupError:
+            continue
+        if media_type in {
+            MediaTypes.TV.value,
+            MediaTypes.SEASON.value,
+            MediaTypes.EPISODE.value,
+        }:
+            model = apps.get_model("app", MediaTypes.EPISODE.value)
+            item_path = {
+                MediaTypes.TV.value: "related_season__related_tv__item",
+                MediaTypes.SEASON.value: "related_season__item",
+                MediaTypes.EPISODE.value: "item",
+            }[media_type]
+            user_path = "related_season__user"
+        else:
+            if not {"item", "user", "end_date"}.issubset(
+                field.name for field in model._meta.fields
             ):
-                latest_watch = watched_at
-        list_last_watched[list_id] = latest_watch
-
-    return list_last_watched
+                continue
+            item_path = "item"
+            user_path = "user"
+        list_path = f"{item_path}__customlistitem__custom_list_id"
+        rows = (
+            model.objects.filter(
+                **{
+                    user_path: user,
+                    f"{item_path}__media_type": media_type,
+                    f"{list_path}__in": list_ids,
+                    "end_date__isnull": False,
+                },
+            )
+            .order_by()
+            .values(list_path)
+            .annotate(latest=Max("end_date"))
+            .values_list(list_path, "latest")
+        )
+        for list_id, watched_at in rows.iterator(chunk_size=500):
+            previous = latest_by_list.get(list_id)
+            if previous is None or watched_at > previous:
+                latest_by_list[list_id] = watched_at
+    return latest_by_list
 
 
 # ---------------------------------------------------------------------------
