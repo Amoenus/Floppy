@@ -959,7 +959,7 @@ class ImportYamtrackSourceValidation(TestCase):
     def test_invalid_source_media_row_skipped(self):
         """A media row with an invalid source is skipped and creates no item."""
         row = self._media_row("garbage")
-        self.importer._process_media_row(row)
+        self.importer._process_row(row)
         self.assertEqual(Movie.objects.filter(user=self.user).count(), 0)
         self.assertTrue(any("garbage" in w for w in self.importer.warnings))
 
@@ -978,10 +978,38 @@ class ImportYamtrackSourceValidation(TestCase):
             "season_number": "",
             "episode_number": "",
         }
-        self.importer._process_list_item_row(row)
+        self.importer._process_row(row)
         self.assertEqual(
             CustomListItem.objects.filter(custom_list=custom_list).count(),
             0,
+        )
+        self.assertTrue(any("garbage" in w for w in self.importer.warnings))
+
+    def test_invalid_source_collection_row_skipped(self):
+        """A collection row with an invalid source is skipped, not aborting."""
+        row = self._media_row("garbage")
+        row["row_type"] = "collection"
+        self.importer._process_row(row)
+        self.assertEqual(Movie.objects.filter(user=self.user).count(), 0)
+        self.assertEqual(CollectionEntry.objects.filter(user=self.user).count(), 0)
+        self.assertTrue(any("garbage" in w for w in self.importer.warnings))
+
+    def test_invalid_source_list_item_leaves_no_list(self):
+        """A rejected list item does not provision its fallback list."""
+        row = {
+            "row_type": "list_item",
+            "list_name": "Orphan",
+            "media_id": "123",
+            "source": "garbage",
+            "media_type": "movie",
+            "title": "Some Movie",
+            "image": "https://example.com/poster.jpg",
+            "season_number": "",
+            "episode_number": "",
+        }
+        self.importer._process_row(row)
+        self.assertFalse(
+            CustomList.objects.filter(owner=self.user, name="Orphan").exists(),
         )
         self.assertTrue(any("garbage" in w for w in self.importer.warnings))
 

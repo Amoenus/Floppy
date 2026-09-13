@@ -449,6 +449,10 @@ class YamtrackImporter:
     def _process_row(self, row):
         """Process a single row from the CSV file."""
         row_type = (row.get("row_type") or "").strip().lower()
+        if row_type in ("", "media", "list_item", "collection"):
+            row["source"] = self._normalize_source(row)
+            if not self.is_valid_source(row):
+                return
         if row_type == "list":
             self._process_list_row(row)
             return
@@ -498,9 +502,6 @@ class YamtrackImporter:
 
         library_media_type = (row.get("library_media_type") or "").strip().lower()
         row["media_type"] = media_type
-        row["source"] = self._normalize_source(row)
-        if not self.is_valid_source(row):
-            return
         normalized_status = _normalize_status(row.get("status"))
         if normalized_status is not None:
             # An exported blank means the media has no tracking status (a
@@ -754,10 +755,6 @@ class YamtrackImporter:
 
         library_media_type = (row.get("library_media_type") or "").strip().lower()
 
-        row["source"] = self._normalize_source(row)
-        if not self.is_valid_source(row):
-            return
-
         season_number = (
             int(row["season_number"]) if row.get("season_number") else None
         )
@@ -991,7 +988,6 @@ class YamtrackImporter:
             return
 
         row["media_type"] = media_type
-        row["source"] = (row.get("source") or "").strip().lower()
         library_media_type = (row.get("library_media_type") or "").strip().lower()
 
         season_number = int(row["season_number"]) if row.get("season_number") else None
