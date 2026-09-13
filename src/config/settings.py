@@ -15,7 +15,6 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 from celery.schedules import crontab
-from debug_toolbar.settings import PANELS_DEFAULTS
 from decouple import (
     Csv,
     Undefined,
@@ -1328,14 +1327,21 @@ DEBUG_TOOLBAR_CONFIG = {
     ),
     "ROOT_TAG_EXTRA_ATTRS": "hx-preserve",
 }
-DEBUG_TOOLBAR_PANELS = [
-    panel
-    for panel in PANELS_DEFAULTS
-    if (
-        DEBUG_TOOLBAR_INCLUDE_TEMPLATES_PANEL
-        or panel != "debug_toolbar.panels.templates.TemplatesPanel"
-    )
-]
+if ENABLE_DEBUG_TOOLBAR:
+    # Imported here rather than at module scope: debug_toolbar is a runtime
+    # dependency, so a top-level import loads it into every long-lived process
+    # -- gunicorn and all three Celery roles -- even though the toolbar only
+    # ever runs with DEBUG on.
+    from debug_toolbar.settings import PANELS_DEFAULTS
+
+    DEBUG_TOOLBAR_PANELS = [
+        panel
+        for panel in PANELS_DEFAULTS
+        if (
+            DEBUG_TOOLBAR_INCLUDE_TEMPLATES_PANEL
+            or panel != "debug_toolbar.panels.templates.TemplatesPanel"
+        )
+    ]
 
 SELECT2_CACHE_BACKEND = "default"
 SELECT2_JS = [

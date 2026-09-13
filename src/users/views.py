@@ -8,7 +8,6 @@ from io import BytesIO
 from itertools import batched
 from pathlib import Path
 
-import apprise
 from allauth.account.views import SignupView
 from allauth.socialaccount.views import SignupView as SocialSignupView
 from django.apps import apps
@@ -613,6 +612,11 @@ def include_item(request):
 @require_GET
 def test_notification(request):
     """Send a test notification to the user."""
+    # Imported here, not at module scope: apprise loads its whole notification
+    # plugin registry on import, and that cost lands in every long-lived
+    # process that merely imports this module.
+    import apprise
+
     try:
         # Create Apprise instance
         apobj = apprise.Apprise()
