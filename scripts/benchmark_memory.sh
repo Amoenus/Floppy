@@ -147,7 +147,7 @@ sample = json.load(open(sys.argv[1], encoding="utf-8"))
 with open(sys.argv[2], "w", newline="", encoding="utf-8") as output:
     fields = (
         "pid", "ppid", "role", "name", "argv0", "pss_kib", "pss_anon_kib",
-        "pss_file_kib", "pss_shmem_kib", "rss_kib", "private_kib", "fd_count",
+        "pss_file_kib", "pss_shmem_kib", "rss_kib", "shared_kib", "private_kib", "fd_count",
         "sqlite_fd_count",
     )
     writer = csv.DictWriter(output, fieldnames=fields)

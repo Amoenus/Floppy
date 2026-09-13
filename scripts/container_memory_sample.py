@@ -131,6 +131,10 @@ def sample():
                 "pss_file_kib": values.get("Pss_File", 0),
                 "pss_shmem_kib": values.get("Pss_Shmem", 0),
                 "rss_kib": values["Rss"],
+                "shared_kib": sum(
+                    values.get(key, 0)
+                    for key in ("Shared_Clean", "Shared_Dirty", "Shared_Hugetlb")
+                ),
                 "private_kib": sum(
                     values.get(key, 0)
                     for key in ("Private_Clean", "Private_Dirty", "Private_Hugetlb")
@@ -180,6 +184,7 @@ def sample():
                 "pss_file_kib": 0,
                 "pss_shmem_kib": 0,
                 "rss_kib": 0,
+                "shared_kib": 0,
                 "private_kib": 0,
                 "fd_count": 0,
                 "sqlite_fd_count": 0,
@@ -192,6 +197,7 @@ def sample():
             "pss_file_kib",
             "pss_shmem_kib",
             "rss_kib",
+            "shared_kib",
             "private_kib",
             "fd_count",
             "sqlite_fd_count",
