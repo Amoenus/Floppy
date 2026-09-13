@@ -33,6 +33,7 @@ that would otherwise succeed.
 
 from __future__ import annotations
 
+import json
 import shutil
 import sqlite3
 from contextlib import suppress
@@ -48,6 +49,7 @@ from django.db.migrations.executor import MigrationExecutor
 
 from app.log_safety import redact_secrets, safe_url
 from app.redis_tuning import parse_size
+from config.runtime_profile import sizing_report, web_concurrency_warning
 from config.sqlite_integrity import (
     IntegrityScanTimeoutError,
     inspect_database,
@@ -739,6 +741,136 @@ def check_redis() -> CheckResult:
     return CheckResult(name="redis", status=OK, summary=summary, facts=facts)
 
 
+# Baked into the image by the Dockerfile and re-exported by entrypoint.sh, so
+# it survives an orchestrator's stale VERSION/COMMIT_SHA in the environment.
+# A module constant so tests can point it somewhere else.
+_BUILD_INFO_PATH = Path("/etc/floppy-build-info")
+# Written by entrypoint.sh once the tier is resolved. A `docker exec` does not
+# inherit PID 1's exports, so without this the check would re-detect the tier
+# rather than report the decision the running container actually booted with.
+_BOOT_SIZING_PATH = Path("/tmp/floppy-boot-sizing.json")  # noqa: S108
+
+
+def _read_build_info() -> dict:
+    """Return the identity baked into the image, empty if it is not present."""
+    try:
+        contents = _BUILD_INFO_PATH.read_text()
+    except OSError:
+        return {}
+    values = {}
+    for line in contents.splitlines():
+        key, separator, value = line.partition("=")
+        if separator:
+            values[key.strip()] = value.strip()
+    return values
+
+
+def _read_boot_sizing() -> dict:
+    """Return the sizing entrypoint.sh recorded at boot, empty if absent."""
+    try:
+        return json.loads(_BOOT_SIZING_PATH.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def check_runtime() -> CheckResult:
+    """Report which build is running and how it sized itself.
+
+    Answers the two questions a memory or behaviour report cannot be read
+    without: whether this container is running the code someone thinks it is,
+    and how many resident processes it decided to start.
+    """
+    report = sizing_report()
+    build_info = _read_build_info()
+    boot_sizing = _read_boot_sizing()
+
+    if settings.LOCAL_COMMIT_SHA:
+        identity_source = "git-checkout"
+    elif build_info:
+        identity_source = "image"
+    elif settings.ENV_COMMIT_SHA or settings.ENV_VERSION_RAW:
+        identity_source = "environment"
+    else:
+        identity_source = "unknown"
+
+    build_info_matches = None
+    if build_info.get("COMMIT_SHA"):
+        build_info_matches = build_info["COMMIT_SHA"] == settings.COMMIT_SHA
+
+    facts = {
+        "version": settings.VERSION,
+        "commit": settings.COMMIT_SHA_SHORT,
+        "identity_source": identity_source,
+        "build_info_present": bool(build_info),
+        "build_info_matches_settings": build_info_matches,
+        **report,
+    }
+    if boot_sizing:
+        facts["boot_sizing"] = boot_sizing
+
+    summary = (
+        f"{settings.VERSION} ({identity_source}), {report['profile']}, "
+        f"gunicorn {report['web_concurrency']}x{report['gunicorn_threads']}, "
+        f"resident: {', '.join(report['expected_programs'])}"
+    )
+
+    if report["web_concurrency_over_profile"]:
+        return CheckResult(
+            name="runtime",
+            status=WARN,
+            summary=summary,
+            cause=web_concurrency_warning(),
+            fix=_where(
+                f"{CONFIG} clear WEB_CONCURRENCY in this container's template or "
+                "compose file and restart",
+                f"{CONFIG} unset WEB_CONCURRENCY and restart",
+            ),
+            facts=facts,
+        )
+
+    if report["web_concurrency_source"] == "invalid":
+        return CheckResult(
+            name="runtime",
+            status=WARN,
+            summary=summary,
+            cause=(
+                "WEB_CONCURRENCY is set to something that is not a number, so it "
+                "was ignored and the detected profile was used instead"
+            ),
+            fix=f"{CONFIG} set WEB_CONCURRENCY to a whole number, or clear it",
+            facts=facts,
+        )
+
+    if build_info_matches is False:
+        return CheckResult(
+            name="runtime",
+            status=WARN,
+            summary=summary,
+            cause=(
+                "the reported build identity does not match the one baked into "
+                "this image, so something in the environment is shadowing it"
+            ),
+            fix=f"{CONFIG} remove VERSION and COMMIT_SHA from this deployment",
+            facts=facts,
+        )
+
+    if boot_sizing and boot_sizing.get("tier") != report["tier"]:
+        return CheckResult(
+            name="runtime",
+            status=WARN,
+            summary=summary,
+            cause=(
+                f"this container booted at tier {boot_sizing.get('tier')} but now "
+                f"detects {report['tier']}, so the running process count no longer "
+                "matches the host"
+            ),
+            fix=f"{FLOPPY} restart the container to resize it",
+            facts=facts,
+        )
+
+    return CheckResult(name="runtime", status=OK, summary=summary, facts=facts)
+
+
 def run_checks(
     *,
     include_redis: bool = True,
@@ -751,7 +883,7 @@ def run_checks(
     migration check can run at all.
     """
     database = None
-    results = [check_paths(), check_config()]
+    results = [check_runtime(), check_paths(), check_config()]
     database = check_database(timeout_seconds=timeout_seconds)
     results.append(database)
     results.append(check_migrations(database_ok=not database.failed))
