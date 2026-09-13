@@ -145,7 +145,10 @@ import sys
 
 sample = json.load(open(sys.argv[1], encoding="utf-8"))
 with open(sys.argv[2], "w", newline="", encoding="utf-8") as output:
-    fields = ("pid", "ppid", "role", "name", "argv0", "pss_kib", "rss_kib", "private_kib")
+    fields = (
+        "pid", "ppid", "role", "name", "argv0", "pss_kib", "pss_anon_kib",
+        "pss_file_kib", "pss_shmem_kib", "rss_kib", "private_kib",
+    )
     writer = csv.DictWriter(output, fieldnames=fields)
     writer.writeheader()
     writer.writerows(sample["processes"])
@@ -283,7 +286,10 @@ for label in ("baseline", "candidate"):
     role_medians[label] = {
         role: {
             key: statistics.median(values[key] for values in measurements)
-            for key in ("process_count", "pss_kib", "rss_kib", "private_kib")
+            for key in (
+                "process_count", "pss_kib", "pss_anon_kib", "pss_file_kib",
+                "pss_shmem_kib", "rss_kib", "private_kib",
+            )
         }
         for role, measurements in roles.items()
     }

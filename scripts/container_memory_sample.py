@@ -41,6 +41,18 @@ def _process_role(process, child_pids, processes_by_pid):
     return "other"
 
 
+def _build_info():
+    """Read image-baked identity without trusting runtime environment overrides."""
+    try:
+        return dict(
+            line.split("=", 1)
+            for line in Path("/etc/floppy-build-info").read_text().splitlines()
+            if "=" in line
+        )
+    except OSError:
+        return {}
+
+
 def sample():
     """Return cgroup accounting and readable process proportional/private memory."""
     root = Path("/sys/fs/cgroup")
@@ -96,6 +108,9 @@ def sample():
                 "name": (rollup.parent / "comm").read_text().strip(),
                 "argv0": command[0].decode(errors="replace") if command and command[0] else "",
                 "pss_kib": values["Pss"],
+                "pss_anon_kib": values.get("Pss_Anon", 0),
+                "pss_file_kib": values.get("Pss_File", 0),
+                "pss_shmem_kib": values.get("Pss_Shmem", 0),
                 "rss_kib": values["Rss"],
                 "private_kib": sum(
                     values.get(key, 0)
@@ -137,10 +152,25 @@ def sample():
     for process in processes:
         budget = roles.setdefault(
             process["role"],
-            {"process_count": 0, "pss_kib": 0, "rss_kib": 0, "private_kib": 0},
+            {
+                "process_count": 0,
+                "pss_kib": 0,
+                "pss_anon_kib": 0,
+                "pss_file_kib": 0,
+                "pss_shmem_kib": 0,
+                "rss_kib": 0,
+                "private_kib": 0,
+            },
         )
         budget["process_count"] += 1
-        for key in ("pss_kib", "rss_kib", "private_kib"):
+        for key in (
+            "pss_kib",
+            "pss_anon_kib",
+            "pss_file_kib",
+            "pss_shmem_kib",
+            "rss_kib",
+            "private_kib",
+        ):
             budget[key] += process[key]
 
     pss_bytes = sum(process["pss_kib"] for process in processes) * 1024
@@ -152,6 +182,7 @@ def sample():
         "oom": oom,
         "oom_kill": oom_kill,
         "events": events,
+        "build_info": _build_info(),
         "processes": processes,
         "roles": roles,
         "sampler": sampler,
