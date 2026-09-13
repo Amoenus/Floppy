@@ -213,12 +213,17 @@ def await_task(task, phase, started):
 def exercise(size):
     """Run cold, warm and overlapping task/request workloads for one scale."""
     user, cookie = seed(size)
+    request_workers = max(1, int(os.environ.get("FLOPPY_MEMORY_REQUEST_WORKERS", "1")))
     started = time.monotonic()
     task = refresh_statistics_cache_task.delay(user.pk, "All Time")
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        traffic = pool.submit(browse, cookie, 1, require_talent=False)
+    with ThreadPoolExecutor(max_workers=request_workers) as pool:
+        traffic = [
+            pool.submit(browse, cookie, 1, require_talent=False)
+            for _ in range(request_workers)
+        ]
         await_task(task, "statistics_rebuild_plus_browsing", started)
-        traffic.result()
+        for request in traffic:
+            request.result()
     browse(cookie, cycles=2)
     with tempfile.TemporaryFile(mode="w+b") as upload:
         import io
@@ -242,10 +247,11 @@ def exercise(size):
         text.detach()
     started = time.monotonic()
     task = import_clz.delay(str(staged), user.pk, "new", media_type="game")
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        traffic = pool.submit(browse, cookie, 2)
+    with ThreadPoolExecutor(max_workers=request_workers) as pool:
+        traffic = [pool.submit(browse, cookie, 2) for _ in range(request_workers)]
         await_task(task, "import_plus_browsing", started)
-        traffic.result()
+        for request in traffic:
+            request.result()
     connections.close_all()
     imported = CollectionEntry.objects.filter(user=user).count()
     if (
@@ -263,10 +269,11 @@ def exercise(size):
     report("import_verified", started, rows=imported)
     started = time.monotonic()
     task = refresh_history_cache_task.delay(user.pk, warm_days=30)
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        traffic = pool.submit(browse, cookie, 2)
+    with ThreadPoolExecutor(max_workers=request_workers) as pool:
+        traffic = [pool.submit(browse, cookie, 2) for _ in range(request_workers)]
         await_task(task, "rebuild_plus_browsing", started)
-        traffic.result()
+        for request in traffic:
+            request.result()
     browse(cookie, cycles=2)
     report("complete", started, items=size)
 

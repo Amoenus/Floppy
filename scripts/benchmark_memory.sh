@@ -27,6 +27,8 @@ WORKLOAD_SCRIPT=""
 TOPOLOGY="production"
 MEMORY_LIMIT="${FLOPPY_BENCHMARK_MEMORY_LIMIT:-}"
 WEB_CONCURRENCY=""
+BASELINE_WEB_CONCURRENCY=""
+CANDIDATE_WEB_CONCURRENCY=""
 GUNICORN_THREADS=""
 CELERY_CONCURRENCY=""
 OUTPUT_DIR="${MEMORY_BENCHMARK_OUTPUT_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/floppy-memory.XXXXXX")}" 
@@ -40,6 +42,8 @@ while [ "$#" -gt 0 ]; do
     --topology) TOPOLOGY="${2:?missing topology}"; shift 2 ;;
     --memory-limit) MEMORY_LIMIT="${2:?missing memory limit}"; shift 2 ;;
     --web-workers) WEB_CONCURRENCY="${2:?missing web worker count}"; shift 2 ;;
+    --baseline-web-workers) BASELINE_WEB_CONCURRENCY="${2:?missing web worker count}"; shift 2 ;;
+    --candidate-web-workers) CANDIDATE_WEB_CONCURRENCY="${2:?missing web worker count}"; shift 2 ;;
     --gunicorn-threads) GUNICORN_THREADS="${2:?missing Gunicorn thread count}"; shift 2 ;;
     --celery-concurrency) CELERY_CONCURRENCY="${2:?missing Celery concurrency}"; shift 2 ;;
     --workload-script) WORKLOAD_SCRIPT="${2:?missing workload script}"; shift 2 ;;
@@ -93,6 +97,13 @@ for value in "$RUNS" "$SAMPLES" "$WARMUP_SECONDS" "$SAMPLE_INTERVAL_SECONDS" "$S
     ''|*[!0-9]*|0) echo "Run, sample, warmup, and interval values must be positive integers." >&2; exit 2 ;;
   esac
 done
+BASELINE_WEB_CONCURRENCY="${BASELINE_WEB_CONCURRENCY:-$WEB_CONCURRENCY}"
+CANDIDATE_WEB_CONCURRENCY="${CANDIDATE_WEB_CONCURRENCY:-$WEB_CONCURRENCY}"
+for value in "$BASELINE_WEB_CONCURRENCY" "$CANDIDATE_WEB_CONCURRENCY"; do
+  case "$value" in
+    *[!0-9]*|0) echo "Web worker values must be positive integers." >&2; exit 2 ;;
+  esac
+done
 
 if [ -n "$WORKLOAD_SCRIPT" ] && [ ! -f "$WORKLOAD_SCRIPT" ]; then
   echo "Workload script not found: $WORKLOAD_SCRIPT" >&2
@@ -109,14 +120,14 @@ EOF
 SUMMARY_CSV="$OUTPUT_DIR/summary.csv"
 FAILURES_CSV="$OUTPUT_DIR/failures.csv"
 printf '%s\n' 'label,run,phase' >"$FAILURES_CSV"
-printf '%s\n' 'image,label,run,sample,cgroup_bytes,pss_kib,rss_kib,private_kib,cgroup_minus_pss_bytes,anon_bytes,file_bytes,kernel_bytes,slab_bytes,redis_cgroup_bytes,redis_used_memory,redis_maxmemory,process_count' >"$SUMMARY_CSV"
+printf '%s\n' 'image,label,run,sample,web_workers,cgroup_bytes,pss_kib,rss_kib,private_kib,cgroup_minus_pss_bytes,anon_bytes,file_bytes,kernel_bytes,slab_bytes,redis_cgroup_bytes,redis_used_memory,redis_maxmemory,process_count' >"$SUMMARY_CSV"
 
 cleanup_project() {
   docker compose -p "$1" -f docker-compose.memory-benchmark.yml down --volumes --remove-orphans >/dev/null 2>&1 || true
 }
 
 sample_floppy() {
-  local project="$1" label="$2" image="$3" run="$4" sample="$5"
+  local project="$1" label="$2" image="$3" run="$4" sample="$5" web_workers="$6"
   local cgroup_sample redis redis_cgroup process_file redis_used redis_max pss rss private count remainder anon file kernel slab
   cgroup_sample="$OUTPUT_DIR/cgroups/${label}-run${run}-sample${sample}.json"
   docker compose -p "$project" -f docker-compose.memory-benchmark.yml exec -T --user root floppy sh -c '
@@ -180,11 +191,11 @@ PY
   then
     return 1
   fi
-  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' "$image" "$label" "$run" "$sample" "$cgroup" "$pss" "$rss" "$private" "$remainder" "$anon" "$file" "$kernel" "$slab" "$redis_cgroup" "$redis_used" "$redis_max" "$count" >>"$SUMMARY_CSV"
+  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' "$image" "$label" "$run" "$sample" "$web_workers" "$cgroup" "$pss" "$rss" "$private" "$remainder" "$anon" "$file" "$kernel" "$slab" "$redis_cgroup" "$redis_used" "$redis_max" "$count" >>"$SUMMARY_CSV"
 }
 
 run_image() {
-  local label="$1" image="$2" run project sample ready
+  local label="$1" image="$2" web_workers="$3" run project sample ready
   for run in $(seq 1 "$RUNS"); do
     project="floppy-memory-${label}-${run}-$$"
     trap 'cleanup_project "$project"' EXIT INT TERM
@@ -193,7 +204,7 @@ run_image() {
     if ! FLOPPY_BENCHMARK_IMAGE="$image" \
       FLOPPY_BENCHMARK_MEMORY_LIMIT="$MEMORY_LIMIT" \
       FLOPPY_BENCHMARK_RESOURCE_TIER="$BENCHMARK_RESOURCE_TIER" \
-      FLOPPY_BENCHMARK_WEB_CONCURRENCY="$WEB_CONCURRENCY" \
+      FLOPPY_BENCHMARK_WEB_CONCURRENCY="$web_workers" \
       FLOPPY_BENCHMARK_GUNICORN_THREADS="$GUNICORN_THREADS" \
       FLOPPY_BENCHMARK_CELERY_CONCURRENCY="$CELERY_CONCURRENCY" \
       FLOPPY_BENCHMARK_CELERY_QUEUES="$BENCHMARK_CELERY_QUEUES" \
@@ -205,9 +216,9 @@ run_image() {
       ready=false
     fi
     if [ "$ready" = true ]; then
-      sample_floppy "$project" "$label" "$image" "$run" startup || printf '%s,%s,sample-startup\n' "$label" "$run" >>"$FAILURES_CSV"
+      sample_floppy "$project" "$label" "$image" "$run" startup "$web_workers" || printf '%s,%s,sample-startup\n' "$label" "$run" >>"$FAILURES_CSV"
       sleep "$WARMUP_SECONDS"
-      sample_floppy "$project" "$label" "$image" "$run" idle || printf '%s,%s,sample-idle\n' "$label" "$run" >>"$FAILURES_CSV"
+      sample_floppy "$project" "$label" "$image" "$run" idle "$web_workers" || printf '%s,%s,sample-idle\n' "$label" "$run" >>"$FAILURES_CSV"
     fi
     if [ "$ready" = true ] && [ -n "$WORKLOAD_SCRIPT" ]; then
       # The workload owns fixtures, authenticated traffic and completion checks.
@@ -216,11 +227,11 @@ run_image() {
         bash "$WORKLOAD_SCRIPT" >"$OUTPUT_DIR/${label}-run${run}-workload.log" 2>&1; then
         printf '%s,%s,workload\n' "$label" "$run" >>"$FAILURES_CSV"
       fi
-      sample_floppy "$project" "$label" "$image" "$run" workload || printf '%s,%s,sample-workload\n' "$label" "$run" >>"$FAILURES_CSV"
+      sample_floppy "$project" "$label" "$image" "$run" workload "$web_workers" || printf '%s,%s,sample-workload\n' "$label" "$run" >>"$FAILURES_CSV"
     fi
     if [ "$ready" = true ]; then
       for sample in $(seq 1 "$SAMPLES"); do
-        sample_floppy "$project" "$label" "$image" "$run" "$sample" || printf '%s,%s,sample\n' "$label" "$run" >>"$FAILURES_CSV"
+        sample_floppy "$project" "$label" "$image" "$run" "$sample" "$web_workers" || printf '%s,%s,sample\n' "$label" "$run" >>"$FAILURES_CSV"
         [ "$sample" = "$SAMPLES" ] || sleep "$SAMPLE_INTERVAL_SECONDS"
       done
     fi
@@ -231,8 +242,8 @@ run_image() {
   done
 }
 
-run_image baseline "$BASELINE_IMAGE"
-run_image candidate "$CANDIDATE_IMAGE"
+run_image baseline "$BASELINE_IMAGE" "$BASELINE_WEB_CONCURRENCY"
+run_image candidate "$CANDIDATE_IMAGE" "$CANDIDATE_WEB_CONCURRENCY"
 
 python3 - "$SUMMARY_CSV" "$OUTPUT_DIR/summary.json" "$TOPOLOGY" "$MEMORY_LIMIT" <<'PY'
 import csv
@@ -244,7 +255,7 @@ import sys
 rows = list(csv.DictReader(open(sys.argv[1], newline="", encoding="utf-8")))
 for row in rows:
     for key in (
-        "run", "cgroup_bytes", "pss_kib", "rss_kib", "private_kib",
+        "run", "web_workers", "cgroup_bytes", "pss_kib", "rss_kib", "private_kib",
         "cgroup_minus_pss_bytes", "anon_bytes", "file_bytes", "kernel_bytes", "slab_bytes",
         "redis_cgroup_bytes", "redis_used_memory", "redis_maxmemory", "process_count",
     ):
