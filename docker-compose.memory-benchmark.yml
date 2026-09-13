@@ -15,7 +15,16 @@ services:
       DEBUG: "False"
       DEMO_ACCOUNT_ENABLED: "False"
       REGISTRATION: "False"
-      FLOPPY_RESOURCE_TIER: standard
+      # The harness sets these from --topology. Keep defaults so ad-hoc compose
+      # inspection remains possible without its environment.
+      FLOPPY_RESOURCE_TIER: ${FLOPPY_BENCHMARK_RESOURCE_TIER:-standard}
+      WEB_CONCURRENCY: ${FLOPPY_BENCHMARK_WEB_CONCURRENCY:-1}
+      GUNICORN_THREADS: ${FLOPPY_BENCHMARK_GUNICORN_THREADS:-4}
+      CELERY_WORKER_CONCURRENCY: ${FLOPPY_BENCHMARK_CELERY_CONCURRENCY:-1}
+      FLOPPY_CELERY_QUEUES: ${FLOPPY_BENCHMARK_CELERY_QUEUES:-celery,discover}
+      FLOPPY_CELERY_ROLE: ${FLOPPY_BENCHMARK_CELERY_ROLE:-background}
+      FLOPPY_START_INTERACTIVE_WORKER: ${FLOPPY_BENCHMARK_START_INTERACTIVE_WORKER:-true}
+      FLOPPY_START_DISCOVER_WORKER: ${FLOPPY_BENCHMARK_START_DISCOVER_WORKER:-false}
     depends_on:
       redis:
         condition: service_started
