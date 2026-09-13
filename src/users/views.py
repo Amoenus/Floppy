@@ -105,12 +105,6 @@ from users.models import (
     WeekStartDayChoices,
 )
 
-try:
-    import qrcode
-except ModuleNotFoundError:  # pragma: no cover - optional dependency guard
-    qrcode = None
-
-
 logger = logging.getLogger(__name__)
 
 # Carries a freshly minted token secret across the create redirect, so a refresh
@@ -291,7 +285,12 @@ def _build_qr_data_uri(provisioning_uri: str) -> str:
     if not provisioning_uri:
         return ""
 
-    if qrcode is None:
+    # Imported here, not at module scope: qrcode pulls in Pillow, so importing
+    # it at module scope keeps a C extension resident in every web process for
+    # the sake of one authenticator screen.
+    try:
+        import qrcode
+    except ModuleNotFoundError:  # pragma: no cover - optional dependency guard
         logger.warning(
             "qrcode package is unavailable; skipping authenticator QR rendering"
         )
