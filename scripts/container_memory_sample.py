@@ -53,6 +53,22 @@ def _build_info():
         return {}
 
 
+def _file_descriptor_counts(process_directory: Path):
+    """Return non-sensitive descriptor counts useful for Celery child roles."""
+    descriptor_count = 0
+    sqlite_descriptor_count = 0
+    try:
+        for descriptor in (process_directory / "fd").iterdir():
+            descriptor_count += 1
+            target = os.readlink(descriptor)
+            if target.endswith((".sqlite3", ".sqlite3-wal", ".sqlite3-shm")):
+                sqlite_descriptor_count += 1
+    except OSError:
+        # Descriptor inspection is diagnostic only; smaps remains authoritative.
+        pass
+    return descriptor_count, sqlite_descriptor_count
+
+
 def sample():
     """Return cgroup accounting and readable process proportional/private memory."""
     root = Path("/sys/fs/cgroup")
@@ -102,6 +118,9 @@ def sample():
             status = (rollup.parent / "status").read_text().splitlines()
             ppid = int(next(line.split()[1] for line in status if line.startswith("PPid:")))
             command = (rollup.parent / "cmdline").read_bytes().split(b"\0")
+            descriptor_count, sqlite_descriptor_count = _file_descriptor_counts(
+                rollup.parent
+            )
             process = {
                 "pid": pid,
                 "ppid": ppid,
@@ -116,6 +135,8 @@ def sample():
                     values.get(key, 0)
                     for key in ("Private_Clean", "Private_Dirty", "Private_Hugetlb")
                 ),
+                "fd_count": descriptor_count,
+                "sqlite_fd_count": sqlite_descriptor_count,
                 # Read task flags to classify Beat, but never emit process arguments:
                 # command lines may contain deployment-specific connection details.
                 "is_beat": any(b"beat" in argument for argument in command),
@@ -160,6 +181,8 @@ def sample():
                 "pss_shmem_kib": 0,
                 "rss_kib": 0,
                 "private_kib": 0,
+                "fd_count": 0,
+                "sqlite_fd_count": 0,
             },
         )
         budget["process_count"] += 1
@@ -170,6 +193,8 @@ def sample():
             "pss_shmem_kib",
             "rss_kib",
             "private_kib",
+            "fd_count",
+            "sqlite_fd_count",
         ):
             budget[key] += process[key]
 
