@@ -12,4 +12,6 @@ compose=(docker compose -p "$FLOPPY_BENCHMARK_PROJECT" -f docker-compose.memory-
 "${compose[@]}" exec -T --user abc \
   -e FLOPPY_MEMORY_FIXTURE=disposable \
   -e FLOPPY_MEMORY_SCALES="${FLOPPY_MEMORY_SCALES:-500,2000}" \
+  -e FLOPPY_MEMORY_HISTORY_DAYS="${FLOPPY_MEMORY_HISTORY_DAYS:-30}" \
+  -e FLOPPY_MEMORY_PLAYS_PER_ITEM="${FLOPPY_MEMORY_PLAYS_PER_ITEM:-4}" \
   floppy python /tmp/floppy-memory-workload.py

@@ -11,7 +11,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from app import statistics_cache
+from app import statistics_cache, statistics_refresh
 from app.models import Item, MediaTypes, Movie, Sources, Status
 from app.statistics_aggregator import (
     _aggregate_minutes_per_media_type_from_days,
@@ -36,6 +36,65 @@ class StatisticsDayBatchingTests(SimpleTestCase):
         self.assertEqual(get_many.call_count, 20)
         self.assertTrue(
             all(len(call_args.args[0]) <= 50 for call_args in get_many.call_args_list)
+        )
+
+
+class StatisticsRefreshPayloadRetentionTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(
+            username="stats-refresh-payloads",
+            password="secret123",
+        )
+        self.days = []
+        for offset in (1, 3):
+            item = Item.objects.create(
+                media_id=f"stats-refresh-payload-{offset}",
+                source=Sources.MANUAL.value,
+                media_type=MediaTypes.MOVIE.value,
+                title=f"Statistics payload movie {offset}",
+                runtime_minutes=90,
+            )
+            watched_at = timezone.now() - timedelta(days=offset)
+            Movie.objects.create(
+                user=self.user,
+                item=item,
+                status=Status.COMPLETED.value,
+                end_date=watched_at,
+            )
+            self.days.append(_normalize_day_value(watched_at))
+
+    def tearDown(self):
+        cache.clear()
+
+    def test_refresh_keeps_only_cache_write_failures_for_aggregation(self):
+        failed_key = statistics_refresh._day_cache_key(self.user.id, self.days[0])
+        original_set_many = cache.set_many
+
+        def set_many_with_one_reported_failure(values, timeout=None, version=None):
+            original_set_many(values, timeout=timeout, version=version)
+            return [failed_key] if failed_key in values else []
+
+        with (
+            patch.object(
+                statistics_refresh.cache,
+                "set_many",
+                side_effect=set_many_with_one_reported_failure,
+            ),
+            patch(
+                "app.statistics_refresh._aggregate_statistics_from_days",
+                wraps=statistics_refresh._aggregate_statistics_from_days,
+            ) as aggregate,
+        ):
+            result = statistics_refresh.refresh_statistics_cache(
+                self.user.id,
+                "All Time",
+            )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            aggregate.call_args.kwargs["prebuilt_days"].keys(),
+            {self.days[0]},
         )
 
 

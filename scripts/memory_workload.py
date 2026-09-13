@@ -77,6 +77,7 @@ def seed(size):
     """Create bounded batches of synthetic records in a fresh benchmark volume."""
     started = time.monotonic()
     plays_per_item = int(os.environ.get("FLOPPY_MEMORY_PLAYS_PER_ITEM", "4"))
+    history_days = int(os.environ.get("FLOPPY_MEMORY_HISTORY_DAYS", "30"))
     user = get_user_model().objects.create_user(username=f"memory-{size}")
     people = Person.objects.bulk_create(
         [
@@ -113,7 +114,7 @@ def seed(size):
                 user=user,
                 item=item,
                 status=Status.COMPLETED,
-                end_date=today - timedelta(days=(start + n) % 30),
+                end_date=today - timedelta(days=(start + n) % history_days),
             )
             for n, item in enumerate(items)
         ]
@@ -122,7 +123,8 @@ def seed(size):
             [
                 MoviePlay(
                     movie=movie,
-                    end_date=today - timedelta(days=(start + n + play) % 30),
+                    end_date=today
+                    - timedelta(days=(start + n + play) % history_days),
                 )
                 for n, movie in enumerate(movies)
                 for play in range(plays_per_item)
