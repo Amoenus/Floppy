@@ -197,3 +197,205 @@ class BootSizingTests(SimpleTestCase):
         self.assertEqual(result.status, WARN)
         self.assertNotEqual(result.status, FAIL)
         self.assertIn("minimal", result.cause)
+
+
+class ShadowedIdentityTests(SimpleTestCase):
+    """A stale VERSION in the environment must not be reported as the image.
+
+    `docker exec` gives the new process the container's environment, not the
+    corrected exports entrypoint.sh made in PID 1. The documented way to run
+    this check is exactly that, so the baked values are the authoritative ones.
+    """
+
+    def setUp(self):
+        """Point the check at a build-info file with a known identity."""
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, True)
+        path = Path(directory) / "floppy-build-info"
+        path.write_text("VERSION=v1.2.3\nCOMMIT_SHA=abc1234def\n")
+        for attribute, value in (
+            ("_BUILD_INFO_PATH", path),
+            ("_BOOT_SIZING_PATH", Path("/nonexistent/floppy-boot-sizing.json")),
+        ):
+            patcher = patch.object(preflight, attribute, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_baked_identity_wins_over_a_shadowing_environment(self):
+        """The report names the build in the image, not the stale override."""
+        with (
+            patch.object(preflight.settings, "LOCAL_COMMIT_SHA", None),
+            patch.object(preflight.settings, "VERSION", "stale-override"),
+            patch.object(preflight.settings, "COMMIT_SHA", "999stale"),
+            patch.object(preflight.settings, "COMMIT_SHA_SHORT", "999stal"),
+        ):
+            result = check_runtime()
+
+        self.assertEqual(result.facts["identity_source"], "image")
+        self.assertEqual(result.facts["version"], "v1.2.3")
+        self.assertEqual(result.facts["commit"], "abc1234")
+        self.assertIn("v1.2.3", result.summary)
+        self.assertNotIn("stale-override", result.summary)
+
+    def test_the_shadowed_values_stay_visible(self):
+        """Both sides of the mismatch are reported, so it can be diagnosed."""
+        with (
+            patch.object(preflight.settings, "LOCAL_COMMIT_SHA", None),
+            patch.object(preflight.settings, "VERSION", "stale-override"),
+            patch.object(preflight.settings, "COMMIT_SHA", "999stale"),
+            patch.object(preflight.settings, "COMMIT_SHA_SHORT", "999stal"),
+        ):
+            result = check_runtime()
+
+        self.assertEqual(result.facts["settings_version"], "stale-override")
+        self.assertEqual(result.facts["settings_commit"], "999stal")
+        self.assertFalse(result.facts["build_info_matches_settings"])
+        self.assertEqual(result.status, WARN)
+
+    def test_a_matching_build_reports_no_warning(self):
+        """Identical baked and resolved identity is the ordinary case."""
+        with (
+            patch.object(preflight.settings, "LOCAL_COMMIT_SHA", None),
+            patch.object(preflight.settings, "VERSION", "v1.2.3"),
+            patch.object(preflight.settings, "COMMIT_SHA", "abc1234def"),
+            patch.object(preflight.settings, "COMMIT_SHA_SHORT", "abc1234"),
+            patch.dict("os.environ", {}, clear=False),
+        ):
+            result = check_runtime()
+
+        self.assertEqual(result.status, OK)
+        self.assertTrue(result.facts["build_info_matches_settings"])
+
+
+class AggregatedWarningTests(SimpleTestCase):
+    """Co-occurring problems must all be reported, not just the first.
+
+    An older deployment template that pins WEB_CONCURRENCY is the same kind
+    that carries a stale COMMIT_SHA, so this combination is the realistic one.
+    """
+
+    def setUp(self):
+        """Give the check a build identity that disagrees with settings."""
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, True)
+        path = Path(directory) / "floppy-build-info"
+        path.write_text("VERSION=v2.0.0\nCOMMIT_SHA=realsha0\n")
+        for attribute, value in (
+            ("_BUILD_INFO_PATH", path),
+            ("_BOOT_SIZING_PATH", Path("/nonexistent/floppy-boot-sizing.json")),
+        ):
+            patcher = patch.object(preflight, attribute, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_both_the_override_and_the_mismatch_are_reported(self):
+        """Neither warning may mask the other."""
+        with (
+            patch.object(preflight.settings, "LOCAL_COMMIT_SHA", None),
+            patch.object(preflight.settings, "COMMIT_SHA", "stalesha"),
+            patch.dict("os.environ", {"WEB_CONCURRENCY": "2"}, clear=False),
+        ):
+            result = check_runtime()
+
+        self.assertEqual(result.status, WARN)
+        self.assertIn("WEB_CONCURRENCY", result.cause)
+        self.assertIn("shadowing", result.cause)
+        self.assertIn("WEB_CONCURRENCY", result.fix)
+        self.assertIn("COMMIT_SHA", result.fix)
+        self.assertTrue(build_report([result])["ok"])
+
+
+class RunningTopologyTests(SimpleTestCase):
+    """Report the topology this container booted with, not a fresh probe.
+
+    sizing_report() answers "what would a process starting now choose", which
+    diverges from the running container once host memory, CPU quota or swap
+    moves. The summary is what an operator reads, so it must not name a
+    process that was never started.
+    """
+
+    def setUp(self):
+        """Keep build info out of these cases."""
+        patcher = patch.object(
+            preflight,
+            "_BUILD_INFO_PATH",
+            Path("/nonexistent/floppy-build-info"),
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _write_boot_sizing(self, payload):
+        """Point the check at a recorded boot sizing."""
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, True)
+        path = Path(directory) / "floppy-boot-sizing.json"
+        path.write_text(json.dumps(payload))
+        patcher = patch.object(preflight, "_BOOT_SIZING_PATH", path)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_summary_names_the_processes_that_were_started(self):
+        """A worker absent at boot must not be listed as resident now."""
+        self._write_boot_sizing({
+            "tier": "minimal",
+            "profile": "tier=minimal mem=1.0GiB",
+            "web_concurrency": 1,
+            "gunicorn_threads": 2,
+            "expected_programs": ["nginx", "gunicorn", "celery"],
+        })
+        with patch.dict("os.environ", {"FLOPPY_RESOURCE_TIER": "standard"}):
+            result = check_runtime()
+
+        self.assertIn("tier=minimal", result.summary)
+        self.assertNotIn("celery-interactive", result.summary)
+        self.assertEqual(
+            result.facts["expected_programs"],
+            ["nginx", "gunicorn", "celery"],
+        )
+        self.assertEqual(result.facts["gunicorn_threads"], 2)
+
+    def test_the_fresh_probe_is_kept_for_comparison(self):
+        """Drift is only diagnosable if both readings are reported."""
+        self._write_boot_sizing({
+            "tier": "minimal",
+            "profile": "tier=minimal mem=1.0GiB",
+            "expected_programs": ["nginx", "gunicorn", "celery"],
+        })
+        with patch.dict("os.environ", {"FLOPPY_RESOURCE_TIER": "standard"}):
+            result = check_runtime()
+
+        self.assertEqual(result.facts["detected_sizing"]["tier"], "standard")
+        self.assertIn(
+            "celery-interactive",
+            result.facts["detected_sizing"]["expected_programs"],
+        )
+        self.assertEqual(result.status, WARN)
+        self.assertIn("booted at tier minimal", result.cause)
+
+    def test_a_boot_record_missing_newer_keys_falls_back(self):
+        """A record written by an older build must not break the check."""
+        self._write_boot_sizing({"tier": "standard"})
+        with patch.dict("os.environ", {"FLOPPY_RESOURCE_TIER": "standard"}):
+            result = check_runtime()
+
+        self.assertEqual(result.status, OK)
+        self.assertIn("gunicorn", result.facts["expected_programs"])
+        self.assertIsNotNone(result.facts["web_concurrency"])
+
+    def test_without_a_boot_record_the_fresh_probe_is_used(self):
+        """An install that never wrote one still reports a full topology."""
+        patcher = patch.object(
+            preflight,
+            "_BOOT_SIZING_PATH",
+            Path("/nonexistent/floppy-boot-sizing.json"),
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        result = check_runtime()
+
+        self.assertNotIn("boot_sizing", result.facts)
+        self.assertEqual(
+            result.facts["expected_programs"],
+            result.facts["detected_sizing"]["expected_programs"],
+        )

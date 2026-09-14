@@ -780,7 +780,7 @@ def check_runtime() -> CheckResult:
     without: whether this container is running the code someone thinks it is,
     and how many resident processes it decided to start.
     """
-    report = sizing_report()
+    detected = sizing_report()
     build_info = _read_build_info()
     boot_sizing = _read_boot_sizing()
 
@@ -797,74 +797,94 @@ def check_runtime() -> CheckResult:
     if build_info.get("COMMIT_SHA"):
         build_info_matches = build_info["COMMIT_SHA"] == settings.COMMIT_SHA
 
+    # A `docker exec` receives the container's environment, not the corrected
+    # exports entrypoint.sh made in PID 1, so settings here can carry a stale
+    # VERSION/COMMIT_SHA that the image itself does not have. Report the baked
+    # values as the identity and keep what this process resolved beside them,
+    # or the report would label a shadowed value as coming from the image.
+    version = settings.VERSION
+    commit = settings.COMMIT_SHA_SHORT
+    if identity_source == "image":
+        version = build_info.get("VERSION") or version
+        baked_commit = build_info.get("COMMIT_SHA")
+        commit = baked_commit[:7] if baked_commit else commit
+
+    # Likewise for topology: sizing_report() describes what a process starting
+    # now would choose, which is not what the running container started if the
+    # host's memory or CPU moved since boot. Prefer the recorded decision, and
+    # fall back per key so a record written by an older build cannot KeyError.
+    def running(key):
+        """Return the boot-time value for a key, else the freshly detected one."""
+        return boot_sizing.get(key, detected[key]) if boot_sizing else detected[key]
+
     facts = {
-        "version": settings.VERSION,
-        "commit": settings.COMMIT_SHA_SHORT,
+        "version": version,
+        "commit": commit,
         "identity_source": identity_source,
+        "settings_version": settings.VERSION,
+        "settings_commit": settings.COMMIT_SHA_SHORT,
         "build_info_present": bool(build_info),
         "build_info_matches_settings": build_info_matches,
-        **report,
+        **{key: running(key) for key in detected},
+        # What a process starting now would choose, kept beside the running
+        # values so drift since boot stays inspectable.
+        "detected_sizing": detected,
     }
     if boot_sizing:
         facts["boot_sizing"] = boot_sizing
 
     summary = (
-        f"{settings.VERSION} ({identity_source}), {report['profile']}, "
-        f"gunicorn {report['web_concurrency']}x{report['gunicorn_threads']}, "
-        f"resident: {', '.join(report['expected_programs'])}"
+        f"{version} ({identity_source}), {running('profile')}, "
+        f"gunicorn {running('web_concurrency')}x{running('gunicorn_threads')}, "
+        f"resident: {', '.join(running('expected_programs'))}"
     )
 
-    if report["web_concurrency_over_profile"]:
-        return CheckResult(
-            name="runtime",
-            status=WARN,
-            summary=summary,
-            cause=web_concurrency_warning(),
-            fix=_where(
+    # Collected rather than returned one at a time: these conditions co-occur.
+    # An older deployment template that pins WEB_CONCURRENCY is also the kind
+    # that carries a stale COMMIT_SHA, and reporting only the first would hide
+    # the second from the one diagnostic an operator runs.
+    warnings = []
+
+    if detected["web_concurrency_over_profile"]:
+        warnings.append((
+            web_concurrency_warning(),
+            _where(
                 f"{CONFIG} clear WEB_CONCURRENCY in this container's template or "
                 "compose file and restart",
                 f"{CONFIG} unset WEB_CONCURRENCY and restart",
             ),
-            facts=facts,
-        )
+        ))
 
-    if report["web_concurrency_source"] == "invalid":
-        return CheckResult(
-            name="runtime",
-            status=WARN,
-            summary=summary,
-            cause=(
-                "WEB_CONCURRENCY is set to something that is not a number, so it "
-                "was ignored and the detected profile was used instead"
-            ),
-            fix=f"{CONFIG} set WEB_CONCURRENCY to a whole number, or clear it",
-            facts=facts,
-        )
+    if detected["web_concurrency_source"] == "invalid":
+        warnings.append((
+            "WEB_CONCURRENCY is set to something that is not a number, so it "
+            "was ignored and the detected profile was used instead",
+            f"{CONFIG} set WEB_CONCURRENCY to a whole number, or clear it",
+        ))
 
     if build_info_matches is False:
-        return CheckResult(
-            name="runtime",
-            status=WARN,
-            summary=summary,
-            cause=(
-                "the reported build identity does not match the one baked into "
-                "this image, so something in the environment is shadowing it"
-            ),
-            fix=f"{CONFIG} remove VERSION and COMMIT_SHA from this deployment",
-            facts=facts,
-        )
+        warnings.append((
+            f"the environment reports {settings.VERSION}, but this image was "
+            f"built as {build_info.get('VERSION', 'unknown')}, so something in "
+            "the deployment is shadowing the image's own identity",
+            f"{CONFIG} remove VERSION and COMMIT_SHA from this deployment",
+        ))
 
-    if boot_sizing and boot_sizing.get("tier") != report["tier"]:
+    if boot_sizing and boot_sizing.get("tier") != detected["tier"]:
+        warnings.append((
+            f"this container booted at tier {boot_sizing.get('tier')} but now "
+            f"detects {detected['tier']}, so the running process count no longer "
+            "matches the host",
+            f"{FLOPPY} restart the container to resize it",
+        ))
+
+    if warnings:
         return CheckResult(
             name="runtime",
             status=WARN,
             summary=summary,
-            cause=(
-                f"this container booted at tier {boot_sizing.get('tier')} but now "
-                f"detects {report['tier']}, so the running process count no longer "
-                "matches the host"
-            ),
-            fix=f"{FLOPPY} restart the container to resize it",
+            cause="; ".join(cause for cause, _ in warnings),
+            fix="; ".join(fix for _, fix in warnings),
             facts=facts,
         )
 
