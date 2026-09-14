@@ -925,6 +925,7 @@ class MediaCoreTests(FloppyApiTestCase):
                 "consumptions_number",
                 "consumptions",
                 "lists",
+                "media_type_status",
             },
         )
         self.assertEqual(payload["episodes_left"], 2)
