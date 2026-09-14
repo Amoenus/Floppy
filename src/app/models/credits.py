@@ -162,6 +162,7 @@ class MetadataBackfillField(models.TextChoices):
     EXTERNAL_IDS = "external_ids", "External IDs"
     STUDIOS = "studios", "Studios"
     IMDB_MATCH = "imdb_match", "IMDB Title Match"
+    STATUS = "status", "Status"
 
 
 class MetadataBackfillState(models.Model):
