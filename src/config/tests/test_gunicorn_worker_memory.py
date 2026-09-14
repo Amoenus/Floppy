@@ -9,6 +9,7 @@ hours, never recycled, because real traffic had not served 500 requests yet.
 import importlib
 import os
 import sys
+import time
 from pathlib import Path
 from unittest import skipUnless
 from unittest.mock import patch
@@ -29,12 +30,13 @@ def load_config(tier="standard", **environment):
 
 
 class Worker:
-    """What the hook reads: the retire flag and the served-request count."""
+    """What the hook reads: the retire flag, request count and start time."""
 
-    def __init__(self, nr=1000):
-        """Start alive and, by default, well past the minimum request count."""
+    def __init__(self, nr=1000, age_seconds=3600.0):
+        """Start alive and, by default, well past both retirement floors."""
         self.alive = True
         self.nr = nr
+        self.floppy_started_at = time.monotonic() - age_seconds
 
 
 class WorkerMemoryCeilingTests(SimpleTestCase):
@@ -92,13 +94,41 @@ class WorkerMemoryCeilingTests(SimpleTestCase):
         self.assertTrue(worker.alive)
 
     def test_a_worker_past_the_minimum_is_retired_for_size(self):
-        """Once it has served enough, the ceiling applies normally."""
+        """Once it has served enough and lived long enough, the ceiling applies."""
         module = load_config("standard")
         worker = Worker(nr=module.MINIMUM_REQUESTS_BEFORE_RETIREMENT)
         with patch.object(module, "_worker_rss_bytes", return_value=1 << 40):
             module.post_request(worker, None, None, None)
 
         self.assertFalse(worker.alive)
+
+    def test_a_request_count_alone_does_not_bound_the_respawn_rate(self):
+        """Under load a worker reaches the request floor in seconds.
+
+        Measured: at four concurrent clients a 120 MiB ceiling produced 42
+        workers in thirteen minutes even with the count floor in place, so a
+        lifetime floor is what actually bounds how often a misconfigured
+        ceiling can respawn.
+        """
+        module = load_config("standard")
+        worker = Worker(nr=10_000, age_seconds=1.0)
+        with patch.object(module, "_worker_rss_bytes", return_value=1 << 40):
+            module.post_request(worker, None, None, None)
+
+        self.assertTrue(worker.alive)
+
+    def test_post_worker_init_stamps_the_start_time(self):
+        """The lifetime floor is inert unless the worker is stamped."""
+        module = load_config("standard")
+        worker = Worker()
+        del worker.floppy_started_at
+        module.post_worker_init(worker)
+
+        self.assertAlmostEqual(
+            worker.floppy_started_at,
+            time.monotonic(),
+            delta=1.0,
+        )
 
     def test_a_worker_under_the_ceiling_keeps_serving(self):
         """The common case must not touch the worker."""

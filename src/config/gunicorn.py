@@ -1,5 +1,6 @@
 import gc
 import os
+import time
 
 from config.runtime_profile import (
     PROFILE,
@@ -52,7 +53,14 @@ max_worker_memory_bytes = int(
 # retired for size. Without this a misconfigured ceiling below the starting
 # size is a restart loop -- every worker crosses it on its first request -- and
 # the symptom (workers churning, latency spikes) points nowhere near the cause.
+#
+# The floor is a lifetime, not only a request count. A count alone is no
+# protection under load: at four concurrent clients a worker reaches 50
+# requests in about two seconds, and a 120 MiB ceiling still produced 42
+# workers in thirteen minutes. A minute of life bounds the respawn rate
+# whatever the request rate is.
 MINIMUM_REQUESTS_BEFORE_RETIREMENT = 50
+MINIMUM_SECONDS_BEFORE_RETIREMENT = 60
 _PAGE_SIZE = os.sysconf("SC_PAGE_SIZE")
 
 
@@ -94,6 +102,11 @@ def when_ready(server):
     )
 
 
+def post_worker_init(worker):
+    """Record when this worker started, for the retirement floor below."""
+    worker.floppy_started_at = time.monotonic()
+
+
 def post_request(worker, req, environ, resp):  # gunicorn's hook signature
     """Retire a worker that has outgrown its ceiling, once its response is sent.
 
@@ -103,6 +116,12 @@ def post_request(worker, req, environ, resp):  # gunicorn's hook signature
     if not max_worker_memory_bytes:
         return
     if getattr(worker, "nr", 0) < MINIMUM_REQUESTS_BEFORE_RETIREMENT:
+        return
+    started_at = getattr(worker, "floppy_started_at", None)
+    if (
+        started_at is not None
+        and time.monotonic() - started_at < MINIMUM_SECONDS_BEFORE_RETIREMENT
+    ):
         return
     resident = _worker_rss_bytes()
     if resident is not None and resident > max_worker_memory_bytes:
