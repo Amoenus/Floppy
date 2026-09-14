@@ -272,6 +272,7 @@ class CompleteEpisodeSerializer(serializers.Serializer):
             "consumptions_number": consumptions_number,
             "consumptions": consumptions,
             "lists": lists,
+            "media_type_status": instance.get("media_type_status"),
         }
 
 
@@ -538,6 +539,7 @@ class CompleteMediaSerializer(serializers.Serializer):
             "consumptions_number": consumptions_number,
             "consumptions": consumptions,
             "lists": lists,
+            "media_type_status": instance.get("media_type_status"),
         }
 
 
