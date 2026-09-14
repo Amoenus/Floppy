@@ -9,10 +9,17 @@ quietly assert nothing at all.
 """
 
 import importlib.util
+import sys
 from pathlib import Path
+from unittest import skipUnless
 from unittest.mock import patch
 
 from django.test import SimpleTestCase
+
+# Two classes below deliberately take a real sample instead of a constructed
+# one. That needs the host's own /proc and /sys/fs/cgroup, which exist on Linux
+# (CI, and the containers this sampler actually runs in) and nowhere else.
+_ON_LINUX = skipUnless(sys.platform == "linux", "needs a real /proc and cgroup")
 
 _SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "container_memory_sample.py"
 _spec = importlib.util.spec_from_file_location("container_memory_sample", _SCRIPT)
@@ -302,6 +309,7 @@ class RollUpTests(SimpleTestCase):
         self.assertEqual(parent["fd_count"], 10)
 
 
+@_ON_LINUX
 class PrivacyInvariantTests(SimpleTestCase):
     """Command lines carry deployment secrets and must never be emitted.
 
@@ -353,6 +361,7 @@ class PrivacyInvariantTests(SimpleTestCase):
         )
 
 
+@_ON_LINUX
 class ReconciliationTests(SimpleTestCase):
     """The honesty flag is what stops a bound being read as a reconciliation."""
 
