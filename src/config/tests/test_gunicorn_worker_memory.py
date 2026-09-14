@@ -29,11 +29,12 @@ def load_config(tier="standard", **environment):
 
 
 class Worker:
-    """The single attribute gunicorn's arbiter reads to retire a worker."""
+    """What the hook reads: the retire flag and the served-request count."""
 
-    def __init__(self):
-        """Start alive, as the arbiter's own worker does."""
+    def __init__(self, nr=1000):
+        """Start alive and, by default, well past the minimum request count."""
         self.alive = True
+        self.nr = nr
 
 
 class WorkerMemoryCeilingTests(SimpleTestCase):
@@ -60,19 +61,44 @@ class WorkerMemoryCeilingTests(SimpleTestCase):
         self.assertLess(constrained, standard)
 
     def test_the_ceiling_clears_a_preloaded_worker(self):
-        """A ceiling near a fresh worker's size would retire it immediately.
+        """A ceiling near a fresh worker's size retires it as fast as it starts.
 
-        With preload_app a fresh worker's RSS counts the shared application
-        image, roughly 100 MiB, so the ceiling must sit well above it or the
-        first request would retire the worker that served it.
+        Measured, not assumed: with preload_app a fresh worker starts at
+        109-136 MiB RSS, because RSS counts the shared application image it
+        was forked from. A 120 MiB ceiling produced 30 workers in six minutes,
+        none older than 16 seconds, so every tier must clear the top of that
+        range with room for a request to do real work.
         """
-        preloaded_worker_bytes = 100 * 1024 * 1024
+        largest_observed_fresh_worker_bytes = 136 * 1024 * 1024
         for tier in ("minimal", "constrained", "standard"):
             with self.subTest(tier=tier):
                 self.assertGreater(
                     load_config(tier).max_worker_memory_bytes,
-                    preloaded_worker_bytes * 1.4,
+                    largest_observed_fresh_worker_bytes * 1.5,
                 )
+
+    def test_a_young_worker_is_never_retired_for_size(self):
+        """A ceiling below the starting size must not become a restart loop.
+
+        This is the guard that keeps a misconfiguration survivable: without
+        it every worker crosses the ceiling on its first request and is
+        replaced by one that does the same.
+        """
+        module = load_config("standard")
+        worker = Worker(nr=module.MINIMUM_REQUESTS_BEFORE_RETIREMENT - 1)
+        with patch.object(module, "_worker_rss_bytes", return_value=1 << 40):
+            module.post_request(worker, None, None, None)
+
+        self.assertTrue(worker.alive)
+
+    def test_a_worker_past_the_minimum_is_retired_for_size(self):
+        """Once it has served enough, the ceiling applies normally."""
+        module = load_config("standard")
+        worker = Worker(nr=module.MINIMUM_REQUESTS_BEFORE_RETIREMENT)
+        with patch.object(module, "_worker_rss_bytes", return_value=1 << 40):
+            module.post_request(worker, None, None, None)
+
+        self.assertFalse(worker.alive)
 
     def test_a_worker_under_the_ceiling_keeps_serving(self):
         """The common case must not touch the worker."""

@@ -38,12 +38,21 @@ timeout = by_tier(120, 200, 200)
 # requests. Celery already bounds its children by RSS; this is the same bound
 # for the web worker, checked after the response so no request is ever failed
 # by it.
+# Sized from a measured fresh worker, not a guess: with preload_app one starts
+# at 109-136 MiB RSS, because RSS counts the shared application image it was
+# forked from. A ceiling near that retires workers as fast as they start -- a
+# 120 MiB ceiling produced 30 workers in six minutes, none older than 16s.
 max_worker_memory_bytes = int(
     os.environ.get(
         "FLOPPY_GUNICORN_MAX_WORKER_MEMORY_BYTES",
-        by_tier(150, 200, 250) * 1024 * 1024,
+        by_tier(250, 320, 400) * 1024 * 1024,
     ),
 )
+# However the ceiling is set, a worker must earn its keep before it can be
+# retired for size. Without this a misconfigured ceiling below the starting
+# size is a restart loop -- every worker crosses it on its first request -- and
+# the symptom (workers churning, latency spikes) points nowhere near the cause.
+MINIMUM_REQUESTS_BEFORE_RETIREMENT = 50
 _PAGE_SIZE = os.sysconf("SC_PAGE_SIZE")
 
 
@@ -92,6 +101,8 @@ def post_request(worker, req, environ, resp):  # gunicorn's hook signature
     the arbiter forks a replacement, which with preload_app is nearly free.
     """
     if not max_worker_memory_bytes:
+        return
+    if getattr(worker, "nr", 0) < MINIMUM_REQUESTS_BEFORE_RETIREMENT:
         return
     resident = _worker_rss_bytes()
     if resident is not None and resident > max_worker_memory_bytes:
