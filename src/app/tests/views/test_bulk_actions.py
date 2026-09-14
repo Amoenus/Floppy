@@ -1,5 +1,4 @@
 from django.contrib.auth import get_user_model
-from django.http import QueryDict
 from django.test import TestCase
 from django.urls import reverse
 
@@ -50,9 +49,14 @@ class BulkStatusViewTests(TestCase):
         )
 
     def _post(self, item_ids, status=Status.PAUSED.value):
-        payload = QueryDict(mutable=True)
-        payload.setlist("item_ids", [str(item_id) for item_id in item_ids])
-        payload["status"] = status
+        # A plain dict with a list value, not a QueryDict: the test client's
+        # multipart encoder iterates data.items(), and QueryDict.items()
+        # yields only the last value per key, so every id but the last would
+        # be dropped before the request was sent.
+        payload = {
+            "item_ids": [str(item_id) for item_id in item_ids],
+            "status": status,
+        }
         return self.client.post(reverse("bulk_status_update"), payload)
 
     def test_updates_existing_creates_missing_and_skips_episode(self):
@@ -126,8 +130,11 @@ class BulkCollectionViewTests(TestCase):
             )
 
     def _post(self, item_ids):
-        payload = QueryDict(mutable=True)
-        payload.setlist("item_ids", [str(item_id) for item_id in item_ids])
+        # A plain dict with a list value, not a QueryDict: the test client's
+        # multipart encoder iterates data.items(), and QueryDict.items()
+        # yields only the last value per key, so every id but the last would
+        # be dropped before the request was sent.
+        payload = {"item_ids": [str(item_id) for item_id in item_ids]}
         return self.client.post(reverse("bulk_collection_quick_add"), payload)
 
     def test_creates_ordinary_and_expanded_entries_idempotently(self):

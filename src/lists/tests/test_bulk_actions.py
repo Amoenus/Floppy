@@ -1,5 +1,4 @@
 from django.contrib.auth import get_user_model
-from django.http import QueryDict
 from django.test import TestCase
 from django.urls import reverse
 
@@ -46,9 +45,14 @@ class BulkListAddViewTests(TestCase):
 
     def _post(self, user, custom_list, item_ids):
         self.client.force_login(user)
-        payload = QueryDict(mutable=True)
-        payload.setlist("item_ids", [str(item_id) for item_id in item_ids])
-        payload["custom_list_id"] = str(custom_list.id)
+        # A plain dict with a list value, not a QueryDict: the test client's
+        # multipart encoder iterates data.items(), and QueryDict.items()
+        # yields only the last value per key, so every id but the last would
+        # be dropped before the request was sent.
+        payload = {
+            "item_ids": [str(item_id) for item_id in item_ids],
+            "custom_list_id": str(custom_list.id),
+        }
         return self.client.post(reverse("bulk_list_add"), payload)
 
     def test_owner_adds_items_once_and_records_activity_and_order(self):
