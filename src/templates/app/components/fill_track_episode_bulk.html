@@ -8,6 +8,7 @@
       hx-post="{{ episode_plays_formaction|default:'' }}?next={{ return_url }}"
       hx-target="closest [data-track-modal-root]"
       hx-swap="outerHTML"
+      hx-disabled-elt="find button[type='submit']"
       x-data="episodeBulkTrackForm('{{ episode_plays_domain_script_id }}')"
       x-init="init">
   {% csrf_token %}
@@ -209,7 +210,6 @@
 
   <div class="mt-6 flex justify-end">
     <button type="submit"
-            hx-disabled-elt="this"
             class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">
       {% translate episode_plays_submit_label|default:_("Save plays") %}
     </button>
