@@ -8,6 +8,7 @@ from django.test import TestCase
 from app.models import TV, CollectionEntry, Item, MediaTypes, Movie, Sources, Status
 from integrations.models import PlexAccount
 from integrations.tasks import update_collection_metadata_from_plex
+from integrations.tasks._plex_collection import MAX_COLLECTION_SCAN_METADATA_FETCHES
 
 
 class CollectionUpdateModeTest(TestCase):
@@ -247,3 +248,58 @@ class CollectionUpdateModeTest(TestCase):
         mock_webhook.assert_called_once()
         self.assertEqual(mock_webhook.call_args.kwargs["item_id"], self.tv_item.id)
         self.assertEqual(mock_webhook.call_args.kwargs["rating_key"], "4706")
+
+    @patch(
+        "integrations.tasks._plex_collection.update_collection_metadata_from_plex_webhook"
+    )
+    @patch("integrations.tasks._plex_collection.plex_api.fetch_metadata")
+    @patch("integrations.tasks._plex_collection.plex_api.fetch_section_all_items")
+    @patch("integrations.tasks._plex_collection.plex_api.list_resources")
+    def test_bounds_per_entry_metadata_fallback_calls(
+        self,
+        mock_list_resources,
+        mock_fetch_section_all_items,
+        mock_fetch_metadata,
+        mock_webhook,
+    ):
+        """A section full of unresolvable bare-guid entries must not turn
+        into an unbounded number of blocking per-item metadata fetches.
+        """
+        self.plex_account.sections = [
+            {
+                "id": "2",
+                "title": "TV Shows",
+                "type": "show",
+                "uri": "http://plex.example.com",
+                "machine_identifier": "test_machine",
+            }
+        ]
+        self.plex_account.save(update_fields=["sections"])
+
+        mock_list_resources.return_value = [
+            {
+                "machine_identifier": "test_machine",
+                "connections": [{"uri": "http://plex.example.com"}],
+            }
+        ]
+
+        entry_count = MAX_COLLECTION_SCAN_METADATA_FETCHES + 100
+        entries = [
+            {"ratingKey": str(i), "guid": f"plex://show/{i}"}
+            for i in range(entry_count)
+        ]
+        mock_fetch_section_all_items.return_value = (entries, entry_count)
+
+        # No entry ever resolves to a matchable external id, even after the
+        # detailed metadata fallback fetch.
+        mock_fetch_metadata.return_value = None
+
+        update_collection_metadata_from_plex(
+            library="all",
+            user_id=self.user.id,
+        )
+
+        self.assertEqual(
+            mock_fetch_metadata.call_count, MAX_COLLECTION_SCAN_METADATA_FETCHES
+        )
+        mock_webhook.assert_not_called()

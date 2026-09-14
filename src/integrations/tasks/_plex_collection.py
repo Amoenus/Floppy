@@ -19,6 +19,13 @@ logger = logging.getLogger(__name__)
 # Number of items fetched per Plex library section page when searching for a match.
 PLEX_SECTION_PAGE_SIZE = 100
 
+# Upper bound on synchronous per-item detailed-metadata fetches during a single
+# section scan. Bulk list fetches already request includeGuids=1, so this
+# fallback should rarely fire; the cap exists so a library full of entries
+# that still lack a parseable Guid can't turn into thousands of sequential
+# blocking HTTP calls.
+MAX_COLLECTION_SCAN_METADATA_FETCHES = 200
+
 
 @shared_task(name="Update collection metadata from Plex webhook")
 def update_collection_metadata_from_plex_webhook(
@@ -1283,6 +1290,8 @@ def update_collection_metadata_from_plex(library, user_id):
             batch_processed = 0
             batch_matched = 0
             section_start_time = time.time()
+            fallback_metadata_fetches = 0
+            fallback_cap_logged = False
 
             from integrations.plex import extract_external_ids_from_guids
 
@@ -1352,27 +1361,46 @@ def update_collection_metadata_from_plex(library, user_id):
                     # exposed a bare "plex://..." guid), fetch detailed
                     # per-item metadata, which always returns the full
                     # Guid[] array regardless of the item's metadata agent.
+                    # Bulk list fetches already request includeGuids=1, so
+                    # this should rarely trigger; bound it so a library full
+                    # of unresolvable entries can't block on thousands of
+                    # sequential HTTP calls.
                     if not has_matchable_id and guids:
-                        try:
-                            detailed_metadata = plex_api.fetch_metadata(
-                                plex_account.plex_token,
-                                plex_uri,
-                                str(rating_key),
-                            )
-                            if detailed_metadata:
-                                detailed_guids = detailed_metadata.get("Guid", [])
-                                if not detailed_guids:
-                                    single_guid = detailed_metadata.get("guid")
-                                    if single_guid:
-                                        detailed_guids = [{"id": single_guid}]
-                                external_ids = extract_external_ids_from_guids(
-                                    detailed_guids
+                        if (
+                            fallback_metadata_fetches
+                            >= MAX_COLLECTION_SCAN_METADATA_FETCHES
+                        ):
+                            if not fallback_cap_logged:
+                                logger.info(
+                                    "Reached per-section cap of %d detailed metadata "
+                                    "fetches in section '%s'; skipping further fallback "
+                                    "lookups for unresolved entries",
+                                    MAX_COLLECTION_SCAN_METADATA_FETCHES,
+                                    section.get("title"),
                                 )
-                        except Exception as exc:
-                            logger.debug(
-                                "Failed to fetch detailed Plex metadata during collection scan: %s",
-                                exception_summary(exc),
-                            )
+                                fallback_cap_logged = True
+                        else:
+                            fallback_metadata_fetches += 1
+                            try:
+                                detailed_metadata = plex_api.fetch_metadata(
+                                    plex_account.plex_token,
+                                    plex_uri,
+                                    str(rating_key),
+                                )
+                                if detailed_metadata:
+                                    detailed_guids = detailed_metadata.get("Guid", [])
+                                    if not detailed_guids:
+                                        single_guid = detailed_metadata.get("guid")
+                                        if single_guid:
+                                            detailed_guids = [{"id": single_guid}]
+                                    external_ids = extract_external_ids_from_guids(
+                                        detailed_guids
+                                    )
+                            except Exception as exc:
+                                logger.debug(
+                                    "Failed to fetch detailed Plex metadata during collection scan: %s",
+                                    exception_summary(exc),
+                                )
 
                     # Try to match this Plex item with our items
                     matched_item = None
