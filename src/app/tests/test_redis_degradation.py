@@ -102,7 +102,7 @@ class RateLimiterDegradationTests(SimpleTestCase):
     construction-time fallback in build_limiter_session().
     """
 
-    def test_redis_failure_falls_back_to_an_unlimited_request(self):
+    def test_redis_failure_falls_back_to_a_rate_limited_session(self):
         """A live Redis outage must not turn into a 500 for the caller."""
         mock_response = mock.Mock()
         mock_response.raise_for_status = mock.Mock()
@@ -114,8 +114,9 @@ class RateLimiterDegradationTests(SimpleTestCase):
                 "get",
                 side_effect=redis.exceptions.ConnectionError("refused"),
             ),
-            mock.patch(
-                "app.providers.services.requests.request",
+            mock.patch.object(
+                services._fallback_session,
+                "get",
                 return_value=mock_response,
             ) as mock_fallback,
         ):
@@ -128,10 +129,36 @@ class RateLimiterDegradationTests(SimpleTestCase):
 
         self.assertEqual(result, {"ok": True})
         mock_fallback.assert_called_once()
-        self.assertEqual(mock_fallback.call_args.args[0], "GET")
         self.assertEqual(
             mock_fallback.call_args.kwargs["url"], "https://example.test/api"
         )
+
+    def test_redis_failure_reuses_the_same_fallback_session_across_calls(self):
+        """The fallback's own limit must persist, not reset, across calls."""
+        mock_response = mock.Mock()
+        mock_response.raise_for_status = mock.Mock()
+        mock_response.json.return_value = {"ok": True}
+
+        with (
+            mock.patch.object(
+                services.session,
+                "get",
+                side_effect=redis.exceptions.ConnectionError("refused"),
+            ),
+            mock.patch.object(
+                services._fallback_session,
+                "get",
+                return_value=mock_response,
+            ) as mock_fallback,
+        ):
+            services.api_request(
+                Sources.TVDB.value, "GET", "https://example.test/api"
+            )
+            services.api_request(
+                Sources.TVDB.value, "GET", "https://example.test/api"
+            )
+
+        self.assertEqual(mock_fallback.call_count, 2)
 
     def test_non_redis_request_errors_still_raise_provider_api_error(self):
         """The new fallback must not swallow genuine request failures."""

@@ -3,6 +3,7 @@ from decimal import Decimal
 from pathlib import Path
 from unittest.mock import call, patch
 
+import redis
 import requests
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
@@ -2880,6 +2881,34 @@ class TraktDeviceFlow(TestCase):
                 with self.assertRaises(MediaImportError) as ctx:
                     trakt.poll_device_token("device-code", "client", "secret")
                 self.assertIn(fragment, str(ctx.exception))
+
+    @patch("integrations.imports.trakt.get_username_from_oauth", return_value="floppy")
+    @patch("integrations.imports.trakt.services._fallback_session.post")
+    @patch("integrations.imports.trakt.services.session.post")
+    def test_poll_falls_back_when_redis_breaks_the_limiter(
+        self,
+        mock_post,
+        mock_fallback_post,
+        _mock_username,
+    ):
+        """A mid-run Redis outage must not crash device-code polling (#1166)."""
+        mock_post.side_effect = redis.exceptions.ConnectionError("refused")
+        mock_fallback_post.return_value = self._response(
+            200,
+            {"access_token": "access", "refresh_token": "refresh"},
+        )
+
+        result = trakt.poll_device_token("device-code", "client", "secret")
+
+        self.assertEqual(
+            result,
+            {
+                "access_token": "access",
+                "refresh_token": "refresh",
+                "username": "floppy",
+            },
+        )
+        mock_fallback_post.assert_called_once()
 
 
 class TraktRefreshRedirectUri(TestCase):

@@ -375,6 +375,12 @@ else:
 
 session = build_limiter_session()
 
+# Built once and reused for every Redis-outage fallback (#1166) so the
+# fallback's own rate limit persists across calls instead of resetting on
+# each request - the same in-memory shape build_limiter_session() already
+# falls back to at construction time, just kept alive for request-time use.
+_fallback_session = LimiterSession(per_second=_GLOBAL_PER_SECOND)
+
 # Shared across every per-host adapter below: one Redis pool and one bucket
 # namespace, so nine hosts don't each open their own connection pool.
 try:
@@ -434,6 +440,39 @@ session.mount(
     "https://api.tvmaze.com",
     _build_host_limiter_adapter(per_second=2),
 )
+
+
+def resilient_request(method, url, **kwargs):
+    """GET/POST through the shared rate-limited session.
+
+    Falls back to a per-process limited session if Redis breaks the shared
+    bucket mid-run, instead of raising RedisError. Construction-time Redis
+    failures already degrade this way (build_limiter_session()), but a
+    bucket built while Redis was up still does live Redis I/O on every
+    later call - without this, that surfaced as a 500 on every page and
+    import that made an outbound provider call (#1166). The fallback session
+    is built once and reused so its own limit persists across calls instead
+    of resetting on each request.
+
+    Used by api_request() below, and directly by callers that need a
+    provider response without api_request()'s retry/cooldown handling
+    (e.g. Trakt device-code polling, HowLongToBeat scraping).
+    """
+    request_func = session.get if method == "GET" else session.post
+    try:
+        return request_func(url=url, **kwargs)
+    except RedisError as error:
+        logger.warning(
+            "%s %s skipped the shared rate limiter: Redis is unavailable "
+            "(%s); falling back to a per-process limited request.",
+            method,
+            url,
+            error,
+        )
+        fallback_func = (
+            _fallback_session.get if method == "GET" else _fallback_session.post
+        )
+        return fallback_func(url=url, **kwargs)
 
 
 class ProviderAPIError(Exception):
@@ -703,30 +742,11 @@ def api_request(
 
         if method == "GET":
             request_kwargs["params"] = params
-            request_func = session.get
         elif method == "POST":
             request_kwargs["data"] = data
             request_kwargs["json"] = params
-            request_func = session.post
 
-        try:
-            response = request_func(**request_kwargs)
-        except RedisError as error:
-            # The shared bucket lives in Redis (see build_limiter_session()), so
-            # every call through `session` does live Redis I/O, not just a
-            # local check. Construction-time Redis failures already fall back
-            # to an in-process limiter, but a bucket that was built fine can
-            # still hit a Redis outage later on any individual call - without
-            # this, that surfaced as a 500 on every page and import (#1166).
-            logger.warning(
-                "%s request skipped the shared rate limiter: Redis is "
-                "unavailable (%s); falling back to an unlimited request.",
-                provider,
-                error,
-            )
-            response = requests.request(  # noqa: S113 - timeout is in request_kwargs
-                method, **request_kwargs
-            )
+        response = resilient_request(method, **request_kwargs)
         response.raise_for_status()
 
         if response_format == "xml":

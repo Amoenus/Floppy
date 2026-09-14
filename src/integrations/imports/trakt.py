@@ -183,7 +183,8 @@ def poll_device_token(device_code, client_id=None, client_secret=None):
         client_secret = credentials.get("trakt", "client_secret")
 
     try:
-        response = services.session.post(
+        response = services.resilient_request(
+            "POST",
             f"{TRAKT_API_BASE_URL}/oauth/device/token",
             json={
                 "code": device_code,
