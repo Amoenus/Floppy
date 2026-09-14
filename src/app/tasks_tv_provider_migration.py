@@ -10,6 +10,12 @@ from app.interactive_requests import interactive_request_active
 
 logger = logging.getLogger(__name__)
 
+# The beat runs this daily and the shared backoff caps at one day, so without a
+# longer floor an unresolvable backlog is due again on every nightly run - it
+# keeps filling the id-ordered batch and keeps starving newly tracked shows,
+# which is the whole thing the backoff is here to stop.
+_MIGRATION_RETRY_SECONDS = 7 * 24 * 60 * 60
+
 
 def _migration_candidates_queryset():
     from app.models import Item, MediaTypes, MetadataBackfillField, Sources
@@ -100,6 +106,7 @@ def migrate_tv_shows_to_preferred_provider_task(batch_size: int = 200):
                 item,
                 MetadataBackfillField.TVDB_MIGRATION.value,
                 result.reason,
+                min_delay_seconds=_MIGRATION_RETRY_SECONDS,
             )
 
     return {

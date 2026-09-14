@@ -25,7 +25,15 @@ separate loops re-asked questions that already had answers:
 |---|---|---|
 | TMDB person profile lookup | every IMDB person still missing an image or gender, every run | once per person per `PERSON_PROFILE_BACKFILL_VERSION`; transient provider failures keep an exponential retry |
 | IGDB studio backfill | every game with no studio credits, every run | `MetadataBackfillState` pending/retry, like every other backfill |
-| IMDB title match | every unmatched game, every run - and one candidate pulls the whole `title.basics` dataset into the worker | unmatched games back off; the in-memory title index is built only for the title keys a candidate asks for |
+| IMDB title match | every unmatched game, every run - and one candidate pulls the whole `title.basics` dataset into the worker | unmatched games back off for a week; the in-memory title index is built only for the title keys a candidate asks for |
+
+A note on the retry horizon, because the first version of this change got it
+wrong. The shared backoff caps at one day and these tasks run nightly, so a
+miss recorded on the default schedule is due again on the very next run - the
+backoff defers nothing at all. Callers whose retry is expensive now pass
+`min_delay_seconds` to set a floor that clears their own beat interval. The
+tests advance across a week of simulated nightly runs rather than re-running
+immediately, which is what the original tests did and why they missed it.
 
 `count_people_missing_profiles()`, which gates the startup sweep, now counts
 outstanding lookups rather than missing images. A converged library stops
@@ -58,8 +66,16 @@ Attempts are now classified:
 
 | Outcome | Treatment |
 |---|---|
-| provider 400/404/410/422, or a row the provider grammar rejects | terminal — the id is wrong, not the provider |
-| 5xx, 429, unreachable host, missing API key (401/403) | transient — keeps its exponential retry |
+| provider 400/404/410/422 | terminal — the id is wrong, not the provider |
+| an item whose own identity is unusable (`MalformedItemIdentityError`) | terminal — a season row with no season number can never be fetched |
+| everything else: 5xx, 429, unreachable host, missing API key (401/403), an unconfigured provider, anything unanticipated | transient — keeps its exponential retry |
+
+The classification is a deliberate allowlist rather than a heuristic. An
+earlier version treated any `ValueError`/`TypeError`/`KeyError` as terminal,
+which would have retired every TVDB item permanently the moment TVDB
+credentials lapsed, since `tvdb._request` raises a bare `ValueError` for that.
+Wrongly retrying costs one request; wrongly retiring loses the item silently
+and forever, so anything unrecognised stays retryable.
 | fetch succeeded, field still blank | pending — the provider may fill it in later, but not on the next cycle |
 
 Invalidation: `RELEASE_BACKFILL_VERSION` / `STATUS_BACKFILL_VERSION`

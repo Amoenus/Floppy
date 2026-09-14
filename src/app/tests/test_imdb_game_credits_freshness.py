@@ -255,3 +255,103 @@ class ImdbTitleMatchFreshnessTests(TestCase):
 
         item.refresh_from_db()
         self.assertEqual(item.provider_external_ids["imdb_id"], "tt1111111")
+
+
+class ImdbMatchRetryHorizonTests(TestCase):
+    """A backoff shorter than the schedule that consumes it defers nothing.
+
+    The nightly quality task queues this work once a day and the shared
+    backoff caps at one day, so a miss recorded on the default schedule is due
+    again on the very next nightly run - and one eligible candidate is enough
+    to re-download and re-parse the whole title.basics dataset. These tests
+    advance past the next scheduled run rather than re-running immediately.
+    """
+
+    NIGHTLY = timedelta(days=1)
+
+    def test_miss_is_not_due_again_on_the_next_nightly_run(self):
+        _game(title="Some Obscure Game")
+
+        with patch(
+            "app.providers.imdb_datasets.download_videogame_title_index",
+            return_value={},
+        ) as download:
+            imdb_game_credits.resolve_game_imdb_ids()
+
+            # Walk forward a night at a time across a week of nightly runs.
+            for night in range(1, 7):
+                state = MetadataBackfillState.objects.get(
+                    field=MetadataBackfillField.IMDB_MATCH.value,
+                )
+                self.assertGreater(
+                    state.next_retry_at,
+                    timezone.now() + self.NIGHTLY * night,
+                    f"due again by night {night}",
+                )
+
+        download.assert_called_once_with()
+
+    def test_a_newly_tracked_game_is_still_picked_up_immediately(self):
+        """The floor must defer known misses, not block new candidates."""
+        _game(title="Some Obscure Game")
+
+        with patch(
+            "app.providers.imdb_datasets.download_videogame_title_index",
+            return_value={},
+        ):
+            imdb_game_credits.resolve_game_imdb_ids()
+
+        _game(title="Brand New Game", media_id="igdb-2")
+
+        with patch(
+            "app.providers.imdb_datasets.download_videogame_title_index",
+            return_value={"tt2222222": ("Brand New Game", 2026)},
+        ) as download:
+            self.assertEqual(imdb_game_credits.resolve_game_imdb_ids(), 1)
+
+        download.assert_called_once_with()
+
+    def test_the_miss_does_come_back_eventually(self):
+        """Deferred, not given up: IMDB can publish the title later."""
+        _game(title="Some Obscure Game")
+
+        with patch(
+            "app.providers.imdb_datasets.download_videogame_title_index",
+            return_value={},
+        ):
+            imdb_game_credits.resolve_game_imdb_ids()
+
+        state = MetadataBackfillState.objects.get(
+            field=MetadataBackfillField.IMDB_MATCH.value,
+        )
+        self.assertFalse(state.give_up)
+        MetadataBackfillState.objects.filter(pk=state.pk).update(
+            next_retry_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        with patch(
+            "app.providers.imdb_datasets.download_videogame_title_index",
+            return_value={},
+        ) as download:
+            imdb_game_credits.resolve_game_imdb_ids()
+
+        download.assert_called_once_with()
+
+
+class StudioRetryHorizonTests(TestCase):
+    def test_studio_miss_is_not_due_again_on_the_next_nightly_run(self):
+        _game(provider_external_ids={"imdb_id": "tt1111111"})
+
+        with patch(
+            "app.providers.services.get_media_metadata",
+            return_value={"studios_full": []},
+        ):
+            imdb_game_credits.backfill_missing_game_studios()
+
+        state = MetadataBackfillState.objects.get(
+            field=MetadataBackfillField.STUDIOS.value,
+        )
+        self.assertGreater(
+            state.next_retry_at,
+            timezone.now() + timedelta(days=1),
+        )

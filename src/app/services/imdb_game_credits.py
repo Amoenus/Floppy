@@ -41,6 +41,16 @@ logger = logging.getLogger(__name__)
 
 _YEAR_TOLERANCE = 1
 _IMAGE_BACKFILL_PROGRESS_EVERY = 25
+# The task that drives these runs nightly, and the shared backoff caps at one
+# day - so without a longer floor every miss is due again on the very next run
+# and nothing is actually deferred. One eligible candidate re-downloads and
+# re-parses the whole title.basics dataset, so the floor has to clear the beat
+# interval by a wide margin. A newly tracked game has no state and is still
+# picked up immediately.
+_IMDB_MATCH_RETRY_SECONDS = 7 * 24 * 60 * 60
+# IGDB gains companies for an existing game rarely; the same nightly-cadence
+# reasoning applies.
+_STUDIO_RETRY_SECONDS = 7 * 24 * 60 * 60
 
 # IMDB principals "category" -> our CreditRoleType/department.
 _CAST_CATEGORIES = {"actor", "actress", "self"}
@@ -124,6 +134,7 @@ def resolve_game_imdb_ids() -> int:
                 item,
                 MetadataBackfillField.IMDB_MATCH.value,
                 "no unambiguous imdb videogame match",
+                min_delay_seconds=_IMDB_MATCH_RETRY_SECONDS,
             )
             continue
 
@@ -440,6 +451,7 @@ def backfill_missing_game_studios() -> int:
                 item,
                 MetadataBackfillField.STUDIOS.value,
                 "no igdb studios",
+                min_delay_seconds=_STUDIO_RETRY_SECONDS,
             )
 
         if index == len(items) or index % _IMAGE_BACKFILL_PROGRESS_EVERY == 0:
