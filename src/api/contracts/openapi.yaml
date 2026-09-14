@@ -2788,6 +2788,10 @@ components:
           items:
             type: object
             additionalProperties: {}
+        media_type_status:
+          allOf:
+          - $ref: '#/components/schemas/MediaTypeStatus'
+          nullable: true
       required:
       - backdrop
       - cast
@@ -2806,6 +2810,7 @@ components:
       - max_progress
       - media_id
       - media_type
+      - media_type_status
       - parent_id
       - related
       - score
@@ -2907,6 +2912,10 @@ components:
           items:
             type: object
             additionalProperties: {}
+        media_type_status:
+          allOf:
+          - $ref: '#/components/schemas/MediaTypeStatus'
+          nullable: true
       required:
       - backdrop
       - cast
@@ -2925,6 +2934,7 @@ components:
       - max_progress
       - media_id
       - media_type
+      - media_type_status
       - parent_id
       - related
       - score
@@ -3031,6 +3041,10 @@ components:
           items:
             type: object
             additionalProperties: {}
+        media_type_status:
+          allOf:
+          - $ref: '#/components/schemas/MediaTypeStatus'
+          nullable: true
       required:
       - backdrop
       - cast
@@ -3049,6 +3063,7 @@ components:
       - max_progress
       - media_id
       - media_type
+      - media_type_status
       - parent_id
       - related
       - score
@@ -3306,6 +3321,21 @@ components:
       - message
       - user_name
       - valid
+    MediaTypeStatus:
+      type: object
+      description: Whether the media type of this item is enabled for the user.
+      properties:
+        media_type:
+          type: string
+        enabled:
+          type: boolean
+        message:
+          type: string
+          nullable: true
+      required:
+      - enabled
+      - media_type
+      - message
     MediaUpdateRequest:
       type: object
       description: Fields accepted by tracked-media PATCH operations.
