@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 from collections import defaultdict
@@ -205,6 +206,13 @@ class YamtrackImporter:
         # this run (overwrite mode wipes once per item, then recreates
         # every CSV copy).
         self._collection_overwritten_item_ids = set()
+        # (parent_type, source, media_id) keys already queued for their
+        # one-time overwrite-mode wipe this run. Without this, a repeat
+        # watch of the same item arriving in a later batch would look
+        # "existing" again (existing_media is intentionally never updated
+        # mid-run, see _flush_media_batch) and get re-queued for deletion,
+        # wiping the repeat an earlier batch had already recreated.
+        self._overwrite_wiped_media_keys = set()
         self.collection_field_resolver = ImportedFieldResolver(
             user,
             "yamtrack",
@@ -364,25 +372,22 @@ class YamtrackImporter:
                 backfill_completed=False,
             ),
         )
+        # existing_media/existing_children are intentionally left as the
+        # pre-import snapshot from __init__ and not updated with what this
+        # loop just created: a repeat watch of an already-tracked item is a
+        # legitimate new row (issue #1183), and treating media created
+        # earlier in this same run as "already existing" would incorrectly
+        # block it once a batch boundary separates the two rows. Duplicate
+        # rows within this run are still caught by seen_media_keys (which
+        # spans the whole run, not just one batch), and any row that would
+        # violate a real one-row-per-item DB constraint (TV, Season) is
+        # merged by helpers.bulk_create_media before insert.
         for media_type, media_list in batch.items():
             self.imported_counts[media_type] += len(media_list)
-            for media in media_list:
-                item = getattr(media, "item", None)
-                if item is None:
-                    continue
-                if media_type in (MediaTypes.SEASON.value, MediaTypes.EPISODE.value):
-                    if media_type == MediaTypes.SEASON.value:
-                        self.existing_children[media_type][item.source][
-                            (item.media_id, item.season_number)
-                        ] = media
-                        if media.status == Status.COMPLETED.value and media.pk:
-                            self.completed_season_ids.add(media.pk)
-                    else:
-                        self.existing_children[media_type][item.source][
-                            (item.media_id, item.season_number, item.episode_number)
-                        ] = media
-                else:
-                    self.existing_media[media_type][item.source][item.media_id] = media
+            if media_type == MediaTypes.SEASON.value:
+                for media in media_list:
+                    if media.status == Status.COMPLETED.value and media.pk:
+                        self.completed_season_ids.add(media.pk)
         self.bulk_media.clear()
 
     def _cleanup_pending_overwrite(self):
@@ -514,6 +519,14 @@ class YamtrackImporter:
         episode_number = (
             int(row["episode_number"]) if row["episode_number"] != "" else None
         )
+        # A rewatch of the same item is exported as another row sharing the
+        # same media_id/season/episode, distinguished only by its watch date
+        # (issue #1183) - so the watch date has to be part of the dedup key,
+        # or every repeat watch after the first collapses into it.
+        progressed_at = row.get("progressed_at") or row.get("end_date")
+        watch_instance = parse_datetime(progressed_at) if progressed_at else None
+        if watch_instance is None:
+            watch_instance = progressed_at
         media_key = (
             media_type,
             row["source"],
@@ -521,6 +534,7 @@ class YamtrackImporter:
             library_media_type,
             season_number,
             episode_number,
+            watch_instance,
         )
         if media_key in self.seen_media_keys:
             return
@@ -543,6 +557,20 @@ class YamtrackImporter:
             row["media_id"],
             self.mode,
         )
+        if self.mode == "overwrite":
+            overwrite_key = (parent_type, row["source"], row["media_id"])
+            if row["media_id"] in self.to_delete[parent_type][row["source"]]:
+                if overwrite_key in self._overwrite_wiped_media_keys:
+                    # Already wiped once this run - a repeat watch of this
+                    # item landed in a later batch (existing_media still
+                    # shows it as pre-existing, by design). Undo the re-queue
+                    # so the next cleanup doesn't delete what an earlier
+                    # batch already recreated.
+                    self.to_delete[parent_type][row["source"]].discard(
+                        row["media_id"],
+                    )
+                else:
+                    self._overwrite_wiped_media_keys.add(overwrite_key)
         if (
             not should_process
             and self.mode == "new"
@@ -594,11 +622,8 @@ class YamtrackImporter:
 
         if form.is_valid():
             self.seen_media_keys.add(media_key)
-            progressed_at = row.get("progressed_at") or row.get("end_date")
-            if progressed_at:
-                parsed_date = parse_datetime(progressed_at)
-                if parsed_date:
-                    form.instance._history_date = parsed_date
+            if isinstance(watch_instance, datetime.datetime):
+                form.instance._history_date = watch_instance
             if media_type in (MediaTypes.TV.value, MediaTypes.SEASON.value):
                 status_value = row.get("status")
                 if status_value:
