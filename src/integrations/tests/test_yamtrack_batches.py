@@ -25,6 +25,14 @@ def _movie_csv(media_ids):
     return (MOVIE_HEADER + "\n".join(rows) + "\n").encode()
 
 
+def _movie_row(media_id, progressed_at):
+    """Build one movie row watched at a specific timestamp."""
+    return (
+        f"{media_id},tmdb,movie,Movie {media_id},https://image/{media_id}.jpg,,,"
+        f"8,1,Completed,,,,{progressed_at}"
+    )
+
+
 class YamtrackBatchImportTests(TestCase):
     """Yamtrack imports stream rows while retaining import semantics."""
 
@@ -67,6 +75,54 @@ class YamtrackBatchImportTests(TestCase):
         self.assertEqual(warnings, "")
         self.assertEqual(Movie.objects.filter(user=self.user).count(), 1)
         self.assertEqual(counts["movie"], 1)
+
+    def test_rewatch_rows_are_not_collapsed_into_one(self):
+        """Two watches of the same movie, differing only by date, both import.
+
+        Regression test for #1183: the old dedup key ignored the watch date,
+        so a rewatch row silently collapsed into the first watch.
+        """
+        rows = [
+            _movie_row("repeat", "2024-01-01T20:00:00Z"),
+            _movie_row("repeat", "2024-06-15T20:00:00Z"),
+        ]
+        csv_bytes = (MOVIE_HEADER + "\n".join(rows) + "\n").encode()
+
+        counts, warnings = yamtrack.importer(BytesIO(csv_bytes), self.user, "new")
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(
+            Movie.objects.filter(user=self.user, item__media_id="repeat").count(),
+            2,
+        )
+        self.assertEqual(counts["movie"], 2)
+
+    def test_rewatch_across_a_batch_boundary_is_not_dropped(self):
+        """A rewatch row isn't skipped just because an earlier batch already
+        flushed the first watch of the same movie.
+
+        Regression test for #1183: once a batch flush marked a movie as
+        "already existing", a later "new" mode row for another watch of that
+        same movie was incorrectly treated as a duplicate of already-tracked
+        media and dropped.
+        """
+        rows = [
+            _movie_row("repeat", "2024-01-01T20:00:00Z"),
+            _movie_row("other", "2024-02-01T20:00:00Z"),
+            _movie_row("repeat", "2024-06-15T20:00:00Z"),
+        ]
+        csv_bytes = (MOVIE_HEADER + "\n".join(rows) + "\n").encode()
+
+        # batch_size is patched to 2 in setUp, so the "other" row forces a
+        # flush between the two "repeat" watches.
+        counts, warnings = yamtrack.importer(BytesIO(csv_bytes), self.user, "new")
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(
+            Movie.objects.filter(user=self.user, item__media_id="repeat").count(),
+            2,
+        )
+        self.assertEqual(counts["movie"], 3)
 
     def test_overwrite_mode_replaces_rows_without_duplicate_media(self):
         first = yamtrack.importer(

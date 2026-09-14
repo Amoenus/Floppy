@@ -249,6 +249,33 @@ class ImportYamtrackEpisodeHistoryDate(TestCase):
             datetime(2025, 11, 19, 19, 0, 5, tzinfo=UTC),
         )
 
+    def test_rewatched_episode_imports_both_watches(self):
+        """Two watches of the same episode, differing only by date, both import.
+
+        Regression test for #1183: the importer's duplicate-row check didn't
+        consider the watch date, so a rewatch of the same episode collapsed
+        into a single Episode row instead of creating a second one.
+        """
+        csv_data = """media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,progressed_at
+1668,tmdb,tv,Friends,https://image.url,,,,1,In progress,,,,2025-11-20T10:00:00+00:00
+1668,tmdb,season,Friends,https://image.url,1,,,1,In progress,,,,2025-11-20T10:00:00+00:00
+1668,tmdb,episode,Friends,https://image.url,1,1,,,,,2024-01-01T19:00:05+00:00,,
+1668,tmdb,episode,Friends,https://image.url,1,1,,,,,2025-11-19T19:00:05+00:00,,
+"""
+
+        counts, warnings = yamtrack.importer(BytesIO(csv_data.encode()), self.user, "new")
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(
+            Episode.objects.filter(
+                related_season__user=self.user,
+                item__season_number=1,
+                item__episode_number=1,
+            ).count(),
+            2,
+        )
+        self.assertEqual(counts["episode"], 2)
+
     def test_unparseable_progressed_at_falls_back_to_import_time(self):
         """An unparseable progressed_at/end_date doesn't crash the import.
 
