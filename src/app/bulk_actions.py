@@ -56,11 +56,18 @@ def build_bulk_action_data(
             for value, label in Status.choices
         ],
         "tags": list(Tag.objects.filter(user=user).order_by("name").values_list("name", flat=True)),
+        # Names and ids only. get_user_lists prefetches every Item in every
+        # list so the list pages can render their contents; this dropdown
+        # renders neither, and on a large library that prefetch was 4,683
+        # fully hydrated Items and 654 MiB for a menu of labels. Clearing the
+        # prefetches and selecting two columns asks for what is actually used.
         "lists": [
-            {"id": custom_list.id, "label": custom_list.name}
-            for custom_list in CustomList.objects.get_user_lists(user)
+            {"id": list_id, "label": name}
+            for list_id, name in CustomList.objects.get_user_lists(user)
             .filter(is_smart=False)
+            .prefetch_related(None)
             .order_by("name")
+            .values_list("id", "name")
         ],
     }
 

@@ -93,6 +93,22 @@ _MEDIA_LIST_DEFERRED_ITEM_FIELDS = (
 )
 
 
+def _media_list_deferred_item_fields(*, needs_watch_providers):
+    """Return the item columns a media list never reads.
+
+    watch_providers is the largest column on the table -- TMDB's availability
+    for every region it knows, around 146 KiB a title -- and no media-list
+    template renders it; only the detail page does. Loading it for a page of
+    entries cost ~590 MiB of JSON decoding on a 1,400-title library. The one
+    list-side reader is the provider filter, so it is kept only when that
+    filter is active. Deferring is also the safe way round: an unforeseen
+    reader loads the column late rather than seeing it missing.
+    """
+    if needs_watch_providers:
+        return _MEDIA_LIST_DEFERRED_ITEM_FIELDS
+    return (*_MEDIA_LIST_DEFERRED_ITEM_FIELDS, "item__watch_providers")
+
+
 def _normalize_media_list_filter_value(value):
     return str(value or "").strip().lower()
 
@@ -365,6 +381,7 @@ class MediaManager(models.Manager):
         list_sql_filters=None,
         sql_limit=None,
         sql_offset=None,
+        needs_watch_providers=False,
     ):
         """Get a media list by type with filtering and sorting.
 
@@ -388,6 +405,7 @@ class MediaManager(models.Manager):
                 list_sql_filters,
                 sql_limit,
                 sql_offset or 0,
+                needs_watch_providers=needs_watch_providers,
             )
 
         model = apps.get_model(app_label="app", model_name=media_type)
@@ -460,7 +478,9 @@ class MediaManager(models.Manager):
                 ),
             ).filter(row_number=1)
 
-        queryset = queryset.select_related("item").defer(*_MEDIA_LIST_DEFERRED_ITEM_FIELDS)
+        queryset = queryset.select_related("item").defer(
+            *_media_list_deferred_item_fields(needs_watch_providers=needs_watch_providers),
+        )
         queryset = self._apply_prefetch_related(queryset, media_type, list_mode=True)
 
         requires_presort_aggregation = sort_filter in (
@@ -600,6 +620,7 @@ class MediaManager(models.Manager):
         list_sql_filters,
         sql_limit,
         sql_offset,
+        needs_watch_providers=False,
     ):
         """Filter, dedup, sort, and paginate a media list entirely in SQL.
 
@@ -685,7 +706,9 @@ class MediaManager(models.Manager):
 
         title_tiebreak = Lower("item__title")
         is_desc = direction == "desc"
-        queryset = queryset.select_related("item").defer(*_MEDIA_LIST_DEFERRED_ITEM_FIELDS)
+        queryset = queryset.select_related("item").defer(
+            *_media_list_deferred_item_fields(needs_watch_providers=needs_watch_providers),
+        )
         queryset = queryset.order_by(
             order_expr.desc(nulls_last=True) if is_desc else order_expr.asc(nulls_last=True),
             title_tiebreak.desc() if is_desc else title_tiebreak.asc(),
