@@ -124,6 +124,47 @@ class YamtrackBatchImportTests(TestCase):
         )
         self.assertEqual(counts["movie"], 3)
 
+    def test_overwrite_rewatch_across_a_batch_boundary_is_not_deleted(self):
+        """An overwrite import doesn't delete a repeat watch it just recreated.
+
+        Regression test for #1183 (Codex review on PR #1190): once a batch's
+        cleanup wiped and recreated a movie's history, existing_media still
+        (correctly, per fix 2) reports that movie as pre-existing for the
+        rest of the run. In "overwrite" mode, a later batch's watch of that
+        same movie must not re-queue it for deletion - doing so would wipe
+        out the repeat watch the earlier batch had just recreated.
+        """
+        first = yamtrack.importer(
+            BytesIO(_movie_csv(["repeat"])),
+            self.user,
+            "new",
+        )
+        self.assertEqual(first[1], "")
+
+        rows = [
+            _movie_row("repeat", "2024-01-01T20:00:00Z"),
+            _movie_row("other", "2024-02-01T20:00:00Z"),
+            _movie_row("repeat", "2024-06-15T20:00:00Z"),
+        ]
+        csv_bytes = (MOVIE_HEADER + "\n".join(rows) + "\n").encode()
+
+        # batch_size is patched to 2 in setUp, so the "other" row forces a
+        # flush (and cleanup) between the two "repeat" watches.
+        counts, warnings = yamtrack.importer(
+            BytesIO(csv_bytes), self.user, "overwrite",
+        )
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(
+            Movie.objects.filter(user=self.user, item__media_id="repeat").count(),
+            2,
+        )
+        self.assertEqual(
+            Movie.objects.filter(user=self.user, item__media_id="other").count(),
+            1,
+        )
+        self.assertEqual(counts["movie"], 3)
+
     def test_overwrite_mode_replaces_rows_without_duplicate_media(self):
         first = yamtrack.importer(
             BytesIO(_movie_csv(["overwrite-1", "overwrite-2", "overwrite-3"])),

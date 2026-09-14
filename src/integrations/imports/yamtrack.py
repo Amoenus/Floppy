@@ -206,6 +206,13 @@ class YamtrackImporter:
         # this run (overwrite mode wipes once per item, then recreates
         # every CSV copy).
         self._collection_overwritten_item_ids = set()
+        # (parent_type, source, media_id) keys already queued for their
+        # one-time overwrite-mode wipe this run. Without this, a repeat
+        # watch of the same item arriving in a later batch would look
+        # "existing" again (existing_media is intentionally never updated
+        # mid-run, see _flush_media_batch) and get re-queued for deletion,
+        # wiping the repeat an earlier batch had already recreated.
+        self._overwrite_wiped_media_keys = set()
         self.collection_field_resolver = ImportedFieldResolver(
             user,
             "yamtrack",
@@ -550,6 +557,20 @@ class YamtrackImporter:
             row["media_id"],
             self.mode,
         )
+        if self.mode == "overwrite":
+            overwrite_key = (parent_type, row["source"], row["media_id"])
+            if row["media_id"] in self.to_delete[parent_type][row["source"]]:
+                if overwrite_key in self._overwrite_wiped_media_keys:
+                    # Already wiped once this run - a repeat watch of this
+                    # item landed in a later batch (existing_media still
+                    # shows it as pre-existing, by design). Undo the re-queue
+                    # so the next cleanup doesn't delete what an earlier
+                    # batch already recreated.
+                    self.to_delete[parent_type][row["source"]].discard(
+                        row["media_id"],
+                    )
+                else:
+                    self._overwrite_wiped_media_keys.add(overwrite_key)
         if (
             not should_process
             and self.mode == "new"
