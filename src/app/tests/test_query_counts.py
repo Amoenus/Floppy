@@ -76,7 +76,7 @@ ANIME_LIST_GROUPED_MAX_QUERIES = (
     # +2 from the instance and personal provider-credential reads
 )
 MANGA_LIST_DEFAULT_SORT_MAX_QUERIES = 14
-MANGA_LIST_NO_STATUS_MAX_QUERIES = 18
+MANGA_LIST_NO_STATUS_MAX_QUERIES = 19  # +1 from the custom-list collaborators prefetch
 GAME_LIST_DEFAULT_SORT_MAX_QUERIES = 18
 GAME_LIST_START_DATE_SORT_LIBRARY_SIZE = 150
 GAME_LIST_START_DATE_SORT_MAX_QUERIES = (
@@ -86,7 +86,8 @@ GAME_LIST_START_DATE_SORT_MAX_QUERIES = (
 HOME_ROW_FRAGMENT_MAX_QUERIES = (
     123  # +2 from the Tags column Prefetch (#457); +1 from the provider-credential read
 )
-CUSTOM_LIST_DETAIL_MAX_QUERIES = 33  # +3 from prefilled release-year metadata
+CUSTOM_LIST_DETAIL_MAX_QUERIES = 34  # +3 from prefilled release-year metadata;
+# +1 from the custom-list collaborators prefetch
 SEASON_PAGE_FIRST_VIEW_EPISODE_COUNT = 18
 SEASON_PAGE_FIRST_VIEW_MAX_QUERIES = 46  # +1 from the per-item metadata language override lookup (#1009)
 SESSION_HISTORY_MODAL_MAX_QUERIES = 60
@@ -416,7 +417,10 @@ class QueryCountTests(TestCase):
         """A cache-hit page-2 movie request hydrates only its own page."""
         self.client.get("/medialist/movie")  # warm the order + filter_data caches
         self._assert_query_budget(
-            "/medialist/movie?page=2", 12, "movie list cache hit page 2"
+            # +1 from the custom-list collaborators prefetch
+            "/medialist/movie?page=2",
+            13,
+            "movie list cache hit page 2",
         )
 
     def test_movie_list_default_sort_query_budget(self):
