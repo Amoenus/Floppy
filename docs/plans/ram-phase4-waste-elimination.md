@@ -69,6 +69,7 @@ Attempts are now classified:
 | provider 400/404/410/422 | terminal — the id is wrong, not the provider |
 | an item whose own identity is unusable (`MalformedItemIdentityError`) | terminal — a season row with no season number can never be fetched |
 | everything else: 5xx, 429, unreachable host, missing API key (401/403), an unconfigured provider, anything unanticipated | transient — keeps its exponential retry |
+| fetch succeeded, field still blank | pending — the provider may fill it in later, but not on the next cycle |
 
 The classification is a deliberate allowlist rather than a heuristic. An
 earlier version treated any `ValueError`/`TypeError`/`KeyError` as terminal,
@@ -76,7 +77,6 @@ which would have retired every TVDB item permanently the moment TVDB
 credentials lapsed, since `tvdb._request` raises a bare `ValueError` for that.
 Wrongly retrying costs one request; wrongly retiring loses the item silently
 and forever, so anything unrecognised stays retryable.
-| fetch succeeded, field still blank | pending — the provider may fill it in later, but not on the next cycle |
 
 Invalidation: `RELEASE_BACKFILL_VERSION` / `STATUS_BACKFILL_VERSION`
 (`_apply_backfill_state_filters` is now version-aware), and an identity change
