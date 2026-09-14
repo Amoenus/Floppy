@@ -80,6 +80,10 @@ TRACKED_MODELS = {
     MediaTypes.TV.value: TV,
 }
 
+SERIES_COMPATIBLE_SMART_TYPES = frozenset(
+    {MediaTypes.TV.value, MediaTypes.SEASON.value},
+)
+
 CONFIG_SEPARATOR = ","
 
 DEFAULT_CATALOG_IDS = (
@@ -179,18 +183,70 @@ def get_catalog_spec(stremio_type, catalog_id):
     )
 
 
+def _compatible_smart_types(spec):
+    """Return the smart-list media types this catalog can actually project."""
+    return (
+        SERIES_COMPATIBLE_SMART_TYPES
+        if spec.media_type == MediaTypes.TV.value
+        else {spec.media_type}
+    )
+
+
+def _list_feeds_catalog(candidate, spec):
+    """Return whether a named-list match can actually feed this catalog.
+
+    A non-smart (manually curated) list can hold anything, and its items are
+    already filtered by media type per-item in ``list_source_items``, so it
+    always qualifies. A smart list only qualifies if its own filter admits at
+    least one of the catalog's compatible types; an empty filter means "no
+    type restriction", which also always qualifies.
+    """
+    if not candidate.is_smart:
+        return True
+    smart_types = set(candidate.smart_media_types or [])
+    if not smart_types:
+        return True
+    return bool(smart_types & _compatible_smart_types(spec))
+
+
 def select_source_list(user, spec):
-    """Select the oldest owned preferred list, then the oldest owned Watchlist."""
+    """Select the oldest owned preferred list, then the oldest owned Watchlist.
+
+    Either name-based match is skipped if it is a smart list whose own filter
+    can never admit this catalog's media type (e.g. a movie-only "Watchlist"
+    when resolving the series catalog), so a differently named smart list that
+    actually fits isn't shadowed by it.
+
+    Falls back to the oldest smart list whose own filter already matches this
+    catalog's media type, so a freshly created smart list (e.g. one filtered
+    to Seasons only) is picked up without having to be named "Series" or
+    "Watchlist".
+    """
     owned_lists = CustomList.objects.filter(owner=user)
     source_list = (
         owned_lists.filter(name__iexact=spec.preferred_list_name)
         .order_by("id")
         .first()
     )
-    if source_list is not None:
+    if source_list is not None and _list_feeds_catalog(source_list, spec):
         return source_list
 
-    return owned_lists.filter(name__iexact="Watchlist").order_by("id").first()
+    source_list = owned_lists.filter(name__iexact="Watchlist").order_by("id").first()
+    if source_list is not None and _list_feeds_catalog(source_list, spec):
+        return source_list
+
+    return select_smart_list_by_media_type(owned_lists, spec)
+
+
+def select_smart_list_by_media_type(owned_lists, spec):
+    """Return the oldest smart list whose filter fits this catalog, if any."""
+    compatible = _compatible_smart_types(spec)
+    candidates = owned_lists.filter(is_smart=True).order_by("id")
+    for candidate in candidates.iterator():
+        smart_types = set(candidate.smart_media_types or [])
+        if smart_types and smart_types.issubset(compatible):
+            return candidate
+    return None
 
 
 def catalog_display_name(user, spec):

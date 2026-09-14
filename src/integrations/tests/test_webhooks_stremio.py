@@ -432,6 +432,192 @@ class StremioAddonViewTests(TestCase):
             [tv_item.media_id],
         )
 
+    def test_movie_catalog_falls_back_to_smart_movie_only_list(self):
+        """A movie-only smart list with any name still feeds the movie catalog."""
+        smart_list = CustomList.objects.create(
+            name="Movie Night",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.MOVIE.value],
+        )
+        movie_item = self._add_catalog_item(smart_list, 1)
+
+        response = self.client.get(self._catalog_url())
+
+        self.assertEqual(
+            [meta["id"] for meta in self._response_metas(response)],
+            [movie_item.media_id],
+        )
+
+    def test_series_catalog_falls_back_to_smart_season_only_list(self):
+        """A season-only smart list with any name still feeds the series catalog.
+
+        Regression test for issue #1176: creating a new smart watchlist
+        filtered to Seasons only always showed empty in the Stremio addon.
+        """
+        smart_list = CustomList.objects.create(
+            name="Season Watch",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.SEASON.value],
+        )
+        show_item, _ = self._add_series_with_season(smart_list, 1)
+
+        response = self.client.get(
+            self._catalog_url(
+                media_type="series",
+                catalog_id="floppy-watchlist-series",
+            )
+        )
+
+        self.assertEqual(
+            [meta["id"] for meta in self._response_metas(response)],
+            [show_item.media_id],
+        )
+
+    def test_smart_list_fallback_ignores_incompatible_media_types(self):
+        """A smart list filtered to unrelated media types is never a fallback."""
+        CustomList.objects.create(
+            name="Books",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.BOOK.value],
+        )
+
+        movie_response = self.client.get(self._catalog_url())
+        series_response = self.client.get(
+            self._catalog_url(
+                media_type="series",
+                catalog_id="floppy-watchlist-series",
+            )
+        )
+
+        self.assertEqual(self._response_metas(movie_response), [])
+        self.assertEqual(self._response_metas(series_response), [])
+
+    def test_smart_list_fallback_prefers_oldest_eligible_list(self):
+        """Among several unnamed eligible smart lists, the oldest one wins."""
+        older_list = CustomList.objects.create(
+            name="Older Smart List",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.MOVIE.value],
+        )
+        older_item = self._add_catalog_item(older_list, 1, media_id="tt1111111")
+        newer_list = CustomList.objects.create(
+            name="Newer Smart List",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.MOVIE.value],
+        )
+        self._add_catalog_item(newer_list, 2, media_id="tt2222222")
+
+        response = self.client.get(self._catalog_url())
+
+        self.assertEqual(
+            [meta["id"] for meta in self._response_metas(response)],
+            [older_item.media_id],
+        )
+
+    def test_named_list_wins_over_smart_type_fallback(self):
+        """An exact-name match is preferred over the smart-type fallback."""
+        smart_list = CustomList.objects.create(
+            name="My Movies",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.MOVIE.value],
+        )
+        self._add_catalog_item(smart_list, 1, media_id="tt1111111")
+        named_list = CustomList.objects.create(name="Movies", owner=self.user)
+        named_item = self._add_catalog_item(named_list, 2, media_id="tt2222222")
+
+        response = self.client.get(self._catalog_url())
+
+        self.assertEqual(
+            [meta["id"] for meta in self._response_metas(response)],
+            [named_item.media_id],
+        )
+
+    def test_series_catalog_skips_incompatible_named_watchlist(self):
+        """An incompatible named Watchlist doesn't shadow a fitting smart list.
+
+        Regression test for a Codex review finding on PR #1189: a movie-only
+        smart "Watchlist" was returned before the type-based fallback ever
+        ran, so a separately named season-only smart list was never reached
+        and the series catalog stayed empty.
+        """
+        CustomList.objects.create(
+            name="Watchlist",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.MOVIE.value],
+        )
+        season_list = CustomList.objects.create(
+            name="Season Watch",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.SEASON.value],
+        )
+        show_item, _ = self._add_series_with_season(season_list, 1)
+
+        response = self.client.get(
+            self._catalog_url(
+                media_type="series",
+                catalog_id="floppy-watchlist-series",
+            )
+        )
+
+        self.assertEqual(
+            [meta["id"] for meta in self._response_metas(response)],
+            [show_item.media_id],
+        )
+
+    def test_movie_catalog_skips_incompatible_named_watchlist(self):
+        """The movie catalog also skips a type-incompatible named Watchlist."""
+        CustomList.objects.create(
+            name="Watchlist",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.TV.value, MediaTypes.SEASON.value],
+        )
+        movie_list = CustomList.objects.create(
+            name="Movie Night",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.MOVIE.value],
+        )
+        movie_item = self._add_catalog_item(movie_list, 1)
+
+        response = self.client.get(self._catalog_url())
+
+        self.assertEqual(
+            [meta["id"] for meta in self._response_metas(response)],
+            [movie_item.media_id],
+        )
+
+    def test_smart_watchlist_with_no_type_filter_is_still_selected(self):
+        """A smart Watchlist with no media-type filter is treated as a fit."""
+        watchlist = CustomList.objects.create(
+            name="Watchlist",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[],
+        )
+        movie_item = self._add_catalog_item(watchlist, 1)
+        CustomList.objects.create(
+            name="Movie Night",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.MOVIE.value],
+        )
+
+        response = self.client.get(self._catalog_url())
+
+        self.assertEqual(
+            [meta["id"] for meta in self._response_metas(response)],
+            [movie_item.media_id],
+        )
+
     def test_series_catalog_projects_smart_seasons_as_parent_shows(self):
         """Season-only smart catalogs publish parent shows for Stremio."""
         series = CustomList.objects.create(
