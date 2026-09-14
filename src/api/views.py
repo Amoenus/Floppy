@@ -85,6 +85,7 @@ from .helpers import (
     check_valid_type,
     get_item_lists,
     get_media_status,
+    get_media_type_availability,
     paginate_data,
     paginate_list_items,
     parse_limit_offset,
@@ -1327,6 +1328,10 @@ class MediaDetailView(drf_views.APIView):
             "lists": lists,
             "item": top_level_item,
             "library_media_type": library_media_type,
+            "media_type_status": get_media_type_availability(
+                user,
+                library_media_type or media_type,
+            ),
         }
 
         serialized = serialize_data(
@@ -2207,6 +2212,10 @@ class MediaSeasonsView(drf_views.APIView):
             },
             serializer_class=MediaSerializer,
         )
+        paginated_data["media_type_status"] = get_media_type_availability(
+            user,
+            season_bucket or media_type,
+        )
         return Response(paginated_data, status=HTTP.OK)
 
 
@@ -2541,6 +2550,10 @@ class MediaSeasonDetailView(drf_views.APIView):
             "lists": lists,
             "item": season_item,
             "library_media_type": library_media_type,
+            "media_type_status": get_media_type_availability(
+                user,
+                library_media_type or media_type,
+            ),
         }
 
         serialized = serialize_data(
@@ -2842,6 +2855,10 @@ class MediaSeasonEpisodesView(drf_views.APIView):
                 "lists_by_number": lists_by_number,
             },
             serializer_class=EpisodeSerializer,
+        )
+        paginated["media_type_status"] = get_media_type_availability(
+            user,
+            request.query_params.get("library_media_type") or media_type,
         )
         return Response(paginated, status=HTTP.OK)
 
@@ -3721,6 +3738,10 @@ class MediaEpisodeDetailView(drf_views.APIView):
             "user_medias": user_medias,
             "lists": lists,
             "item": episode_item,
+            "media_type_status": get_media_type_availability(
+                user,
+                request.query_params.get("library_media_type") or media_type,
+            ),
         }
 
         serialized = serialize_data(
