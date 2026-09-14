@@ -248,7 +248,14 @@ class HistoryMonthCacheTests(TestCase):
         ):
             days, _ = history_cache_reader.get_month_history(self.user, 2026, 9)
         self.assertEqual(len(days), 2)
-        deserialize.assert_called_once_with(payload)
+        deserialize.assert_called_once()
+        self.assertEqual(deserialize.call_args.args[0], payload)
+        # The reader materializes only the requested window rather than the
+        # whole day; an unbounded call here would undo that.
+        self.assertEqual(
+            deserialize.call_args.kwargs["max_entries"],
+            history_cache_reader.HISTORY_ENTRIES_PER_DAY_PAGE,
+        )
 
     def test_refresh_history_cache_repairs_missing_index_day_payloads(self):
         history_cache.refresh_history_cache(
