@@ -25,6 +25,7 @@ from django.db.models import (
     When,
     Window,
 )
+from django.db.models.fields.json import KeyTransform
 from django.db.models.functions import Lower, RowNumber
 from django.utils import timezone
 
@@ -485,6 +486,9 @@ class MediaManager(models.Manager):
         # can materialize fresh model instances and drop dynamic aggregated attrs.
         return self._aggregate_duplicate_data(queryset, user, media_type, dup_state)
 
+    # The view spells an unconfigured region this way; keep one spelling.
+    UNSET_WATCH_PROVIDER_REGION = "UNSET"
+
     def get_media_list_item_values(
         self,
         user,
@@ -493,6 +497,7 @@ class MediaManager(models.Manager):
         search=None,
         *,
         list_sql_filters=None,
+        provider_region=None,
     ):
         """Return narrow Item projections for a media-list filter menu.
 
@@ -551,7 +556,7 @@ class MediaManager(models.Manager):
         item_queryset = Item.objects.filter(
             pk__in=queryset.values("item_id")
         ).order_by()
-        return item_queryset.values(
+        fields = [
             "id",
             "media_id",
             "media_type",
@@ -560,7 +565,6 @@ class MediaManager(models.Manager):
             "release_datetime",
             "genres",
             "implied_genres",
-            "watch_providers",
             "country",
             "languages",
             "platforms",
@@ -568,7 +572,22 @@ class MediaManager(models.Manager):
             "authors",
             "source",
             "status",
-        )
+        ]
+        # watch_providers holds TMDB's availability for every region it knows
+        # -- around 139 of them, and roughly 146 KiB per item. The filter menu
+        # reads exactly one region out of it, so selecting the column meant
+        # carrying about 204 MiB for a 1,400-title movie list and discarding
+        # 138/139 of it. Ask SQL for the one region instead, and ask for
+        # nothing at all where no provider filter is shown.
+        if provider_region and provider_region != self.UNSET_WATCH_PROVIDER_REGION:
+            return item_queryset.values(*fields).annotate(
+                watch_providers_region=KeyTransform(
+                    provider_region,
+                    "watch_providers",
+                    output_field=models.JSONField(),
+                ),
+            )
+        return item_queryset.values(*fields)
 
     def _get_paginated_media_list_sql(
         self,

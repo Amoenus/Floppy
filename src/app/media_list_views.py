@@ -629,6 +629,22 @@ def build_filter_data_from_items(
     }
 
 
+def _restore_region_providers(row, region):
+    """Put a region-narrowed provider slice back under ``watch_providers``.
+
+    The query asks SQL for one region out of a blob that covers every region
+    TMDB knows, because that is all the filter menu reads. Downstream still
+    expects the field's real shape -- a mapping keyed by region -- so give it
+    that shape around the one region it will look up.
+    """
+    if "watch_providers_region" not in row:
+        return row
+    row = dict(row)
+    slice_for_region = row.pop("watch_providers_region", None)
+    row["watch_providers"] = {region: slice_for_region} if slice_for_region else {}
+    return row
+
+
 def build_filter_data_from_item_values(
     item_values,
     *,
@@ -639,7 +655,9 @@ def build_filter_data_from_item_values(
     include_providers=True,
 ):
     """Build filter data from ``Item.values()`` rows without ORM hydration."""
-    projected_items = (SimpleNamespace(**row) for row in item_values)
+    projected_items = (
+        SimpleNamespace(**_restore_region_providers(row, region)) for row in item_values
+    )
     return build_filter_data_from_items(
         projected_items,
         collection_formats_by_item_id=collection_formats_by_item_id,
@@ -1708,6 +1726,13 @@ def media_list(request, media_type):
         _media_list_full = []
 
         if filter_data is None:
+            # Only the menu's provider list reads watch_providers, and only
+            # for this one region. Anywhere else, the column is not selected.
+            provider_region_for_values = (
+                watch_provider_region
+                if media_type in provider_media_types
+                else None
+            )
             filter_data_rows = list(
                 BasicMedia.objects.get_media_list_item_values(
                     user=request.user,
@@ -1715,6 +1740,7 @@ def media_list(request, media_type):
                     status_filter=tracked_status_filter,
                     search=search_query,
                     list_sql_filters=list_sql_filters,
+                    provider_region=provider_region_for_values,
                 ),
             )
             if media_type == MediaTypes.GAME.value and platform_values:
@@ -1730,6 +1756,7 @@ def media_list(request, media_type):
                         status_filter=tracked_status_filter,
                         search=search_query,
                         list_sql_filters=filter_data_filters,
+                        provider_region=provider_region_for_values,
                     ),
                 )
 
