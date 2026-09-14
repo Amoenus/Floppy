@@ -14,6 +14,10 @@ import sys
 from django.conf import settings
 from django.test import SimpleTestCase
 
+# Starting Django in a subprocess takes a second or two; this is a wedge
+# detector, not a performance bound.
+_SUBPROCESS_TIMEOUT_SECONDS = 120
+
 TIERS = ("minimal", "constrained", "standard")
 
 
@@ -41,6 +45,9 @@ print(json.dumps({
         result = subprocess.run(  # noqa: S603
             [sys.executable, "-c", script],
             check=True,
+            # Bounded on purpose: a wedged interpreter must fail this test,
+            # not hang the whole run until the CI job's limit expires.
+            timeout=_SUBPROCESS_TIMEOUT_SECONDS,
             capture_output=True,
             text=True,
             env=environment,

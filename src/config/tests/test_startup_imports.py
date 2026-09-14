@@ -6,6 +6,10 @@ import sys
 from django.conf import settings
 from django.test import SimpleTestCase
 
+# Starting Django in a subprocess takes a second or two; this is a wedge
+# detector, not a performance bound.
+_SUBPROCESS_TIMEOUT_SECONDS = 120
+
 
 class WebStartupImportTests(SimpleTestCase):
     def test_url_loading_does_not_import_task_aggregators(self):
@@ -32,6 +36,9 @@ print(json.dumps(loaded))
         result = subprocess.run(  # noqa: S603
             [sys.executable, "-c", script],
             check=True,
+            # Bounded on purpose: a wedged interpreter must fail this test,
+            # not hang the whole run until the CI job's limit expires.
+            timeout=_SUBPROCESS_TIMEOUT_SECONDS,
             capture_output=True,
             text=True,
             env=environment,
@@ -67,6 +74,9 @@ print(json.dumps({name: name in app.tasks for name in names}, sort_keys=True))
         result = subprocess.run(  # noqa: S603
             [sys.executable, "-c", script],
             check=True,
+            # Bounded on purpose: a wedged interpreter must fail this test,
+            # not hang the whole run until the CI job's limit expires.
+            timeout=_SUBPROCESS_TIMEOUT_SECONDS,
             capture_output=True,
             text=True,
             env=environment,
@@ -126,6 +136,9 @@ print(json.dumps(sorted(name for name in watched if name in sys.modules)))
         result = subprocess.run(  # noqa: S603
             [sys.executable, "-c", script],
             check=True,
+            # Bounded on purpose: a wedged interpreter must fail this test,
+            # not hang the whole run until the CI job's limit expires.
+            timeout=_SUBPROCESS_TIMEOUT_SECONDS,
             capture_output=True,
             text=True,
             env=environment,
