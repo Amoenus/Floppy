@@ -4,6 +4,7 @@
 {% load user_tags %}
 
 <form method="post"
+      action="{{ episode_plays_formaction|default:'' }}?next={{ return_url }}"
       hx-post="{{ episode_plays_formaction|default:'' }}?next={{ return_url }}"
       hx-target="closest [data-track-modal-root]"
       hx-swap="outerHTML"
@@ -208,7 +209,8 @@
 
   <div class="mt-6 flex justify-end">
     <button type="submit"
-            class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 cursor-pointer">
+            hx-disabled-elt="this"
+            class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">
       {% translate episode_plays_submit_label|default:_("Save plays") %}
     </button>
   </div>
