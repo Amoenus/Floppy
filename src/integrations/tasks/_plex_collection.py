@@ -1343,35 +1343,36 @@ def update_collection_metadata_from_plex(library, user_id):
                             guids = [{"id": single_guid}]
 
                     external_ids = extract_external_ids_from_guids(guids)
+                    has_matchable_id = any(
+                        external_ids.get(key)
+                        for key in ("tmdb_id", "imdb_id", "tvdb_id")
+                    )
 
-                    # If no external IDs, try fetching detailed metadata
-                    if not external_ids and guids:
-                        guid_value = (
-                            guids[0].get("id")
-                            if isinstance(guids[0], dict)
-                            else guids[0]
-                        )
-                        if guid_value and guid_value.startswith("plex://"):
-                            try:
-                                detailed_metadata = plex_api.fetch_metadata(
-                                    plex_account.plex_token,
-                                    plex_uri,
-                                    str(rating_key),
+                    # If no matchable external ID (e.g. the list entry only
+                    # exposed a bare "plex://..." guid), fetch detailed
+                    # per-item metadata, which always returns the full
+                    # Guid[] array regardless of the item's metadata agent.
+                    if not has_matchable_id and guids:
+                        try:
+                            detailed_metadata = plex_api.fetch_metadata(
+                                plex_account.plex_token,
+                                plex_uri,
+                                str(rating_key),
+                            )
+                            if detailed_metadata:
+                                detailed_guids = detailed_metadata.get("Guid", [])
+                                if not detailed_guids:
+                                    single_guid = detailed_metadata.get("guid")
+                                    if single_guid:
+                                        detailed_guids = [{"id": single_guid}]
+                                external_ids = extract_external_ids_from_guids(
+                                    detailed_guids
                                 )
-                                if detailed_metadata:
-                                    detailed_guids = detailed_metadata.get("Guid", [])
-                                    if not detailed_guids:
-                                        single_guid = detailed_metadata.get("guid")
-                                        if single_guid:
-                                            detailed_guids = [{"id": single_guid}]
-                                    external_ids = extract_external_ids_from_guids(
-                                        detailed_guids
-                                    )
-                            except Exception as exc:
-                                logger.debug(
-                                    "Failed to fetch detailed Plex metadata during collection scan: %s",
-                                    exception_summary(exc),
-                                )
+                        except Exception as exc:
+                            logger.debug(
+                                "Failed to fetch detailed Plex metadata during collection scan: %s",
+                                exception_summary(exc),
+                            )
 
                     # Try to match this Plex item with our items
                     matched_item = None
