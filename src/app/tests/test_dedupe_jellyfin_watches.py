@@ -35,10 +35,10 @@ class DedupeJellyfinWatchesTests(TestCase):
         call_command("dedupe_jellyfin_watches", *args, stdout=out)
         return out.getvalue()
 
-    def _episode_setup(self):
+    def _episode_setup(self, source=Sources.TVDB.value):
         tv_item = Item.objects.create(
             media_id="series-1",
-            source=Sources.TVDB.value,
+            source=source,
             media_type=MediaTypes.TV.value,
             title="Show",
         )
@@ -49,7 +49,7 @@ class DedupeJellyfinWatchesTests(TestCase):
         )
         season_item = Item.objects.create(
             media_id="series-1",
-            source=Sources.TVDB.value,
+            source=source,
             media_type=MediaTypes.SEASON.value,
             title="Season 1",
             season_number=1,
@@ -62,7 +62,7 @@ class DedupeJellyfinWatchesTests(TestCase):
         )
         episode_item = Item.objects.create(
             media_id="series-1",
-            source=Sources.TVDB.value,
+            source=source,
             media_type=MediaTypes.EPISODE.value,
             title="Episode",
             season_number=1,
@@ -182,5 +182,91 @@ class DedupeJellyfinWatchesTests(TestCase):
         )
 
         self._run("--apply", "--username", other_user.username)
+
+        self.assertEqual(Episode.objects.count(), 2)
+
+    def test_apply_preserves_distinct_watches_across_a_transitive_chain(self):
+        """A 00:00/00:50/01:40 chain under a 60-minute window must not
+        collapse into one cluster: 00:00 and 01:40 are not duplicates of
+        each other, only each is a duplicate of the row in between.
+        """
+        season, episode_item = self._episode_setup()
+        episode_item.runtime_minutes = 60
+        episode_item.save(update_fields=["runtime_minutes"])
+        base = datetime(2024, 1, 2, 0, 0, 0, tzinfo=UTC)
+        Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            end_date=base,
+        )
+        Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            end_date=base + timedelta(minutes=50),
+        )
+        distinct_watch = Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            end_date=base + timedelta(minutes=100),
+        )
+
+        self._run("--apply")
+
+        self.assertEqual(Episode.objects.count(), 2)
+        self.assertTrue(Episode.objects.filter(pk=distinct_watch.pk).exists())
+
+    def test_apply_syncs_movie_end_date_after_removing_the_play_it_pointed_to(self):
+        """Movie.end_date must not keep naming a play that no longer exists."""
+        item = Item.objects.create(
+            media_id="movie-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="A Movie",
+        )
+        stop_time = datetime(2024, 1, 2, 3, 34, 0, tzinfo=UTC)
+        start_time = stop_time - timedelta(minutes=20)
+        movie = Movie.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            end_date=stop_time,
+        )
+        # The webhook's own watch, lazily copied into a provenance-free play
+        # the first time Movie.watch() ran.
+        MoviePlay.objects.create(movie=movie, end_date=stop_time)
+        # The history import's play for the same watch.
+        MoviePlay.objects.create(
+            movie=movie,
+            end_date=start_time,
+            external_id="jellyfin-playback-reporting:hash:abc",
+        )
+
+        self._run("--apply")
+
+        movie.refresh_from_db()
+        self.assertEqual(MoviePlay.objects.filter(movie=movie).count(), 1)
+        self.assertEqual(movie.end_date, start_time)
+
+    def test_episode_grouping_respects_item_source(self):
+        """Same numeric ids under different providers must not be merged."""
+        tvdb_season, tvdb_episode_item = self._episode_setup(
+            source=Sources.TVDB.value,
+        )
+        tmdb_season, tmdb_episode_item = self._episode_setup(
+            source=Sources.TMDB.value,
+        )
+        watch_time = datetime(2024, 1, 2, 3, 34, 0, tzinfo=UTC)
+        Episode.objects.create(
+            item=tvdb_episode_item,
+            related_season=tvdb_season,
+            end_date=watch_time,
+        )
+        Episode.objects.create(
+            item=tmdb_episode_item,
+            related_season=tmdb_season,
+            end_date=watch_time + timedelta(minutes=5),
+        )
+
+        self._run("--apply")
 
         self.assertEqual(Episode.objects.count(), 2)

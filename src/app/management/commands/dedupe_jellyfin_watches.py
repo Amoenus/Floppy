@@ -91,7 +91,7 @@ class Command(BaseCommand):
         ).select_related("item")
         for episode in episodes:
             item = episode.item
-            key = (item.media_id, item.season_number, item.episode_number)
+            key = (item.source, item.media_id, item.season_number, item.episode_number)
             groups[key].append(episode)
 
         removed = 0
@@ -109,29 +109,61 @@ class Command(BaseCommand):
             plays = list(
                 MoviePlay.objects.filter(movie=movie, end_date__isnull=False),
             )
-            for cluster in self._cluster(plays, movie.item.runtime_minutes):
-                removed += self._collapse_movie_cluster(movie, cluster)
+            clusters = self._cluster(plays, movie.item.runtime_minutes)
+            movie_removed = sum(len(cluster) - 1 for cluster in clusters)
+            for cluster in clusters:
+                self._describe_movie_cluster(movie, cluster)
+            if movie_removed and self.apply:
+                with transaction.atomic():
+                    for cluster in clusters:
+                        self._collapse_movie_cluster(movie, cluster)
+                    self._sync_movie_end_date(movie)
+            removed += movie_removed
         return removed
 
-    def _cluster(self, rows, runtime_minutes):
-        """Group rows into duplicate clusters by nearest-neighbour distance.
+    def _sync_movie_end_date(self, movie):
+        """Point Movie.end_date back at a play that still exists.
 
-        Adjacent rows (sorted by end_date) land in the same cluster when
-        they're closer than the runtime-scaled window - the same rule
-        `app.fork_services_play_dedupe.PlayTimes.is_duplicate` uses.
+        Deleting the play `Movie.end_date` was copied from would otherwise
+        leave it naming a watch that no longer has a row behind it.
+        """
+        latest = (
+            MoviePlay.objects.filter(movie=movie, end_date__isnull=False)
+            .order_by("-end_date")
+            .first()
+        )
+        latest_end_date = latest.end_date if latest else None
+        if movie.end_date != latest_end_date:
+            movie.end_date = latest_end_date
+            movie.save(update_fields=["end_date"])
+
+    def _cluster(self, rows, runtime_minutes):
+        """Group rows into duplicate clusters against retained keepers.
+
+        Each row joins the first existing cluster whose keeper (the
+        earliest row in it) falls within the runtime-scaled window, rather
+        than chaining adjacent rows transitively - a 00:00/00:50/01:40 chain
+        with a 60-minute window must not collapse into one cluster, since
+        00:00 and 01:40 are not duplicates of each other under
+        `app.fork_services_play_dedupe.PlayTimes.is_duplicate`.
         """
         rows = sorted(rows, key=lambda row: row.end_date)
         window = duplicate_play_window(runtime_minutes)
 
         clusters = []
-        current = []
         for row in rows:
-            if current and (row.end_date - current[-1].end_date) >= window:
-                clusters.append(current)
-                current = []
-            current.append(row)
-        if current:
-            clusters.append(current)
+            match = next(
+                (
+                    cluster
+                    for cluster in clusters
+                    if (row.end_date - cluster[0].end_date) < window
+                ),
+                None,
+            )
+            if match is not None:
+                match.append(row)
+            else:
+                clusters.append([row])
         return [cluster for cluster in clusters if len(cluster) >= MIN_CLUSTER_SIZE]
 
     def _pick_keeper(self, cluster):
@@ -163,16 +195,14 @@ class Command(BaseCommand):
                 ).delete()
         return len(losers)
 
-    def _collapse_movie_cluster(self, movie, cluster):
+    def _describe_movie_cluster(self, movie, cluster):
         keeper, losers = self._pick_keeper(cluster)
         self.stdout.write(
             f"{movie.user.username}: {movie.item.title} - "
             f"{len(losers)} duplicate watch(es), keeping play #{keeper.pk} "
             f"({keeper.end_date})",
         )
-        if self.apply:
-            with transaction.atomic():
-                MoviePlay.objects.filter(
-                    pk__in=[loser.pk for loser in losers],
-                ).delete()
-        return len(losers)
+
+    def _collapse_movie_cluster(self, movie, cluster):
+        _keeper, losers = self._pick_keeper(cluster)
+        MoviePlay.objects.filter(pk__in=[loser.pk for loser in losers]).delete()
