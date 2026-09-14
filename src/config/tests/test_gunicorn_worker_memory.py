@@ -20,11 +20,19 @@ from django.test import SimpleTestCase
 sys.path.insert(0, str(Path(settings.BASE_DIR)))
 
 
+# config.gunicorn reads its tier at import, so each case has to import it
+# again under a different environment. Both modules are put back afterwards:
+# config.runtime_profile computes a module-level PROFILE from the environment
+# at import, and leaving a tier-patched copy in sys.modules makes whichever
+# test runs next read this file's environment instead of its own.
+RELOADED_MODULES = ("config.runtime_profile", "config.gunicorn")
+
+
 def load_config(tier="standard", **environment):
     """Import config.gunicorn fresh under a given tier and environment."""
     values = {"FLOPPY_RESOURCE_TIER": tier, **environment}
     with patch.dict(os.environ, values, clear=False):
-        for module in ("config.runtime_profile", "config.gunicorn"):
+        for module in RELOADED_MODULES:
             sys.modules.pop(module, None)
         return importlib.import_module("config.gunicorn")
 
@@ -42,10 +50,24 @@ class Worker:
 class WorkerMemoryCeilingTests(SimpleTestCase):
     """The ceiling exists, scales with the host, and only fires when crossed."""
 
+    def setUp(self):
+        """Remember the real modules so they can be put back exactly."""
+        self.saved_modules = {
+            name: sys.modules.get(name) for name in RELOADED_MODULES
+        }
+
     def tearDown(self):
-        """Leave no patched module behind for the next test to import."""
-        for module in ("config.runtime_profile", "config.gunicorn"):
-            sys.modules.pop(module, None)
+        """Restore the real modules, not merely drop the patched ones.
+
+        Dropping alone is not enough: the next importer would rebuild the
+        module under whatever environment happens to be current, which is not
+        necessarily the one the process started with.
+        """
+        for name, module in self.saved_modules.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
 
     def test_every_tier_bounds_worker_memory(self):
         """No tier may leave a web worker free to grow without limit."""
