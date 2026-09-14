@@ -307,6 +307,22 @@ def _read_cgroup():
             },
         }
     root /= "memory"
+    if not (root / "memory.usage_in_bytes").exists():
+        # Neither layout is present. A cgroup v2 host exposes no controller
+        # files on the root cgroup, so a process running outside a container
+        # there sees no memory accounting at all. Report that as unknown
+        # rather than raising: an absent bound is a fact about the host, and
+        # the same "never mislabel an unknown as a number" rule that keeps v1
+        # failcnt out of `oom` applies to it.
+        return {
+            "current_bytes": None,
+            "current_observed_bytes": None,
+            "peak_bytes": None,
+            "oom": None,
+            "oom_kill": None,
+            "events": None,
+            "memory_stat": {},
+        }
     observed_current = int((root / "memory.usage_in_bytes").read_text())
     return {
         "current_bytes": int(pre_sampler_current or observed_current),
@@ -408,8 +424,14 @@ def sample():
             # False means cgroup_minus_process_pss_bytes is an upper bound on
             # non-process memory, not a reconciliation of it.
             "process_pss_complete": not rss_only,
-            "cgroup_minus_process_pss_bytes": current - pss_bytes,
-            "cgroup_minus_process_private_bytes": current - private_bytes,
+            # Without a cgroup bound there is nothing to subtract from, so
+            # these stay unknown rather than being reported as a total.
+            "cgroup_minus_process_pss_bytes": (
+                None if current is None else current - pss_bytes
+            ),
+            "cgroup_minus_process_private_bytes": (
+                None if current is None else current - private_bytes
+            ),
         },
         "unreadable_processes": unreadable,
     }

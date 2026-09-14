@@ -696,10 +696,18 @@ class IntegrationTest(StaticLiveServerTestCase):
             "button", name="Clear date"
         ).click()
         expect(start_quick_actions).to_be_visible()
+        # Bracket the click, the way the two assertions above already do. Taking
+        # a single timestamp after the click and using it for the lower bound
+        # charges every millisecond of click handling, re-render and round-trip
+        # against the tolerance - on top of the up-to-999ms the datetime-local
+        # input loses by truncating to whole seconds. That left about a
+        # millisecond of real headroom, and CI duly missed it by 49ms.
+        before_just_finished = self.page.evaluate("Date.now()")
         start_quick_actions.get_by_role(
             "button", name="Just Finished", exact=True
         ).click()
         expect(start_quick_actions).not_to_be_visible()
+        after_just_finished = self.page.evaluate("Date.now()")
         just_finished_start_ms = self.page.evaluate(
             "value => new Date(value).getTime()",
             start_date_input.input_value(),
@@ -708,17 +716,16 @@ class IntegrationTest(StaticLiveServerTestCase):
             "value => new Date(value).getTime()",
             end_date_input.input_value(),
         )
-        just_finished_now = self.page.evaluate("Date.now()")
         self.assertGreaterEqual(
             just_finished_start_ms,
-            just_finished_now - 95 * 60 * 1000 - 1000,
+            before_just_finished - 95 * 60 * 1000 - 1000,
         )
         self.assertLessEqual(
             just_finished_start_ms,
-            just_finished_now - 95 * 60 * 1000 + 1000,
+            after_just_finished - 95 * 60 * 1000 + 1000,
         )
-        self.assertGreaterEqual(just_finished_end_ms, just_finished_now - 1000)
-        self.assertLessEqual(just_finished_end_ms, just_finished_now + 1000)
+        self.assertGreaterEqual(just_finished_end_ms, before_just_finished - 1000)
+        self.assertLessEqual(just_finished_end_ms, after_just_finished + 1000)
         create_modal.locator(".date-picker-closed-field").first.get_by_role(
             "button", name="Clear date"
         ).click()
