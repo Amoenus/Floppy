@@ -6,6 +6,7 @@ from app.models.choices import MediaTypes, ProviderMetadataStatus, Sources, Stat
 from app.models.credits import (
     CREDITS_BACKFILL_VERSION,
     DISCOVER_MOVIE_METADATA_BACKFILL_VERSION,
+    PERSON_PROFILE_BACKFILL_VERSION,
     TRAKT_POPULARITY_BACKFILL_VERSION,
     BackfillReconcileState,
     CreditRoleType,
@@ -102,6 +103,7 @@ from app.models.watch_state import (
 __all__ = [
     "CREDITS_BACKFILL_VERSION",
     "DISCOVER_MOVIE_METADATA_BACKFILL_VERSION",
+    "PERSON_PROFILE_BACKFILL_VERSION",
     "TRAKT_POPULARITY_BACKFILL_VERSION",
     "TV",
     "ActiveAnimeManager",

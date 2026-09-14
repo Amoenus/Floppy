@@ -529,6 +529,86 @@ def paginate_data(request, results, limit, offset, *, total=None, already_sliced
     return {"pagination": pagination, "results": paginated}
 
 
+def paginate_list_items(request, user, user_list):
+    """Return one page of a custom list's items as media, and any error.
+
+    Returns ``(paginated_data, error_response)``; exactly one is not None.
+
+    Only the requested page is hydrated when the caller has not asked for an
+    aggregated sort, because the database ordering is then already the response
+    ordering. Hydrating the whole list first meant one media lookup per item to
+    return twenty of them - on a 4,683-item list, 4,683 queries and 4,683
+    hydrated objects per request.
+
+    An aggregated sort still has to rank every item before it can say which
+    ones are on the page, so that path is unchanged.
+    """
+    items = user_list.items.order_by(
+        "customlistitem__date_added",
+        "customlistitem__pk",
+    )
+
+    search_query = request.GET.get("search", "")
+    if search_query:
+        items = items.filter(title__icontains=search_query)
+
+    limit, offset, err = parse_limit_offset(request)
+    if err:
+        return None, err
+
+    sort = sort_order = None
+    sort_filter = request.GET.get("sort", "")
+    if sort_filter:
+        sort, sort_order = parse_sort_filter(sort_filter)
+        if sort not in get_sorts(None, sort_type="all"):
+            return None, Response(
+                {"detail": "Invalid sorting"},
+                status=HTTP.NOT_FOUND,
+            )
+
+    total = None
+    if sort is None:
+        total = items.count()
+        items = items[offset : offset + limit]
+
+    media_objects = []
+    for item in items:
+        # Shows info about the last consumption of the media if it's tracked
+        media = BasicMedia.objects.filter_media_prefetch(
+            user,
+            item.media_id,
+            item.media_type,
+            item.source,
+            season_number=item.season_number,
+            episode_number=item.episode_number,
+            annotate_progress=False,
+        ).first()
+
+        media_objects.append(media if media is not None else item)
+
+    BasicMedia.objects.annotate_episode_progress(
+        [media for media in media_objects if getattr(media, "item", None) is not None],
+    )
+
+    if sort is None:
+        return paginate_data(
+            request,
+            media_objects,
+            limit,
+            offset,
+            total=total,
+            already_sliced=True,
+        ), None
+
+    media_objects = apply_aggregated_sort(media_objects, sort)
+    if isinstance(media_objects, Response):
+        return None, media_objects
+    if sort_order == "desc":
+        media_objects.reverse()
+
+    return paginate_data(request, media_objects, limit, offset), None
+
+
 def parse_excluded_items(request):
     """Parse excluded items from the request query parameters."""
     exclude_param = request.GET.get("exclude", "")

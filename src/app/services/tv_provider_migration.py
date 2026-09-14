@@ -19,6 +19,7 @@ from app import history_cache
 from app.models import TV, Episode, Item, MediaTypes, Season, Sources
 from app.providers import tmdb, tvdb
 from app.services import item_merge
+from app.tasks_backfill_state import reset_backfill_state_for_identity_change
 
 logger = logging.getLogger(__name__)
 
@@ -274,6 +275,14 @@ def _merge_into_existing_tvdb_show(
                 update_fields.extend(_apply_episode_title(episode, episode_payload))
             episode.save(update_fields=update_fields)
 
+        # Every backfill verdict recorded against the old TMDB id described
+        # that id, not these rows. Clear them so migrated items become
+        # candidates again instead of inheriting a "this id does not
+        # exist" give-up.
+        reset_backfill_state_for_identity_change(
+            Item.objects.filter(source=Sources.TVDB.value, media_id=tvdb_id),
+        )
+
         _schedule_history_invalidation(user_ids)
 
     logger.info(
@@ -388,6 +397,14 @@ def migrate_tv_item_to_tvdb(item: Item) -> TvMigrationResult:
             if episode_payload is not None:
                 update_fields.extend(_apply_episode_title(episode, episode_payload))
             episode.save(update_fields=update_fields)
+
+        # Every backfill verdict recorded against the old TMDB id described
+        # that id, not these rows. Clear them so migrated items become
+        # candidates again instead of inheriting a "this id does not
+        # exist" give-up.
+        reset_backfill_state_for_identity_change(
+            Item.objects.filter(source=Sources.TVDB.value, media_id=tvdb_id),
+        )
 
         _schedule_history_invalidation(user_ids)
 

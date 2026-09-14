@@ -21,6 +21,20 @@ from django.test import SimpleTestCase
 # (CI, and the containers this sampler actually runs in) and nowhere else.
 _ON_LINUX = skipUnless(sys.platform == "linux", "needs a real /proc and cgroup")
 
+# Linux alone is not enough: cgroup v2 exposes no controller files on the root
+# cgroup, so a runner that is not itself inside a container has neither
+# /sys/fs/cgroup/memory.current (v2) nor /sys/fs/cgroup/memory/ (v1). GitHub's
+# runners are exactly that, which is why these four tests have been failing on
+# CI. The sampler now reports absent accounting as unknown instead of raising;
+# these tests assert on a real measured sample, so they need a host that
+# actually accounts memory.
+_HAS_CGROUP_MEMORY = (Path("/sys/fs/cgroup/memory.current").exists()
+                      or Path("/sys/fs/cgroup/memory/memory.usage_in_bytes").exists())
+_WITH_CGROUP_MEMORY = skipUnless(
+    _HAS_CGROUP_MEMORY,
+    "needs a host cgroup that accounts memory",
+)
+
 _SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "container_memory_sample.py"
 _spec = importlib.util.spec_from_file_location("container_memory_sample", _SCRIPT)
 sampler = importlib.util.module_from_spec(_spec)
@@ -355,6 +369,7 @@ class RollUpTests(SimpleTestCase):
 
 
 @_ON_LINUX
+@_WITH_CGROUP_MEMORY
 class PrivacyInvariantTests(SimpleTestCase):
     """Command lines carry deployment secrets and must never be emitted.
 
@@ -407,6 +422,7 @@ class PrivacyInvariantTests(SimpleTestCase):
 
 
 @_ON_LINUX
+@_WITH_CGROUP_MEMORY
 class ReconciliationTests(SimpleTestCase):
     """The honesty flag is what stops a bound being read as a reconciliation."""
 
@@ -438,3 +454,43 @@ class ReconciliationTests(SimpleTestCase):
             sampled["reconciliation"]["unmeasured_process_rss_bytes"],
             0,
         )
+
+
+class AbsentCgroupAccountingTests(SimpleTestCase):
+    """A host with no cgroup memory accounting is a fact, not a crash.
+
+    cgroup v2 exposes no controller files on the root cgroup, so a process
+    outside a container on a v2 host sees neither layout. `_read_cgroup` used
+    to read the v1 path unconditionally in that case and raise
+    FileNotFoundError, taking the whole sample down.
+    """
+
+    def test_neither_layout_reports_unknown_rather_than_raising(self):
+        # Point the reader at a tree containing neither layout, which is what
+        # a v2 host outside a container looks like.
+        with patch.object(sampler, "Path", lambda _: Path("/nonexistent-cgroup-root")):
+            cgroup = sampler._read_cgroup()
+
+        self.assertIsNone(cgroup["current_bytes"])
+        self.assertIsNone(cgroup["peak_bytes"])
+        self.assertIsNone(cgroup["oom"])
+        self.assertIsNone(cgroup["oom_kill"])
+        self.assertEqual(cgroup["memory_stat"], {})
+
+    def test_an_unknown_bound_leaves_the_difference_unknown(self):
+        """No bound means nothing to subtract from - not a total of zero."""
+        unknown = {
+            "current_bytes": None,
+            "current_observed_bytes": None,
+            "peak_bytes": None,
+            "oom": None,
+            "oom_kill": None,
+            "events": None,
+            "memory_stat": {},
+        }
+        with patch.object(sampler, "_read_cgroup", return_value=unknown):
+            sampled = sampler.sample()
+
+        reconciliation = sampled["reconciliation"]
+        self.assertIsNone(reconciliation["cgroup_minus_process_pss_bytes"])
+        self.assertIsNone(reconciliation["cgroup_minus_process_private_bytes"])
