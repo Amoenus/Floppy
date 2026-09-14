@@ -35,6 +35,7 @@ from app.models.discovery import (
     ItemTag,
     Tag,
 )
+from app.models.episode_order import EpisodeOrder, EpisodeOrderChange
 from app.models.episode_runtimes import (
     build_episode_runtime_index,
     prefill_episode_runtime_index,
@@ -73,6 +74,10 @@ from app.models.podcast import (
     PodcastEpisode,
     PodcastShow,
     PodcastShowTracker,
+)
+from app.models.progress_change import (
+    ProgressChange,
+    ProgressChangeKind,
 )
 from app.models.provider_credential import (
     InstanceProviderCredential,
@@ -129,6 +134,8 @@ __all__ = [
     "DiscoverRowCache",
     "DiscoverTasteProfile",
     "Episode",
+    "EpisodeOrder",
+    "EpisodeOrderChange",
     "Game",
     "HardcoverEditionPreference",
     "InstanceProviderCredential",
@@ -155,6 +162,8 @@ __all__ = [
     "PodcastEpisode",
     "PodcastShow",
     "PodcastShowTracker",
+    "ProgressChange",
+    "ProgressChangeKind",
     "ProviderMetadataStatus",
     "RewatchAlreadyCompleteError",
     "Season",

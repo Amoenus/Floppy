@@ -21,6 +21,7 @@ from uuid import uuid4
 
 from django.apps import apps
 from django.db import transaction
+from django.db.models import Max, Min
 
 from app.models.choices import MediaTypes, Status
 from app.models.watch_state import (
@@ -157,6 +158,7 @@ def _derive_episode(user, item):
     rows = episode_model.objects.filter(
         item=item,
         related_season__user=user,
+        related_season__order_archived=False,
         dropped=False,
     )
 
@@ -468,6 +470,21 @@ def changes_since(user, sequence, *, limit=100):
             "sequence",
         )[:limit],
     )
+
+
+def retained_change_range(user):
+    """Return the (oldest, newest) sequence still held for ``user``.
+
+    ``(None, None)`` when nothing is retained. A client whose cursor falls below
+    ``oldest`` has been compacted past and must re-snapshot: serving it the
+    remaining tail would look like a successful catch-up while silently dropping
+    everything in between.
+    """
+    bounds = WatchStateChange.objects.filter(user=user).aggregate(
+        oldest=Min("sequence"),
+        newest=Max("sequence"),
+    )
+    return bounds["oldest"], bounds["newest"]
 
 
 def effective_state(user, item):

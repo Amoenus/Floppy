@@ -131,9 +131,12 @@ SpecialModels = [
     "ApplicationSettings",
     "InstanceProviderCredential",
     "UserProviderCredential",
+    "ProgressChange",
     "WatchState",
     "WatchStateChange",
     "WatchStateSequence",
+    "EpisodeOrder",
+    "EpisodeOrderChange",
 ]
 for model in app_models:
     if (

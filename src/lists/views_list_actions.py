@@ -28,6 +28,10 @@ from app.models import Item, MediaTypes, Status
 from app.providers import services
 from app.services import metadata_resolution
 from app.templatetags.app_tags import media_type_readable_plural
+from integrations.upload_staging import (
+    enqueue_staged_task,
+    stage_uploaded_file,
+)
 from lists import smart_rules
 from lists import tasks as list_tasks
 from lists.forms import CustomListForm
@@ -321,7 +325,29 @@ def import_list_csv(request):
         messages.error(request, gettext("Select a CSV file to import."))
         return redirect("lists")
 
-    list_tasks.import_list_csv_task.delay(request.user.id, csv_file.read(), "new")
+    try:
+        staged_file = str(stage_uploaded_file(csv_file))
+    except OSError:
+        logger.exception("Could not stage custom list CSV upload")
+        messages.error(
+            request,
+            "The upload could not be queued. Check available disk space and try again.",
+        )
+        return redirect("lists")
+
+    try:
+        enqueue_staged_task(
+            list_tasks.import_list_csv_task,
+            request.user.id,
+            staged_file,
+            "new",
+            staged_paths=(staged_file,),
+        )
+    except Exception:
+        logger.exception("Could not queue custom list CSV import")
+        messages.error(request, "The list import could not be queued. Try again.")
+        return redirect("lists")
+
     messages.info(request, gettext("List import started in the background."))
     return redirect("lists")
 
@@ -515,6 +541,85 @@ def list_item_toggle(request):
         request,
         "lists/components/list_item_button.html",
         {"custom_list": custom_list, "item": item, "has_item": has_item},
+    )
+
+
+@login_required
+@require_POST
+def bulk_list_add(request):
+    """Add several items to one editable manual list."""
+    from app.bulk_actions import posted_item_ids
+
+    item_ids = posted_item_ids(request.POST)
+    if not item_ids:
+        return JsonResponse(
+            {"success": False, "error": "At least one item is required."},
+            status=400,
+        )
+
+    custom_list = get_object_or_404(
+        CustomList.objects.filter(
+            Q(owner=request.user) | Q(collaborators=request.user),
+            id=request.POST.get("custom_list_id"),
+        ).distinct(),
+    )
+    if custom_list.is_smart:
+        return JsonResponse(
+            {"success": False, "error": "Smart lists cannot be edited directly."},
+            status=403,
+        )
+
+    items_by_id = Item.objects.in_bulk(item_ids)
+    skipped = len(item_ids) - len(items_by_id)
+    added_items = []
+    with transaction.atomic():
+        CustomListItem.objects.lock_custom_lists([custom_list.id])
+        existing_ids = set(
+            CustomListItem.objects.filter(
+                custom_list=custom_list,
+                item_id__in=items_by_id,
+            ).values_list("item_id", flat=True),
+        )
+        added_items = [
+            item
+            for item_id, item in items_by_id.items()
+            if item_id not in existing_ids
+        ]
+        CustomListItem.objects.bulk_create(
+            [
+                CustomListItem(
+                    custom_list=custom_list,
+                    item=item,
+                    added_by=request.user,
+                )
+                for item in added_items
+            ],
+        )
+        ListActivity.objects.bulk_create(
+            [
+                ListActivity(
+                    custom_list=custom_list,
+                    user=request.user,
+                    activity_type=ListActivityType.ITEM_ADDED,
+                    item=item,
+                )
+                for item in added_items
+            ],
+        )
+
+    already_present = len(items_by_id) - len(added_items)
+    return JsonResponse(
+        {
+            "success": True,
+            "added": len(added_items),
+            "already_present": already_present,
+            "skipped": skipped,
+            "message": (
+                f"Added {len(added_items)} item(s) to {custom_list.name}."
+                + (f" {already_present} already present." if already_present else "")
+                + (f" {skipped} skipped." if skipped else "")
+            ),
+        },
     )
 
 

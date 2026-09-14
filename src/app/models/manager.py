@@ -485,6 +485,91 @@ class MediaManager(models.Manager):
         # can materialize fresh model instances and drop dynamic aggregated attrs.
         return self._aggregate_duplicate_data(queryset, user, media_type, dup_state)
 
+    def get_media_list_item_values(
+        self,
+        user,
+        media_type,
+        status_filter,
+        search=None,
+        *,
+        list_sql_filters=None,
+    ):
+        """Return narrow Item projections for a media-list filter menu.
+
+        This intentionally does not hydrate tracker rows, related objects, or
+        duplicate aggregation.  It mirrors the SQL candidate filters so a
+        cold SQL-paginated request can build its menu without loading the
+        user's complete media library into Python.
+        """
+        model = apps.get_model(app_label="app", model_name=media_type)
+        queryset = model.objects.filter(user=user.id)
+
+        if isinstance(status_filter, (list, tuple, set, frozenset)):
+            status_filters = [
+                value
+                for value in status_filter
+                if value and value != users.models.MediaStatusChoices.ALL
+            ]
+        elif status_filter and status_filter != users.models.MediaStatusChoices.ALL:
+            status_filters = [status_filter]
+        else:
+            status_filters = []
+        if status_filters:
+            queryset = queryset.filter(status__in=status_filters)
+        else:
+            queryset = queryset.exclude(status__isnull=True)
+
+        if search:
+            queryset = queryset.filter(
+                models.Q(item__title__icontains=search)
+                | models.Q(item__media_id__icontains=search),
+            )
+        queryset = self._apply_list_sql_filters(
+            queryset, user, media_type, list_sql_filters or {}
+        )
+
+        # Match the status semantics used by the rendered web list: when a
+        # status is selected, it refers to the latest aggregated activity,
+        # not merely to the existence of an older row in that status.
+        if status_filters:
+            activity = Case(
+                When(end_date__isnull=False, then=F("end_date")),
+                When(progressed_at__isnull=False, then=F("progressed_at")),
+                default=F("created_at"),
+                output_field=models.DateTimeField(),
+            )
+            latest_status = (
+                model.objects.filter(item_id=OuterRef("item_id"), user=user.id)
+                .annotate(_activity=activity)
+                .order_by("-_activity", "-id")
+                .values("status")[:1]
+            )
+            queryset = queryset.annotate(_latest_status=Subquery(latest_status)).filter(
+                _latest_status__in=status_filters
+            )
+
+        item_queryset = Item.objects.filter(
+            pk__in=queryset.values("item_id")
+        ).order_by()
+        return item_queryset.values(
+            "id",
+            "media_id",
+            "media_type",
+            "library_media_type",
+            "title",
+            "release_datetime",
+            "genres",
+            "implied_genres",
+            "watch_providers",
+            "country",
+            "languages",
+            "platforms",
+            "format",
+            "authors",
+            "source",
+            "status",
+        )
+
     def _get_paginated_media_list_sql(
         self,
         user,
@@ -546,6 +631,28 @@ class MediaManager(models.Manager):
             ),
         ).filter(row_number=1)
 
+        # The web list applies status filters to the latest aggregated status,
+        # rather than merely to whichever duplicate happened to survive the
+        # display-row deduplication.  Keep that behavior in the SQL path too.
+        # The correlated subquery is scoped to the user's complete history so
+        # an older row in another status cannot make a duplicate visible.
+        if status_filters:
+            activity = Case(
+                When(end_date__isnull=False, then=F("end_date")),
+                When(progressed_at__isnull=False, then=F("progressed_at")),
+                default=F("created_at"),
+                output_field=models.DateTimeField(),
+            )
+            latest_status = (
+                model.objects.filter(item_id=OuterRef("item_id"), user=user.id)
+                .annotate(_activity=activity)
+                .order_by("-_activity", "-id")
+                .values("status")[:1]
+            )
+            queryset = queryset.annotate(_latest_status=Subquery(latest_status)).filter(
+                _latest_status__in=status_filters
+            )
+
         sort_key = sort_filter or "title"
         agg_subquery = self._aggregated_sort_subquery(model, user, media_type, sort_key)
         if agg_subquery is not None:
@@ -563,6 +670,7 @@ class MediaManager(models.Manager):
         queryset = queryset.order_by(
             order_expr.desc(nulls_last=True) if is_desc else order_expr.asc(nulls_last=True),
             title_tiebreak.desc() if is_desc else title_tiebreak.asc(),
+            F("item_id").desc() if is_desc else F("item_id").asc(),
         )
 
         total = queryset.count()
@@ -1764,6 +1872,92 @@ class MediaManager(models.Manager):
                 continue
             media.max_progress = max_progress_dict.get(media.item.id)
 
+    def annotate_episode_progress(self, media_list, media_type=None):
+        """Annotate released and provider-total episode counts in bulk.
+
+        The API needs both the released count used by ``episodes_left`` and the
+        provider's full count.  Season max-progress historically performs a
+        provider lookup per row, which is appropriate for some web sorting
+        paths but not for an API page.  This method deliberately uses the
+        local release/event queries for seasons and the persisted provider
+        count for the full denominator.
+        """
+        media_list = list(media_list)
+        media_by_type = defaultdict(list)
+        for media in media_list:
+            item = getattr(media, "item", None)
+            item_type = getattr(item, "media_type", None)
+            if item_type in {
+                MediaTypes.TV.value,
+                MediaTypes.SEASON.value,
+                MediaTypes.ANIME.value,
+            }:
+                if item_type == MediaTypes.SEASON.value:
+                    route_type = MediaTypes.SEASON.value
+                elif media_type == MediaTypes.ANIME.value:
+                    route_type = MediaTypes.ANIME.value
+                else:
+                    route_type = media_type or item_type
+                if route_type == MediaTypes.ANIME.value:
+                    media_by_type[MediaTypes.ANIME.value].append(media)
+                else:
+                    media_by_type[item_type].append(media)
+
+        current_datetime = timezone.now()
+        for route_type, typed_media in media_by_type.items():
+            if route_type == MediaTypes.SEASON.value:
+                self._annotate_season_released_episodes(
+                    typed_media,
+                    current_datetime,
+                )
+            else:
+                self.annotate_max_progress(typed_media, route_type)
+            self._annotate_total_episode_count(typed_media, route_type)
+
+        return media_list
+
+    def _annotate_total_episode_count(self, media_list, media_type):
+        """Annotate provider totals, excluding dropped TV seasons."""
+        for media in media_list:
+            item = getattr(media, "item", None)
+            total = getattr(item, "provider_episode_count", None)
+
+            if media_type == MediaTypes.TV.value or (
+                media_type == MediaTypes.ANIME.value
+                and getattr(item, "media_type", None) == MediaTypes.TV.value
+            ):
+                seasons = list(media.seasons.all())
+                main_seasons = [
+                    season
+                    for season in seasons
+                    if getattr(season.item, "season_number", None) not in (None, 0)
+                ]
+                dropped_seasons = [
+                    season
+                    for season in main_seasons
+                    if season.status == Status.DROPPED.value
+                ]
+                if dropped_seasons:
+                    active_counts = [
+                        getattr(season.item, "provider_episode_count", None)
+                        for season in main_seasons
+                        if season.status != Status.DROPPED.value
+                    ]
+                    total = (
+                        sum(active_counts)
+                        if all(count is not None for count in active_counts)
+                        else None
+                    )
+                elif total is None:
+                    season_counts = [
+                        getattr(season.item, "provider_episode_count", None)
+                        for season in main_seasons
+                    ]
+                    if season_counts and all(count is not None for count in season_counts):
+                        total = sum(season_counts)
+
+            media.total_episode_count = total
+
     def _annotate_tv_released_episodes(self, tv_list, current_datetime):
         """Annotate TV shows with the number of released episodes."""
         if not tv_list:
@@ -2122,6 +2316,7 @@ class MediaManager(models.Manager):
         season_number=None,
         episode_number=None,
         library_media_type=None,
+        annotate_progress=True,
     ):
         """Filter user media object with prefetch_related applied."""
         queryset = self.filter_media(
@@ -2135,7 +2330,8 @@ class MediaManager(models.Manager):
         )
         queryset = self._apply_prefetch_related(queryset, media_type)
         queryset = queryset.select_related("item")
-        self.annotate_max_progress(queryset, media_type)
+        if annotate_progress:
+            self.annotate_max_progress(queryset, media_type)
 
         return queryset
 
@@ -2146,6 +2342,7 @@ class MediaManager(models.Manager):
         source,
         season_numbers=None,
         library_media_type=None,
+        annotate_progress=True,
     ):
         """Return tracked season consumptions for a show."""
         queryset = self.filter_media_prefetch(
@@ -2154,6 +2351,7 @@ class MediaManager(models.Manager):
             MediaTypes.SEASON.value,
             source,
             library_media_type=library_media_type,
+            annotate_progress=annotate_progress,
         )
 
         if season_numbers is not None:

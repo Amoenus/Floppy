@@ -50,7 +50,7 @@ from integrations.plex_watchlist import PlexWatchlistSyncService
 from integrations.tasks._import_helpers import (
     GOODREADS_IMPORT_TASK_NAME,
     LEGACY_GOODREADS_IMPORT_TASK_NAMES,
-    _coerce_uploaded_file,
+    _run_file_import,
     format_import_message,
     format_watchlist_sync_message,
     has_imported_media,
@@ -120,25 +120,25 @@ def import_media(
     # library (and holding the single celery-queue worker) for no reason.
     if has_imported_media(imported_counts):
         events.tasks.reload_calendar.delay()
+
+        # Importers rely heavily on bulk_create_with_history, which bypasses model signals.
+        # Force-clear history cache so month view index pages don't keep stale "empty month"
+        # payloads after imports (notably reproducible with SIMKL imports).
+        history_cache.invalidate_history_cache(user.id, force=True)
+
+        # bulk_create also bypasses the post_save signals that normally schedule a statistics
+        # cache refresh. Trigger it explicitly so the hours card and activity overview reflect
+        # the newly imported media without requiring a manual page reload or waiting for the
+        # next scheduled Celery beat.
+        from app import statistics_cache as _statistics_cache
+
+        _statistics_cache.schedule_all_ranges_refresh(user.id)
     else:
         logger.info(
             "calendar_reload_skipped reason=no_items_imported importer=%s user_id=%s",
             getattr(importer_func, "__name__", importer_func),
             user_id,
         )
-
-    # Importers rely heavily on bulk_create_with_history, which bypasses model signals.
-    # Force-clear history cache so month view index pages don't keep stale "empty month"
-    # payloads after imports (notably reproducible with SIMKL imports).
-    history_cache.invalidate_history_cache(user.id, force=True)
-
-    # bulk_create also bypasses the post_save signals that normally schedule a statistics
-    # cache refresh. Trigger it explicitly so the hours card and activity overview reflect
-    # the newly imported media without requiring a manual page reload or waiting for the
-    # next scheduled Celery beat.
-    from app import statistics_cache as _statistics_cache
-
-    _statistics_cache.schedule_all_ranges_refresh(user.id)
 
     # Queue collection metadata update task for media server imports
     _queue_post_import_collection_update(user_id, importer_func)
@@ -239,15 +239,15 @@ def import_kitsu(username, user_id, mode):
 @shared_task(name="Import from Yamtrack")
 def import_yamtrack(file, user_id, mode):
     """Celery task for importing a Floppy backup or Yamtrack CSV."""
-    return import_media(yamtrack.importer, _coerce_uploaded_file(file), user_id, mode)
+    return _run_file_import(yamtrack.importer, file, user_id, mode)
 
 
 @shared_task(name="Import from CLZ")
 def import_clz(file, user_id, mode, media_type=None):
     """Celery task for importing a CLZ (Collectorz) CSV or XML export."""
-    return import_media(
+    return _run_file_import(
         clz.importer,
-        _coerce_uploaded_file(file),
+        file,
         user_id,
         mode,
         media_type=media_type,
@@ -257,21 +257,21 @@ def import_clz(file, user_id, mode, media_type=None):
 @shared_task(name="Import from HowLongToBeat")
 def import_hltb(file, user_id, mode):
     """Celery task for importing media data from HowLongToBeat."""
-    return import_media(hltb.importer, _coerce_uploaded_file(file), user_id, mode)
+    return _run_file_import(hltb.importer, file, user_id, mode)
 
 
 @shared_task(name="Import from Grouvee")
 def import_grouvee(file, user_id, mode):
     """Celery task for importing game data from a Grouvee export (JSON or zip)."""
-    return import_media(grouvee.importer, _coerce_uploaded_file(file), user_id, mode)
+    return _run_file_import(grouvee.importer, file, user_id, mode)
 
 
 @shared_task(name="Import Trakt collection CSV")
 def import_trakt_collection_csv(file, user_id, mode):
     """Celery task for importing collection ownership from a Trakt CSV export."""
-    return import_media(
+    return _run_file_import(
         trakt_collection.importer,
-        _coerce_uploaded_file(file),
+        file,
         user_id,
         mode,
     )
@@ -280,9 +280,9 @@ def import_trakt_collection_csv(file, user_id, mode):
 @shared_task(name="Import Trakt data export")
 def import_trakt_export(file, user_id, mode):
     """Celery task for importing a Trakt data export archive."""
-    return import_media(
+    return _run_file_import(
         trakt_export.importer,
-        _coerce_uploaded_file(file),
+        file,
         user_id,
         mode,
     )
@@ -321,12 +321,12 @@ def import_psn_recurring(user_id, mode="new"):
 @shared_task(name="Import from IMDB")
 def import_imdb(file, user_id, mode):
     """Celery task for importing media data from IMDB."""
-    return import_media(imdb.importer, _coerce_uploaded_file(file), user_id, mode)
+    return _run_file_import(imdb.importer, file, user_id, mode)
 
 
 def _run_goodreads_import(file, user_id, mode):
     """Execute the Goodreads CSV import for any registered task alias."""
-    return import_media(goodreads.importer, _coerce_uploaded_file(file), user_id, mode)
+    return _run_file_import(goodreads.importer, file, user_id, mode)
 
 
 @shared_task(name=GOODREADS_IMPORT_TASK_NAME)
@@ -350,25 +350,25 @@ def import_goodreads_dotted(file, user_id, mode):
 @shared_task(name="Import from Hardcover")
 def import_hardcover(file, user_id, mode):
     """Celery task for importing media data from Hardcover."""
-    return import_media(hardcover.importer, _coerce_uploaded_file(file), user_id, mode)
+    return _run_file_import(hardcover.importer, file, user_id, mode)
 
 
 @shared_task(name="Import from StoryGraph")
 def import_storygraph(file, user_id, mode):
     """Celery task for importing media data from StoryGraph."""
-    return import_media(storygraph.importer, _coerce_uploaded_file(file), user_id, mode)
+    return _run_file_import(storygraph.importer, file, user_id, mode)
 
 
 @shared_task(name="Import from TV Time (shows)")
 def import_tvtime_shows(file, user_id, mode):
     """Celery task for importing episode watch history from a TV Time CSV."""
-    return import_media(tvtime.importer_shows, _coerce_uploaded_file(file), user_id, mode)
+    return _run_file_import(tvtime.importer_shows, file, user_id, mode)
 
 
 @shared_task(name="Import from TV Time (movies)")
 def import_tvtime_movies(file, user_id, mode):
     """Celery task for importing movie watch activity from a TV Time CSV."""
-    return import_media(tvtime.importer_movies, _coerce_uploaded_file(file), user_id, mode)
+    return _run_file_import(tvtime.importer_movies, file, user_id, mode)
 
 
 @shared_task(name="Import from Plex")
@@ -380,9 +380,9 @@ def import_plex(library, user_id, mode, username=None):
 @shared_task(name="Import from Jellyfin Playback Reporting")
 def import_jellyfin_playback_reporting(file, user_id, mode="new"):
     """Import a Jellyfin Playback Reporting TSV backup."""
-    return import_media(
+    return _run_file_import(
         jellyfin_playback_reporting.importer,
-        _coerce_uploaded_file(file),
+        file,
         user_id,
         mode,
     )
@@ -466,40 +466,6 @@ def sync_plex_watchlist(user_id, mode="watchlist"):
         events.tasks.reload_calendar.delay()
 
     return format_watchlist_sync_message(sync_counts, warnings)
-
-
-@shared_task(name="Refresh Plex library sections")
-def refresh_plex_sections(user_id):
-    """Refresh and persist cached Plex library sections for a user.
-
-    Runs off the request thread so a page like Integrations settings never
-    blocks on live Plex connection probing (see integrations() in users/views.py).
-    """
-    from integrations import plex as plex_api
-
-    user = get_user_model().objects.get(id=user_id)
-    account = getattr(user, "plex_account", None)
-    if not account or not account.plex_token:
-        return
-
-    try:
-        sections = plex_api.list_sections(account.plex_token)
-    except plex_api.PlexAuthError as exc:
-        logger.warning(
-            "Plex token expired while refreshing sections for user %s: %s",
-            user.username,
-            exc,
-        )
-        return
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.warning(
-            "Could not refresh Plex libraries for user %s: %s", user.username, exc
-        )
-        return
-
-    account.sections = sections
-    account.sections_refreshed_at = timezone.now()
-    account.save(update_fields=["sections", "sections_refreshed_at"])
 
 
 @shared_task(name=JELLYFIN_PUSH_TASK_NAME)

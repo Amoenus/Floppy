@@ -695,7 +695,9 @@ class TestPlexImportScenarios(TestCase):
             (_ for _ in ()).throw(error_404) if mid == bad_id else {"id": mid}
         )
 
-        mock_search.return_value = {"results": [{"media_id": correct_id}]}
+        mock_search.return_value = {
+            "results": [{"media_id": correct_id, "title": title}],
+        }
 
         result = self.importer._get_tv_metadata(bad_id, {3}, title)
 
@@ -716,7 +718,9 @@ class TestPlexImportScenarios(TestCase):
             (_ for _ in ()).throw(error_404) if mid == bad_id else {"id": mid}
         )
 
-        mock_search.return_value = {"results": [{"media_id": correct_id}]}
+        mock_search.return_value = {
+            "results": [{"media_id": correct_id, "title": title}],
+        }
 
         result = self.importer._get_tv_metadata(bad_id, {2, 3}, title)
 
@@ -736,7 +740,9 @@ class TestPlexImportScenarios(TestCase):
             (_ for _ in ()).throw(error_404) if mid == bad_id else {"id": mid}
         )
 
-        mock_search.return_value = {"results": [{"media_id": correct_id}]}
+        mock_search.return_value = {
+            "results": [{"media_id": correct_id, "title": title}],
+        }
 
         # Test Season 5 request
         result = self.importer._get_tv_metadata(bad_id, {5}, title)
@@ -756,7 +762,9 @@ class TestPlexImportScenarios(TestCase):
             (_ for _ in ()).throw(error_404) if mid == bad_id else {"id": mid}
         )
 
-        mock_search.return_value = {"results": [{"media_id": returned_id}]}
+        mock_search.return_value = {
+            "results": [{"media_id": returned_id, "title": title}],
+        }
 
         result = self.importer._get_tv_metadata(bad_id, {1}, title)
 
@@ -1452,9 +1460,10 @@ class TestPlexPostImportSideEffects(TestCase):
         tasks.import_media(mock_importer, "all", self.user.id, "new")
 
         mock_reload_calendar.assert_not_called()
-        # The rest of the post-import refresh work still runs.
-        mock_invalidate_history.assert_called_once_with(self.user.id, force=True)
-        mock_schedule_stats.assert_called_once_with(self.user.id)
+        # No tracked rows changed, so the existing history/statistics payloads
+        # remain valid and recurring polling must not rebuild them.
+        mock_invalidate_history.assert_not_called()
+        mock_schedule_stats.assert_not_called()
 
 
 class TestPlexUsernameImportBehavior(TestCase):

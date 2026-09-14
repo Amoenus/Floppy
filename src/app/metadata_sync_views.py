@@ -12,6 +12,7 @@ from django.db.utils import OperationalError
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext
 from django.views.decorators.http import require_GET, require_POST
@@ -19,6 +20,7 @@ from django.views.decorators.http import require_GET, require_POST
 from app import (
     custom_metadata,
     helpers,
+    history_cache,
     metadata_utils,
 )
 from app.db_retry import is_retryable_error, run_retryable_db_operation
@@ -1643,6 +1645,9 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
         # null a comic/manga count another path stored (#1077).
         if number_of_pages is not None:
             item_fields["number_of_pages"] = number_of_pages
+        # Stamped at the single point provider metadata is written, so
+        # freshness cannot drift from the data it describes.
+        item_fields["metadata_refreshed_at"] = timezone.now()
         if item is None:
             item = Item.objects.create(
                 media_id=media_id,
@@ -1702,6 +1707,7 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
             }
 
             episodes_to_update = []
+            episode_item_ids_with_title_changes = set()
             episode_count = 0
 
             # Create a lookup for raw episode data by episode_number
@@ -1711,10 +1717,17 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
                 episode_number = episode_data["episode_number"]
                 if episode_number in existing_episodes:
                     episode_item = existing_episodes[episode_number]
-                    title_fields = Item.title_fields_from_metadata(metadata)
-                    episode_item.title = title_fields["title"]
-                    episode_item.original_title = title_fields["original_title"]
-                    episode_item.localized_title = title_fields["localized_title"]
+                    episode_title_fields = Item.title_fields_from_episode_metadata(
+                        episode_data,
+                    )
+                    if episode_title_fields["title"]:
+                        if any(
+                            getattr(episode_item, field) != value
+                            for field, value in episode_title_fields.items()
+                        ):
+                            episode_item_ids_with_title_changes.add(episode_item.pk)
+                        for field, value in episode_title_fields.items():
+                            setattr(episode_item, field, value)
                     episode_item.image = episode_data["image"]
 
                     # Extract and update release_datetime from TMDB air_date
@@ -1767,6 +1780,17 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
                     updated_count,
                     title,
                 )
+
+            if episode_item_ids_with_title_changes:
+                history_user_ids = (
+                    Episode.objects.filter(
+                        item_id__in=episode_item_ids_with_title_changes,
+                    )
+                    .values_list("related_season__user_id", flat=True)
+                    .distinct()
+                )
+                for user_id in history_user_ids:
+                    history_cache.invalidate_history_cache(user_id, force=True)
 
         item.fetch_releases(delay=False)
 

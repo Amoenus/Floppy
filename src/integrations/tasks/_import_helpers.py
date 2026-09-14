@@ -6,14 +6,19 @@ from app.models import MediaTypes
 from app.templatetags import app_tags
 from integrations import plex as plex_api
 from integrations.imports import helpers
+from integrations.upload_staging import open_import_file
 
 ERROR_TITLE = "\n\n\n Couldn't import the following media: \n\n"
 IMPORT_COUNT_METRIC_KEYS = frozenset(
     {
         "created",
+        "failed",
+        "rejected",
         "updated",
         "skipped",
+        "skipped_ignored",
         "skipped_missing_ids",
+        "skipped_numbering_mismatch",
         "skipped_existing",
         "skipped_unknown_type",
         "skipped_other_user",
@@ -54,6 +59,20 @@ def _coerce_uploaded_file(file):
     raise TypeError(msg)
 
 
+def _run_file_import(importer_func, file, user_id, mode, **extra_kwargs):
+    """Run a file-backed importer while cleaning staged task payloads."""
+    from integrations.tasks._media_imports import import_media
+
+    with open_import_file(file) as uploaded_file:
+        return import_media(
+            importer_func,
+            uploaded_file,
+            user_id,
+            mode,
+            **extra_kwargs,
+        )
+
+
 def import_run_counts(imported_counts):
     """Return ``(created_count, updated_count)`` for an ``ImportRun`` row."""
     created = imported_counts.get("created")
@@ -71,12 +90,7 @@ def import_run_counts(imported_counts):
 def has_imported_media(imported_counts):
     """Return whether an importer run changed any media rows."""
     created, updated = import_run_counts(imported_counts)
-    if (
-        imported_counts.get("created") is not None
-        or imported_counts.get("updated") is not None
-    ):
-        return created + updated > 0
-    return any(imported_counts.values())
+    return created + updated > 0
 
 
 def format_media_type_display(count, media_type):

@@ -16,6 +16,7 @@ def provider_metadata_cache_keys(
     season_number=None,
     episode_number=None,
     route_media_type=None,
+    language=None,
 ):
     """Return the provider cache keys holding a payload, canonical key first.
 
@@ -50,10 +51,29 @@ def provider_metadata_cache_keys(
             else MediaTypes.TV.value
         )
         if media_type == MediaTypes.SEASON.value:
-            keys.append(tvdb._season_cache_key(media_id, season_number, routed_media_type))
+            keys.append(
+                tvdb._season_cache_key(
+                    media_id,
+                    season_number,
+                    routed_media_type,
+                    language,
+                ),
+            )
         else:
-            keys.append(tvdb._cache_key(routed_media_type, media_id))
-        keys.extend(tvdb.metadata_cache_keys(media_id, season_number))
+            keys.append(
+                tvdb._cache_key(
+                    routed_media_type,
+                    media_id,
+                    tvdb._preferred_language_code(language),
+                ),
+            )
+        keys.extend(
+            tvdb.metadata_cache_keys(
+                media_id,
+                season_number,
+                language=language,
+            ),
+        )
 
     if source != Sources.TVDB.value:
         # The unversioned shape. Still worth evicting for TMDB, where entries
@@ -101,6 +121,14 @@ PROVIDER_METADATA_FIELDS = [
     "igdb_user_rating",
     "igdb_user_rating_count",
 ]
+
+EPISODE_COUNT_MEDIA_TYPES = frozenset(
+    {
+        MediaTypes.TV.value,
+        MediaTypes.SEASON.value,
+        MediaTypes.ANIME.value,
+    },
+)
 
 
 def backfill_sources(sources):
@@ -199,6 +227,15 @@ def apply_item_genres(
     return []
 
 
+def _coerce_episode_count(value):
+    """Return a non-negative provider episode count, or None."""
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        return None
+    return count if count >= 0 else None
+
+
 def extract_item_metadata_values(metadata: dict | None) -> dict[str, object]:
     """Return normalized metadata values used on the Item model."""
     payload = metadata if isinstance(metadata, dict) else {}
@@ -224,6 +261,12 @@ def extract_item_metadata_values(metadata: dict | None) -> dict[str, object]:
     except (TypeError, ValueError):
         number_of_pages = None
 
+    raw_episode_count = payload.get("episode_count")
+    if raw_episode_count is None:
+        raw_episode_count = details.get("episodes")
+    if raw_episode_count is None:
+        raw_episode_count = payload.get("max_progress")
+
     return {
         "synopsis": payload.get("synopsis") or "",
         "source_url": payload.get("source_url") or "",
@@ -241,6 +284,7 @@ def extract_item_metadata_values(metadata: dict | None) -> dict[str, object]:
         "source_material": details.get("source") or "",
         "creators": _coerce_list(details.get("people"), allow_scalar=False),
         "runtime": details.get("runtime") or "",
+        "provider_episode_count": _coerce_episode_count(raw_episode_count),
         "provider_popularity": payload.get("provider_popularity"),
         "provider_rating": payload.get("provider_rating", payload.get("score")),
         "provider_rating_count": payload.get(
@@ -264,6 +308,19 @@ def extract_item_metadata_values(metadata: dict | None) -> dict[str, object]:
         "igdb_user_rating_count": payload.get("igdb_user_rating_count"),
         "release_datetime": helpers.extract_release_datetime(payload),
     }
+
+
+def apply_provider_episode_count(item, metadata: dict | None) -> list[str]:
+    """Apply a provider episode count to an episodic Item."""
+    if item.media_type not in EPISODE_COUNT_MEDIA_TYPES:
+        return []
+
+    value = extract_item_metadata_values(metadata)["provider_episode_count"]
+    if item.provider_episode_count == value:
+        return []
+
+    item.provider_episode_count = value
+    return ["provider_episode_count"]
 
 
 def apply_item_metadata(
@@ -294,6 +351,7 @@ def apply_item_metadata(
             if getattr(item, field_name) != values[field_name]:
                 setattr(item, field_name, values[field_name])
                 update_fields.append(field_name)
+        update_fields.extend(apply_provider_episode_count(item, metadata))
 
     if (
         include_release

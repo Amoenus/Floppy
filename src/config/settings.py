@@ -244,42 +244,66 @@ USE_X_FORWARDED_PORT = config(
 
 # Application definition
 
-INSTALLED_APPS = [
-    "django.contrib.auth",
-    "django.contrib.admin",
-    "django.contrib.contenttypes",
-    "django.contrib.sessions",
-    "django.contrib.messages",
-    "django.contrib.staticfiles",
-    "app",
-    "events",
-    "integrations",
-    "lists",
-    "users",
-    "django_celery_beat",
-    "django_celery_results",
-    "django_select2",
-    "simple_history",
-    "widget_tweaks",
-    "health_check",
-    "health_check.cache",
-    "health_check.storage",
-    "health_check.contrib.migrations",
-    "health_check.contrib.celery_ping",
-    "health_check.contrib.redis",
-    "health_check.contrib.db_heartbeat",
-    "allauth",
-    "allauth.account",
-    "allauth.socialaccount",
-    "django.contrib.humanize",
-    "rest_framework",
-    "api",
-    "drf_spectacular",
-]
+_CELERY_PROCESS = os.environ.get("FLOPPY_PROCESS_ROLE") in {
+    "background",
+    "combined",
+    "interactive",
+}
+
+if _CELERY_PROCESS:
+    INSTALLED_APPS = [
+        "django.contrib.auth",
+        "django.contrib.contenttypes",
+        "app",
+        "events",
+        "integrations",
+        "lists",
+        "users",
+        "django_celery_beat",
+        "django_celery_results",
+        "simple_history",
+    ]
+else:
+    INSTALLED_APPS = [
+        "django.contrib.auth",
+        "django.contrib.admin",
+        "django.contrib.contenttypes",
+        "django.contrib.sessions",
+        "django.contrib.messages",
+        "django.contrib.staticfiles",
+        "app",
+        "events",
+        "integrations",
+        "lists",
+        "users",
+        "django_celery_beat",
+        "django_celery_results",
+        "django_select2",
+        "simple_history",
+        "widget_tweaks",
+        "health_check",
+        "health_check.cache",
+        "health_check.storage",
+        "health_check.contrib.migrations",
+        "health_check.contrib.celery_ping",
+        "health_check.contrib.redis",
+        "health_check.contrib.db_heartbeat",
+        "allauth",
+        "allauth.account",
+        "allauth.socialaccount",
+        "django.contrib.humanize",
+        "rest_framework",
+        "api",
+        "drf_spectacular",
+    ]
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
+        # Enforced globally on purpose: a per-view opt-in is a control that gets
+        # forgotten. Views that must stay public set ``permission_classes = []``.
+        "api.authentication.HasScope",
+        "api.authentication.CanWriteBoundList",
     ],
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "api.authentication.BearerAuthentication",
@@ -288,7 +312,7 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ("api.renderers.ImageCacheJSONRenderer",),
     # ``format`` is a media-list filter, not a renderer override.
     "URL_FORMAT_OVERRIDE": None,
-    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_SCHEMA_CLASS": "api.scope_schema.ScopedAutoSchema",
 }
 
 SPECTACULAR_SETTINGS = {
@@ -358,7 +382,7 @@ if FLOPPY_AUTO_LOGIN_USERNAME:
     _index = MIDDLEWARE.index("django.contrib.auth.middleware.AuthenticationMiddleware")
     MIDDLEWARE.insert(_index + 1, "app.middleware.AutoLoginMiddleware")
 
-ROOT_URLCONF = "config.urls"
+ROOT_URLCONF = "config.celery_urls" if _CELERY_PROCESS else "config.urls"
 
 TEMPLATES = [
     {
@@ -1009,8 +1033,29 @@ BACKUP_DIR = config("BACKUP_DIR", default=str(BASE_DIR / "backups"))
 # exports above, which cannot replace a physically damaged db.sqlite3. Rides
 # the same BACKUP_DIR volume mount installs already have.
 DB_SNAPSHOT_ENABLED = config("DB_SNAPSHOT_ENABLED", default=True, cast=bool)
+# How long an idempotency receipt stays replayable. A client that retries after
+# this window gets a fresh operation, not the prior result, so keep it longer
+# than the longest client backoff. Measure real retry intervals before lowering.
+# How long an applied change stays in the watched-state log. A binding that has
+# not checked in within this window must take a fresh snapshot rather than pin
+# the log open forever. Compaction never crosses a live binding's checkpoint,
+# whatever this says.
+WATCH_STATE_CHANGE_RETENTION_DAYS = config(
+    "WATCH_STATE_CHANGE_RETENTION_DAYS",
+    default=30,
+    cast=int,
+)
+
+INTEGRATION_RECEIPT_RETENTION_DAYS = config(
+    "INTEGRATION_RECEIPT_RETENTION_DAYS",
+    default=14,
+    cast=int,
+)
+
 DB_SNAPSHOT_RETENTION_COUNT = config(
-    "DB_SNAPSHOT_RETENTION_COUNT", default=7, cast=int,
+    "DB_SNAPSHOT_RETENTION_COUNT",
+    default=7,
+    cast=int,
 )
 DB_SNAPSHOT_HOUR = config("DB_SNAPSHOT_HOUR", default=2, cast=int)
 DB_SNAPSHOT_MINUTE = config("DB_SNAPSHOT_MINUTE", default=30, cast=int)
@@ -1345,6 +1390,29 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 # Retry forever rather than exit: the container restarts into the same
 # situation, so giving up only turns a slow Redis into a crash loop.
 CELERY_BROKER_CONNECTION_MAX_RETRIES = 0
+
+# ``integrations.tasks`` keeps its historical public re-exports lazy so web
+# workers do not load every importer while resolving URLs. Celery workers still
+# import every task implementation explicitly and retain the same task names.
+if os.environ.get("FLOPPY_PROCESS_ROLE") == "interactive":
+    CELERY_IMPORTS = (
+        "app.tasks_interactive",
+        "integrations.tasks._plex_sections",
+        "integrations.tasks._webhook",
+    )
+else:
+    CELERY_IMPORTS = (
+        "integrations.tasks._change_log",
+        "integrations.tasks._jellyfin_pull",
+        "integrations.tasks._koito",
+        "integrations.tasks._lastfm",
+        "integrations.tasks._media_imports",
+        "integrations.tasks._plex_collection",
+        "integrations.tasks._plex_sections",
+        "integrations.tasks._receipts",
+        "integrations.tasks._state_sync",
+        "integrations.tasks._webhook",
+    )
 CELERY_REDIS_RETRY_ON_TIMEOUT = True
 
 CELERY_WORKER_HIJACK_ROOT_LOGGER = False
@@ -1397,8 +1465,13 @@ if not CELERY_TASK_SOFT_TIME_LIMIT:
 # interactive work strands it behind every background batch.
 CELERY_TASK_PRIORITY_INTERACTIVE = 0
 CELERY_TASK_PRIORITY_FOLLOWUP = 3
-CELERY_TASK_DEFAULT_PRIORITY = 5
+CELERY_TASK_PRIORITY_DEFAULT = 5
 CELERY_TASK_PRIORITY_BACKGROUND = 9
+# Celery copies task_default_priority onto every task before it consults the
+# route table. A concrete value here would therefore override route-specific
+# priorities during apply_async() and Beat dispatch. The route table below
+# supplies both the explicit classes and the default fallback instead.
+CELERY_TASK_DEFAULT_PRIORITY = None
 
 CELERY_RESULT_EXTENDED = True
 CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default=None) or REDIS_URL
@@ -1417,8 +1490,21 @@ CELERY_ACCEPT_CONTENT = [
 CELERY_TASK_ROUTES = {
     "app.tasks.populate_*": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "app.tasks.reconcile_*": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Cleanup task results": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Repair Celery broker bindings": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Cleanup image cache": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Write database snapshot": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Backfill item metadata": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Ensure genre backfill reconcile": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Ensure watch provider backfill reconcile": {
+        "priority": CELERY_TASK_PRIORITY_BACKGROUND,
+    },
+    "Ensure external ID backfill reconcile": {
+        "priority": CELERY_TASK_PRIORITY_BACKGROUND,
+    },
+    "Ensure podcast website backfill reconcile": {
+        "priority": CELERY_TASK_PRIORITY_BACKGROUND,
+    },
     "Nightly metadata quality backfill": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Refresh IMDB game credits from datasets": {
         "priority": CELERY_TASK_PRIORITY_BACKGROUND
@@ -1436,16 +1522,25 @@ CELERY_TASK_ROUTES = {
     "Reload calendar": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     # Discover cache rebuilds go to the dedicated discover worker so a post-restart
     # burst of O(users x tabs) tasks never starves imports or background work.
-    "Refresh Discover Tab Cache": {"queue": "discover"},
+    "Refresh Discover Tab Cache": {
+        "queue": "discover",
+        "priority": CELERY_TASK_PRIORITY_BACKGROUND,
+    },
     # User-triggered cache rebuilds go to the dedicated interactive worker so they
     # are never blocked behind long-running background tasks.
-    "app.tasks.refresh_statistics_cache_task": {"queue": "interactive"},
+    "app.tasks.refresh_statistics_cache_task": {
+        "queue": "interactive",
+        "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
+    },
     # History cache rebuilds now bound their inline work (see
     # refresh_history_cache in history_cache_reader.py), but they're kept off the
     # interactive queue as defense-in-depth so an unanticipated slow rebuild can
     # never block Plex webhook scrobbles, which share that single-concurrency
     # worker.
-    "app.tasks.refresh_history_cache_task": {"queue": "celery"},
+    "app.tasks.refresh_history_cache_task": {
+        "queue": "celery",
+        "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
+    },
     # Webhook scrobbles must land right after a play finishes, so they run on the
     # interactive worker at top priority — never behind imports or backfills.
     "Process media server webhook": {
@@ -1477,6 +1572,12 @@ CELERY_TASK_ROUTES = {
     },
     "Import from Pocket Casts (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
     "Import from GPodder (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
+    "Migrate TV shows to preferred metadata provider": {
+        "priority": CELERY_TASK_PRIORITY_BACKGROUND,
+    },
+    # Keep this last. Celery's map router uses the first matching wildcard, and
+    # this fallback preserves the former default priority for all other tasks.
+    "*": {"priority": CELERY_TASK_PRIORITY_DEFAULT},
 }
 
 
@@ -1569,7 +1670,6 @@ CELERY_BEAT_SCHEDULE = {
         "task": "Cleanup task results",
         "schedule": 60 * 15,
         "kwargs": {"batch_size": 5000},
-        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     # A control-command reply (control.revoke, the celery_ping health check)
     # can write a malformed Kombu Redis binding at any point during uptime,
@@ -1577,7 +1677,6 @@ CELERY_BEAT_SCHEDULE = {
     "repair_celery_broker_bindings": {
         "task": "Repair Celery broker bindings",
         "schedule": 60 * 15,
-        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     # Folds shows that the old routing tracked in both Anime and TV Shows back
     # into one row. Self-limiting: once no duplicates remain each run is a
@@ -1585,7 +1684,6 @@ CELERY_BEAT_SCHEDULE = {
     "repair_duplicated_anime_libraries": {
         "task": "Repair duplicated anime libraries",
         "schedule": crontab(hour=5, minute=30),
-        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     "reload_calendar": {
         "task": "Reload calendar",
@@ -1594,12 +1692,10 @@ CELERY_BEAT_SCHEDULE = {
     "cleanup_image_cache": {
         "task": "Cleanup image cache",
         "schedule": crontab(hour=4, minute=0),
-        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     "write_database_snapshot": {
         "task": "Write database snapshot",
         "schedule": crontab(hour=DB_SNAPSHOT_HOUR, minute=DB_SNAPSHOT_MINUTE),
-        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     "send_release_notifications": {
         "task": "Send release notifications",
@@ -1620,7 +1716,6 @@ CELERY_BEAT_SCHEDULE = {
             "batch_size": _scaled(1000),
             "game_length_batch_size": _scaled(200),
         },  # A nightly bulk pass plus a bounded HLTB enrichment sweep.
-        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     "backfill_item_metadata_incremental": {
         "task": "Backfill item metadata",
@@ -1635,7 +1730,6 @@ CELERY_BEAT_SCHEDULE = {
             "batch_size": _scaled(150),
             "game_length_batch_size": _scaled(25),
         },
-        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     "nightly_metadata_quality_backfill": {
         "task": "Nightly metadata quality backfill",
@@ -1648,7 +1742,6 @@ CELERY_BEAT_SCHEDULE = {
             "credits_scan_multiplier": 20,
             "trakt_popularity_batch_size": _scaled(300),
         },
-        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     # Both reconcilers gate on durable completion state and back off once they
     # find nothing (app/reconcile_state.py), so this is a cheap liveness poll
@@ -1659,7 +1752,6 @@ CELERY_BEAT_SCHEDULE = {
         "kwargs": {
             "batch_size": GENRE_RECONCILE_BATCH_SIZE,
         },
-        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     "ensure_provider_backfill_reconcile": {
         "task": "Ensure watch provider backfill reconcile",
@@ -1667,7 +1759,6 @@ CELERY_BEAT_SCHEDULE = {
         "kwargs": {
             "batch_size": WATCH_PROVIDERS_RECONCILE_BATCH_SIZE,
         },
-        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     "ensure_external_ids_backfill_reconcile": {
         "task": "Ensure external ID backfill reconcile",
@@ -1675,7 +1766,6 @@ CELERY_BEAT_SCHEDULE = {
         "kwargs": {
             "batch_size": EXTERNAL_IDS_RECONCILE_BATCH_SIZE,
         },
-        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     # One-shot: goes quiet for good once every show with a feed has been swept
     # (app/tasks_podcast.py), so this only has to catch the passes after the
@@ -1683,38 +1773,31 @@ CELERY_BEAT_SCHEDULE = {
     "ensure_podcast_website_backfill_reconcile": {
         "task": "Ensure podcast website backfill reconcile",
         "schedule": RECONCILE_INTERVAL_SECONDS,
-        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     "warm_discover_api_cache": {
         "task": "Warm Discover API Cache",
         "schedule": by_tier(60 * 60 * 6, 60 * 60 * 3, 60 * 60),
-        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     "warm_history_day_cache_coverage": {
         "task": "Warm History Day Cache Coverage",
         "schedule": by_tier(60 * 60 * 12, 60 * 60 * 6, 60 * 60 * 2),
-        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     "refresh_discover_profiles": {
         "task": "Refresh Discover Profiles",
         "schedule": crontab(hour=4, minute=0),  # every day at 4 AM
-        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     "migrate_tv_shows_to_preferred_provider": {
         "task": "Migrate TV shows to preferred metadata provider",
         "schedule": crontab(hour=3, minute=45),  # every day at 3:45 AM
         "kwargs": {"batch_size": _scaled(200)},
-        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     "sync_imdb_ratings": {
         "task": "Sync IMDB ratings from datasets",
         "schedule": crontab(hour=5, minute=0),  # every day at 5 AM
-        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     "sync_mal_ratings": {
         "task": "Sync MAL ratings from API",
         "schedule": crontab(hour=5, minute=15),  # every day at 5:15 AM
-        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
 }
 

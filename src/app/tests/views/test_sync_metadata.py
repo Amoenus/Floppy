@@ -7,7 +7,7 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
-from app.models import Item, MediaTypes, PodcastShow, Sources
+from app.models import TV, Episode, Item, MediaTypes, PodcastShow, Season, Sources
 from app.providers import tmdb, tvdb
 
 User = get_user_model()
@@ -97,6 +97,7 @@ class SyncMetadataViewTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
 
+    @patch("app.tasks_imdb.refresh_imdb_game_credits_from_datasets.apply_async")
     @patch("app.metadata_sync_views._sync_plex_rating")
     @patch("app.views.Item.fetch_releases")
     @patch("app.views.game_length_services.refresh_game_lengths")
@@ -107,6 +108,7 @@ class SyncMetadataViewTests(TestCase):
         mock_refresh_game_lengths,
         mock_fetch_releases,
         mock_sync_plex_rating,
+        _mock_refresh_imdb_credits,
     ):
         mock_get_media_metadata.return_value = {
             "media_id": "325609",
@@ -328,6 +330,100 @@ class SyncMetadataViewTests(TestCase):
         self.assertEqual(tv_item.library_media_type, MediaTypes.SEASON.value)
         self.assertEqual(anime_item.library_media_type, MediaTypes.ANIME.value)
 
+    @patch("app.metadata_sync_views.history_cache.invalidate_history_cache")
+    @patch("app.metadata_sync_views._sync_plex_rating")
+    @patch("app.views.Item.fetch_releases")
+    @patch("app.services.metadata_sync.trakt_popularity_service.refresh_trakt_popularity")
+    @patch(
+        "app.metadata_sync_views.metadata_resolution.get_preferred_provider",
+        return_value=Sources.TVDB.value,
+    )
+    @patch("app.metadata_sync_views.metadata_resolution.upsert_provider_links")
+    @patch("app.metadata_sync_views.tmdb.process_episodes")
+    @patch("app.metadata_sync_views.services.get_media_metadata")
+    def test_sync_metadata_repairs_episode_title_and_history_cache(
+        self,
+        mock_get_media_metadata,
+        mock_process_episodes,
+        _mock_upsert_provider_links,
+        _mock_get_preferred_provider,
+        _mock_refresh_trakt_popularity,
+        _mock_fetch_releases,
+        _mock_sync_plex_rating,
+        mock_invalidate_history_cache,
+    ):
+        """Season sync repairs stale episode titles without breaking history."""
+        tv_item = Item.objects.create(
+            media_id="81189",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+        )
+        tv = TV.objects.create(item=tv_item, user=self.user)
+        season_item = Item.objects.create(
+            media_id="81189",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Breaking Bad",
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+        )
+        episode_item = Item.objects.create(
+            media_id="81189",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Breaking Bad",
+        )
+        Episode.objects.create(item=episode_item, related_season=season)
+
+        mock_get_media_metadata.return_value = {
+            "media_id": "81189",
+            "source": Sources.TVDB.value,
+            "media_type": MediaTypes.SEASON.value,
+            "title": "Breaking Bad Season 1",
+            "image": "https://example.com/season.jpg",
+            "details": {},
+            "related": {},
+            "episodes": [{"episode_number": 1}],
+        }
+        mock_process_episodes.return_value = [
+            {
+                "episode_number": 1,
+                "title": "Pilot from TVDB",
+                "image": "https://example.com/episode.jpg",
+                "air_date": None,
+            },
+        ]
+
+        response = self.client.post(
+            reverse(
+                "sync_metadata",
+                kwargs={
+                    "source": Sources.TVDB.value,
+                    "media_type": MediaTypes.SEASON.value,
+                    "media_id": "81189",
+                    "season_number": 1,
+                },
+            ),
+            {"next": "/"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        episode_item.refresh_from_db()
+        self.assertEqual(episode_item.title, "Pilot from TVDB")
+        self.assertIsNone(episode_item.original_title)
+        self.assertEqual(episode_item.localized_title, "Pilot from TVDB")
+        mock_invalidate_history_cache.assert_called_once_with(
+            self.user.id,
+            force=True,
+        )
+
     @patch("app.views.services.get_media_metadata")
     def test_sync_metadata_restores_cached_entry_and_returns_error_for_htmx_failures(
         self,
@@ -374,6 +470,7 @@ class SyncMetadataViewTests(TestCase):
             media_id,
             season_number,
             MediaTypes.TV.value,
+            tvdb._preferred_language_code(),
         )
         for cache_key in cache_keys:
             cache.set(cache_key, {"cached": True}, timeout=600)
@@ -423,6 +520,44 @@ class SyncMetadataViewTests(TestCase):
         # is actually about has to lead; the rest are order-independent.
         self.assertEqual(deleted_keys[0], primary_key)
         self.assertEqual(set(deleted_keys), set(cache_keys))
+
+    def test_tvdb_refresh_keys_reach_language_qualified_cache_entries(self):
+        """TVDB refresh helpers should evict the keys used by localized fetches."""
+        from app import metadata_utils
+
+        language = "es"
+        keys = metadata_utils.provider_metadata_cache_keys(
+            Sources.TVDB.value,
+            MediaTypes.SEASON.value,
+            "81189",
+            season_number=1,
+            language=language,
+        )
+        expected_keys = {
+            tvdb._cache_key(
+                MediaTypes.TV.value,
+                "81189",
+                tvdb._preferred_language_code(language),
+            ),
+            tvdb._season_cache_key("81189", 1, MediaTypes.TV.value, language),
+            tvdb._series_extended_cache_key("81189", language),
+            tvdb._cache_key(
+                "series_extended",
+                MediaTypes.TV.value,
+                "81189",
+                tvdb._preferred_language_code(language),
+            ),
+            tvdb._series_episode_translations_cache_key("81189", language),
+        }
+
+        self.assertTrue(expected_keys.issubset(keys))
+        for key in expected_keys:
+            cache.set(key, {"cached": True}, timeout=600)
+
+        cache.delete_many(keys)
+
+        for key in expected_keys:
+            self.assertIsNone(cache.get(key))
 
     @patch("app.metadata_sync_views._sync_plex_rating")
     @patch("app.views.Item.fetch_releases")
