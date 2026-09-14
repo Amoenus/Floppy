@@ -235,10 +235,22 @@ def _roll_up(processes):
                 "rss_kib": 0,
                 "fd_count": 0,
                 "max_uptime_seconds": None,
+                "max_pss_kib": None,
+                "max_pss_pid": None,
                 **{key: 0 for key in _SUMMED_KEYS},
             },
         )
         budget["process_count"] += 1
+        # A role can hold processes that are not interchangeable: a worker run
+        # with --beat parents both its prefork pool child and the embedded
+        # scheduler, and nothing outside the process tells them apart. Without
+        # this, a 500 MiB pool child and a 60 MiB scheduler read as one
+        # unremarkable 280 MiB average.
+        if process["pss_kib"] is not None and (
+            budget["max_pss_kib"] is None or process["pss_kib"] > budget["max_pss_kib"]
+        ):
+            budget["max_pss_kib"] = process["pss_kib"]
+            budget["max_pss_pid"] = process["pid"]
         if process["measurement"] == "full":
             budget["measured_count"] += 1
         else:

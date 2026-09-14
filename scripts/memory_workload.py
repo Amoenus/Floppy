@@ -57,6 +57,9 @@ from integrations.upload_staging import stage_uploaded_file
 from lists.models import CustomList, CustomListItem
 
 MINIMUM_TALENT_RESPONSE_BYTES = 1000
+# Carried into every record so a host-side sampler can align a memory reading
+# with the scale and cycle that produced it.
+CONTEXT = {"scale": None, "cycle": None}
 
 
 def report(phase, started, **fields):
@@ -67,7 +70,15 @@ def report(phase, started, **fields):
             fields[f"cgroup_{counter}_bytes"] = int(path.read_text())
     print(
         json.dumps(
-            {"phase": phase, "seconds": round(time.monotonic() - started, 3), **fields}
+            {
+                "phase": phase,
+                # Wall clock, so this joins to samples taken outside the container.
+                "started_at": round(time.time() - (time.monotonic() - started), 3),
+                "ended_at": round(time.time(), 3),
+                "seconds": round(time.monotonic() - started, 3),
+                **CONTEXT,
+                **fields,
+            }
         ),
         flush=True,
     )
@@ -173,15 +184,34 @@ def seed(size):
     return user, f"{settings.SESSION_COOKIE_NAME}={session.session_key}"
 
 
+# The four routes a run always exercises, plus the ones production spends most
+# of its web time in. The wider set is opt-in because it changes what a run
+# measures: these are the endpoints that dominate slow_request in a real
+# instance, so a footprint measured with them is not comparable to one without.
+BASE_ROUTES = (
+    "/lists?sort=name",
+    "/lists?sort=last_watched",
+    "/statistics/fragments/talent?range_name=All%20Time",
+    "/history",
+)
+PRODUCTION_HEAVY_ROUTES = (
+    "/medialist/movie",
+    "/statistics",
+    "/home/rest/",
+)
+
+
+def routes():
+    """Return the route set this run exercises."""
+    if os.environ.get("FLOPPY_MEMORY_HEAVY_ROUTES") == "1":
+        return BASE_ROUTES + PRODUCTION_HEAVY_ROUTES
+    return BASE_ROUTES
+
+
 def browse(cookie, cycles=1, *, require_talent=True):
     """Exercise actual authenticated Gunicorn requests."""
     for cycle in range(cycles):
-        for route in (
-            "/lists?sort=name",
-            "/lists?sort=last_watched",
-            "/statistics/fragments/talent?range_name=All%20Time",
-            "/history",
-        ):
+        for route in routes():
             started = time.monotonic()
             request = Request(
                 "http://127.0.0.1:8000" + route, headers={"Cookie": cookie}
@@ -210,9 +240,8 @@ def await_task(task, phase, started):
     report(phase, started, task_status=task.status)
 
 
-def exercise(size):
-    """Run cold, warm and overlapping task/request workloads for one scale."""
-    user, cookie = seed(size)
+def cycle_once(user, cookie, size, cycle):
+    """Run one pass of the task and request classes against a seeded user."""
     request_workers = max(1, int(os.environ.get("FLOPPY_MEMORY_REQUEST_WORKERS", "1")))
     started = time.monotonic()
     task = refresh_statistics_cache_task.delay(user.pk, "All Time")
@@ -234,9 +263,9 @@ def exercise(size):
         for index in range(size):
             writer.writerow(
                 [
-                    f"Memory game {size}-{index}",
+                    f"Memory game {size}-{cycle}-{index}",
                     "PC",
-                    f"mem-{size}-{index}",
+                    f"mem-{size}-{cycle}-{index}",
                     "Notes " * 100,
                     "In Collection",
                 ]
@@ -245,6 +274,8 @@ def exercise(size):
         upload.seek(0)
         staged = stage_uploaded_file(upload)
         text.detach()
+    connections.close_all()
+    before = CollectionEntry.objects.filter(user=user).count()
     started = time.monotonic()
     task = import_clz.delay(str(staged), user.pk, "new", media_type="game")
     with ThreadPoolExecutor(max_workers=request_workers) as pool:
@@ -253,7 +284,7 @@ def exercise(size):
         for request in traffic:
             request.result()
     connections.close_all()
-    imported = CollectionEntry.objects.filter(user=user).count()
+    imported = CollectionEntry.objects.filter(user=user).count() - before
     if (
         imported != size
         or not ImportRun.objects.filter(
@@ -278,5 +309,18 @@ def exercise(size):
     report("complete", started, items=size)
 
 
+def exercise(size):
+    """Seed one scale, then repeat the workload classes against it.
+
+    Seeding runs once so repeated cycles age the processes through real task
+    and request work rather than through an ever-growing fixture.
+    """
+    user, cookie = seed(size)
+    for cycle in range(int(os.environ.get("FLOPPY_MEMORY_CYCLES", "1"))):
+        CONTEXT["cycle"] = cycle
+        cycle_once(user, cookie, size, cycle)
+
+
 for scale in os.environ.get("FLOPPY_MEMORY_SCALES", "500,2000").split(","):
+    CONTEXT["scale"] = int(scale)
     exercise(int(scale))

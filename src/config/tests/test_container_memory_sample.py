@@ -308,6 +308,51 @@ class RollUpTests(SimpleTestCase):
         self.assertEqual(parent["rss_kib"], 400)
         self.assertEqual(parent["fd_count"], 10)
 
+    def test_role_names_its_largest_process(self):
+        """A worker run with --beat parents two children of unlike size.
+
+        Nothing outside those processes tells the prefork pool child from the
+        embedded scheduler, so they share a role. The role must still name its
+        largest member, or a pool child that has grown disappears into an
+        average with a scheduler that has not.
+        """
+        roles = sampler._roll_up(
+            [
+                process(1, "celery", "celery", role="celery-worker-beat-child"),
+                process(
+                    2,
+                    "celery",
+                    "celery",
+                    role="celery-worker-beat-child",
+                    pss_kib=9000,
+                ),
+            ],
+        )
+        child = roles["celery-worker-beat-child"]
+
+        self.assertEqual(child["pss_kib"], 9100)
+        self.assertEqual(child["max_pss_kib"], 9000)
+        self.assertEqual(child["max_pss_pid"], 2)
+
+    def test_unmeasurable_role_names_no_largest_process(self):
+        """With no PSS anywhere in the role there is no largest to name."""
+        roles = sampler._roll_up(
+            [
+                process(
+                    1,
+                    "celery",
+                    "celery",
+                    role="celery-worker-child",
+                    measurement="rss-only",
+                    pss_kib=None,
+                ),
+            ],
+        )
+        child = roles["celery-worker-child"]
+
+        self.assertIsNone(child["max_pss_kib"])
+        self.assertIsNone(child["max_pss_pid"])
+
 
 @_ON_LINUX
 class PrivacyInvariantTests(SimpleTestCase):

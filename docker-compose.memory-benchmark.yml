@@ -25,6 +25,10 @@ services:
       FLOPPY_CELERY_ROLE: ${FLOPPY_BENCHMARK_CELERY_ROLE:-background}
       FLOPPY_START_INTERACTIVE_WORKER: ${FLOPPY_BENCHMARK_START_INTERACTIVE_WORKER:-true}
       FLOPPY_START_DISCOVER_WORKER: ${FLOPPY_BENCHMARK_START_DISCOVER_WORKER:-false}
+      # Gunicorn reads this itself. Empty by default so the image's own sizing
+      # applies; a harness sets it to disable worker recycling, which otherwise
+      # hides per-request retention behind a restart.
+      GUNICORN_CMD_ARGS: ${FLOPPY_BENCHMARK_GUNICORN_CMD_ARGS:-}
     depends_on:
       redis:
         condition: service_started
