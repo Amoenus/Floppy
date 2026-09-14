@@ -24,7 +24,7 @@ TIERS = ("minimal", "constrained", "standard")
 class WorkerRecyclingTests(SimpleTestCase):
     """Read the settings back per tier, as a worker process would."""
 
-    def _limits(self, tier):
+    def _limits(self, tier, role="background"):
         """Return the recycling limits settings resolve to on this tier."""
         script = """
 import json
@@ -41,7 +41,7 @@ print(json.dumps({
         environment["DJANGO_SETTINGS_MODULE"] = "config.test_settings"
         environment["PYTHONPATH"] = str(settings.BASE_DIR)
         environment["FLOPPY_RESOURCE_TIER"] = tier
-        environment["FLOPPY_PROCESS_ROLE"] = "background"
+        environment["FLOPPY_PROCESS_ROLE"] = role
         result = subprocess.run(  # noqa: S603
             [sys.executable, "-c", script],
             check=True,
@@ -76,6 +76,39 @@ print(json.dumps({
                 self.assertGreater(
                     self._limits(tier)["max_memory_per_child"],
                     started_child_kib * 1.5,
+                )
+
+    def test_the_interactive_lane_is_bounded_well_below_the_background_one(self):
+        """The background ceiling has to clear an import; this one must not.
+
+        A child that only runs webhooks and short cache refreshes never
+        approaches a ceiling sized for a large import, so sharing that number
+        means it is never retired and its creep is never returned. Production
+        showed an interactive child at 215 MiB after three hours, still under
+        the background ceiling and still climbing.
+        """
+        for tier in TIERS:
+            with self.subTest(tier=tier):
+                interactive = self._limits(tier, role="interactive")
+                background = self._limits(tier, role="background")
+
+                self.assertLess(
+                    interactive["max_memory_per_child"],
+                    background["max_memory_per_child"],
+                )
+
+    def test_the_interactive_ceiling_still_clears_a_started_child(self):
+        """A ceiling near the import cost would retire the child continuously.
+
+        The interactive role loads a third of the background worker's
+        CELERY_IMPORTS, so its started child is roughly 50 MiB.
+        """
+        started_interactive_child_kib = 50 * 1024
+        for tier in TIERS:
+            with self.subTest(tier=tier):
+                self.assertGreater(
+                    self._limits(tier, role="interactive")["max_memory_per_child"],
+                    started_interactive_child_kib * 2,
                 )
 
     def test_smaller_hosts_recycle_sooner(self):

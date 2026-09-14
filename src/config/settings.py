@@ -1445,9 +1445,27 @@ CELERY_WORKER_MAX_TASKS_PER_CHILD = config(
 # can be days. The ceiling here is several times a freshly started child (~100
 # MiB of imports) so an import still has room to work, while the creep an idle
 # instance accumulates is returned to the OS.
+#
+# The interactive worker gets its own, much lower ceiling. One number cannot
+# serve both: the background ceiling has to clear a large import, and a child
+# that only runs webhooks and cache refreshes never comes close to it, so it
+# is never retired and its creep is never returned. Production showed exactly
+# that -- an interactive child at 215 MiB after three hours, still under the
+# 400 MiB background ceiling and still climbing. Retiring this child is cheap:
+# Celery retires it after the task that crossed the ceiling finishes, and its
+# tasks are short. Sized at roughly three times a fresh interactive child
+# (~50 MiB; its CELERY_IMPORTS are a third of the background worker's). A
+# statistics rebuild large enough to cross it will retire the child every time
+# it runs -- which is the right trade: that rebuild's memory is then returned
+# rather than held against the next webhook.
+_INTERACTIVE_ROLE = os.environ.get("FLOPPY_PROCESS_ROLE") == "interactive"
 CELERY_WORKER_MAX_MEMORY_PER_CHILD = config(
     "CELERY_WORKER_MAX_MEMORY_PER_CHILD",
-    default=by_tier(180 * 1024, 250 * 1024, 400 * 1024),
+    default=(
+        by_tier(120 * 1024, 140 * 1024, 160 * 1024)
+        if _INTERACTIVE_ROLE
+        else by_tier(180 * 1024, 250 * 1024, 400 * 1024)
+    ),
     cast=int,
 )
 if not CELERY_WORKER_MAX_MEMORY_PER_CHILD:

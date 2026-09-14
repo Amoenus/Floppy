@@ -1,3 +1,6 @@
+import gc
+import os
+
 from config.runtime_profile import (
     PROFILE,
     by_tier,
@@ -27,9 +30,77 @@ max_requests = by_tier(200, 300, 500)
 max_requests_jitter = 10
 timeout = by_tier(120, 200, 200)
 
+# A request ceiling alone does not bound a worker. Floppy's expensive pages --
+# the talent fragment, a details page, a large media list -- cost hundreds of
+# times an ordinary request, so a worker can grow for hours without reaching
+# the count. Production showed one worker at 567 MiB of private memory after
+# three hours, never recycled, because real traffic had not yet served 500
+# requests. Celery already bounds its children by RSS; this is the same bound
+# for the web worker, checked after the response so no request is ever failed
+# by it.
+max_worker_memory_bytes = int(
+    os.environ.get(
+        "FLOPPY_GUNICORN_MAX_WORKER_MEMORY_BYTES",
+        by_tier(150, 200, 250) * 1024 * 1024,
+    ),
+)
+_PAGE_SIZE = os.sysconf("SC_PAGE_SIZE")
+
+
+def _worker_rss_bytes():
+    """Return this worker's resident size, or None where /proc is absent."""
+    try:
+        with open("/proc/self/statm") as statm:  # noqa: PTH123 - hot path, no Path
+            return int(statm.read().split()[1]) * _PAGE_SIZE
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def when_ready(server):
+    """Move the preloaded application out of the garbage collector's reach.
+
+    preload_app imports Django once and forks workers from it, so the whole
+    application image starts shared. Collection then un-shares it: a pass
+    writes to the header of every object it examines, and a written page stops
+    being shared.
+
+    The cost is measured, not theoretical. Production's shared pages fell from
+    76 MiB to 30 MiB over three hours, and the master's private memory rose by
+    exactly what it lost -- the master never wrote those pages, but once a
+    child had written its own copy the master's became exclusively mapped and
+    was recounted as private. Every process converged on the same ~30 MiB,
+    which is the part nothing ever touched. A local run reproduces it: 36.9
+    MiB shared decaying to the same 30.6 MiB floor.
+
+    Freezing moves everything alive now into a generation collection never
+    visits, so those pages stay shared. Objects created afterwards are still
+    collected normally. Children inherit the frozen state through fork, so
+    this runs once here rather than in each of them.
+    """
+    gc.collect()
+    gc.freeze()
+    server.log.info(
+        "[gunicorn] froze %s preloaded objects to keep them shared after fork",
+        gc.get_freeze_count(),
+    )
+
+
+def post_request(worker, req, environ, resp):  # gunicorn's hook signature
+    """Retire a worker that has outgrown its ceiling, once its response is sent.
+
+    Marking the worker not-alive lets it finish what it is holding and exit;
+    the arbiter forks a replacement, which with preload_app is nearly free.
+    """
+    if not max_worker_memory_bytes:
+        return
+    resident = _worker_rss_bytes()
+    if resident is not None and resident > max_worker_memory_bytes:
+        worker.alive = False
+
 print(  # noqa: T201  # gunicorn has no logger configured this early
     f"[gunicorn] {PROFILE.describe()} -> workers={workers} threads={threads} "
-    f"max_requests={max_requests} timeout={timeout}",
+    f"max_requests={max_requests} timeout={timeout} "
+    f"max_worker_memory={max_worker_memory_bytes // (1024 * 1024)}MiB",
 )
 
 # Repeated on every restart in `docker logs`, which is the only place an
