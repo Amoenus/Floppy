@@ -80,6 +80,10 @@ TRACKED_MODELS = {
     MediaTypes.TV.value: TV,
 }
 
+SERIES_COMPATIBLE_SMART_TYPES = frozenset(
+    {MediaTypes.TV.value, MediaTypes.SEASON.value},
+)
+
 CONFIG_SEPARATOR = ","
 
 DEFAULT_CATALOG_IDS = (
@@ -180,7 +184,13 @@ def get_catalog_spec(stremio_type, catalog_id):
 
 
 def select_source_list(user, spec):
-    """Select the oldest owned preferred list, then the oldest owned Watchlist."""
+    """Select the oldest owned preferred list, then the oldest owned Watchlist.
+
+    Falls back to the oldest smart list whose own filter already matches this
+    catalog's media type, so a freshly created smart list (e.g. one filtered
+    to Seasons only) is picked up without having to be named "Series" or
+    "Watchlist".
+    """
     owned_lists = CustomList.objects.filter(owner=user)
     source_list = (
         owned_lists.filter(name__iexact=spec.preferred_list_name)
@@ -190,7 +200,26 @@ def select_source_list(user, spec):
     if source_list is not None:
         return source_list
 
-    return owned_lists.filter(name__iexact="Watchlist").order_by("id").first()
+    source_list = owned_lists.filter(name__iexact="Watchlist").order_by("id").first()
+    if source_list is not None:
+        return source_list
+
+    return select_smart_list_by_media_type(owned_lists, spec)
+
+
+def select_smart_list_by_media_type(owned_lists, spec):
+    """Return the oldest smart list whose filter fits this catalog, if any."""
+    compatible = (
+        SERIES_COMPATIBLE_SMART_TYPES
+        if spec.media_type == MediaTypes.TV.value
+        else {spec.media_type}
+    )
+    candidates = owned_lists.filter(is_smart=True).order_by("id")
+    for candidate in candidates.iterator():
+        smart_types = set(candidate.smart_media_types or [])
+        if smart_types and smart_types.issubset(compatible):
+            return candidate
+    return None
 
 
 def catalog_display_name(user, spec):
