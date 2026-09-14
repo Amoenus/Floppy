@@ -17,6 +17,7 @@ from django.conf import settings
 from django.core.cache import cache
 from pyrate_limiter import RedisBucket
 from redis import ConnectionPool
+from redis.exceptions import RedisError
 from requests.adapters import HTTPAdapter
 from requests_ratelimiter import LimiterAdapter, LimiterSession
 
@@ -708,7 +709,24 @@ def api_request(
             request_kwargs["json"] = params
             request_func = session.post
 
-        response = request_func(**request_kwargs)
+        try:
+            response = request_func(**request_kwargs)
+        except RedisError as error:
+            # The shared bucket lives in Redis (see build_limiter_session()), so
+            # every call through `session` does live Redis I/O, not just a
+            # local check. Construction-time Redis failures already fall back
+            # to an in-process limiter, but a bucket that was built fine can
+            # still hit a Redis outage later on any individual call - without
+            # this, that surfaced as a 500 on every page and import (#1166).
+            logger.warning(
+                "%s request skipped the shared rate limiter: Redis is "
+                "unavailable (%s); falling back to an unlimited request.",
+                provider,
+                error,
+            )
+            response = requests.request(  # noqa: S113 - timeout is in request_kwargs
+                method, **request_kwargs
+            )
         response.raise_for_status()
 
         if response_format == "xml":

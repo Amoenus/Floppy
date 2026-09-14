@@ -14,6 +14,7 @@ from django.test import RequestFactory, SimpleTestCase, TestCase
 from app import backfill_queue, interactive_requests, tasks_providers
 from app.interactive_requests import interactive_request_active
 from app.models import Item, MediaTypes, Sources
+from app.providers import services
 
 
 class InteractiveMarkerTests(SimpleTestCase):
@@ -91,6 +92,60 @@ class InteractiveMarkerTests(SimpleTestCase):
         ):
             run = CooperativeRun("test")
             self.assertEqual(list(run.iter([1, 2, 3])), [1, 2, 3])
+
+
+class RateLimiterDegradationTests(SimpleTestCase):
+    """Redis backs the shared rate-limit bucket used on every provider call.
+
+    A bucket built while Redis was reachable still does live Redis I/O on
+    every subsequent request (#1166's actual crash), unlike the
+    construction-time fallback in build_limiter_session().
+    """
+
+    def test_redis_failure_falls_back_to_an_unlimited_request(self):
+        """A live Redis outage must not turn into a 500 for the caller."""
+        mock_response = mock.Mock()
+        mock_response.raise_for_status = mock.Mock()
+        mock_response.json.return_value = {"ok": True}
+
+        with (
+            mock.patch.object(
+                services.session,
+                "get",
+                side_effect=redis.exceptions.ConnectionError("refused"),
+            ),
+            mock.patch(
+                "app.providers.services.requests.request",
+                return_value=mock_response,
+            ) as mock_fallback,
+        ):
+            result = services.api_request(
+                Sources.TVDB.value,
+                "GET",
+                "https://example.test/api",
+                params={"q": "1"},
+            )
+
+        self.assertEqual(result, {"ok": True})
+        mock_fallback.assert_called_once()
+        self.assertEqual(mock_fallback.call_args.args[0], "GET")
+        self.assertEqual(
+            mock_fallback.call_args.kwargs["url"], "https://example.test/api"
+        )
+
+    def test_non_redis_request_errors_still_raise_provider_api_error(self):
+        """The new fallback must not swallow genuine request failures."""
+        with mock.patch.object(
+            services.session,
+            "get",
+            side_effect=services.requests.exceptions.ConnectionError("dns fail"),
+        ):
+            with self.assertRaises(services.ProviderAPIError):
+                services.api_request(
+                    Sources.TVDB.value,
+                    "GET",
+                    "https://example.test/api",
+                )
 
 
 class BackfillQueueDegradationTests(TestCase):
