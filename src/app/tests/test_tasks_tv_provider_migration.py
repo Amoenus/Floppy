@@ -4,7 +4,15 @@ from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
 
-from app.models import TV, Item, MediaTypes, Sources, Status
+from app.models import (
+    TV,
+    Item,
+    MediaTypes,
+    MetadataBackfillField,
+    MetadataBackfillState,
+    Sources,
+    Status,
+)
 from app.services.tv_provider_migration import TvMigrationResult
 from app.tasks_tv_provider_migration import migrate_tv_shows_to_preferred_provider_task
 
@@ -93,3 +101,86 @@ class MigrateTvShowsToPreferredProviderTaskTests(TestCase):
 
         self.assertEqual(result["errored"], 1)
         self.assertEqual(result["migrated"], 0)
+
+
+class MigrationCandidateChurnTests(MigrateTvShowsToPreferredProviderTaskTests):
+    """A show that cannot migrate today must not be re-asked tomorrow.
+
+    It is not pinned - TMDB may publish the external id later - but retrying
+    it every night both burned provider calls forever and, because the batch
+    is taken in id order, let a backlog of unresolvable shows fill the batch
+    so newly tracked shows never got a turn.
+    """
+
+    @patch("app.providers.tvdb.enabled", return_value=True)
+    @patch("app.services.tv_provider_migration.migrate_tv_item_to_tvdb")
+    def test_unresolvable_show_backs_off_instead_of_retrying_nightly(
+        self,
+        mock_migrate,
+        _mock_enabled,
+    ):
+        self._create_tmdb_show(self.tvdb_user, "444")
+        mock_migrate.return_value = TvMigrationResult(
+            migrated=False,
+            reason="no TVDB id resolvable",
+        )
+
+        first = migrate_tv_shows_to_preferred_provider_task()
+        self.assertEqual(first["skipped"], 1)
+        self.assertEqual(mock_migrate.call_count, 1)
+
+        second = migrate_tv_shows_to_preferred_provider_task()
+        self.assertEqual(second["skipped"], 0)
+        self.assertEqual(mock_migrate.call_count, 1)
+
+        state = MetadataBackfillState.objects.get(
+            field=MetadataBackfillField.TVDB_MIGRATION.value,
+        )
+        # Backed off, never given up.
+        self.assertFalse(state.give_up)
+        self.assertIsNotNone(state.next_retry_at)
+
+    @patch("app.providers.tvdb.enabled", return_value=True)
+    @patch("app.services.tv_provider_migration.migrate_tv_item_to_tvdb")
+    def test_a_backlog_no_longer_starves_a_newly_tracked_show(
+        self,
+        mock_migrate,
+        _mock_enabled,
+    ):
+        for index in range(3):
+            self._create_tmdb_show(self.tvdb_user, f"stuck-{index}")
+        mock_migrate.return_value = TvMigrationResult(
+            migrated=False,
+            reason="no TVDB id resolvable",
+        )
+
+        migrate_tv_shows_to_preferred_provider_task(batch_size=3)
+        mock_migrate.reset_mock()
+
+        fresh = self._create_tmdb_show(self.tvdb_user, "brand-new")
+        mock_migrate.return_value = TvMigrationResult(migrated=True)
+
+        result = migrate_tv_shows_to_preferred_provider_task(batch_size=3)
+
+        self.assertEqual(result["migrated"], 1)
+        mock_migrate.assert_called_once()
+        self.assertEqual(mock_migrate.call_args.args[0].pk, fresh.pk)
+
+    @patch("app.providers.tvdb.enabled", return_value=True)
+    @patch("app.services.tv_provider_migration.migrate_tv_item_to_tvdb")
+    def test_a_crash_is_recorded_as_a_retryable_failure(
+        self,
+        mock_migrate,
+        _mock_enabled,
+    ):
+        self._create_tmdb_show(self.tvdb_user, "444")
+        mock_migrate.side_effect = Exception("boom")
+
+        result = migrate_tv_shows_to_preferred_provider_task()
+
+        self.assertEqual(result["errored"], 1)
+        state = MetadataBackfillState.objects.get(
+            field=MetadataBackfillField.TVDB_MIGRATION.value,
+        )
+        self.assertEqual(state.fail_count, 1)
+        self.assertFalse(state.give_up)

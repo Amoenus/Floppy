@@ -163,6 +163,7 @@ class MetadataBackfillField(models.TextChoices):
     STUDIOS = "studios", "Studios"
     IMDB_MATCH = "imdb_match", "IMDB Title Match"
     STATUS = "status", "Status"
+    TVDB_MIGRATION = "tvdb_migration", "TVDB Migration"
 
 
 class MetadataBackfillState(models.Model):
