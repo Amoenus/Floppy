@@ -30,6 +30,7 @@ WEB_CONCURRENCY="${FLOPPY_AGING_WEB_CONCURRENCY:-1}"
 SCALES="${FLOPPY_AGING_SCALES:-500}"
 CYCLES="${FLOPPY_AGING_CYCLES:-500}"
 REQUEST_WORKERS="${FLOPPY_AGING_REQUEST_WORKERS:-2}"
+DATABASE=""
 OUTPUT_DIR="${FLOPPY_AGING_OUTPUT_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/floppy-aging.XXXXXX")}"
 
 usage() { awk 'NR > 1 && /^set -euo/ { exit } NR > 1' "$0"; }
@@ -43,6 +44,7 @@ while [ "$#" -gt 0 ]; do
     --web-concurrency) WEB_CONCURRENCY="${2:?missing worker count}"; shift 2 ;;
     --memory-limit) MEMORY_LIMIT="${2:?missing limit}"; shift 2 ;;
     --scales) SCALES="${2:?missing scales}"; shift 2 ;;
+    --database) DATABASE="${2:?missing database}"; shift 2 ;;
     --cycles) CYCLES="${2:?missing cycles}"; shift 2 ;;
     --help|-h) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -61,6 +63,19 @@ export FLOPPY_BENCHMARK_MAX_WORKER_MEMORY_BYTES="${FLOPPY_AGING_MAX_WORKER_MEMOR
 
 mkdir -p "$OUTPUT_DIR/samples"
 echo "Output: $OUTPUT_DIR"
+
+# A synthetic fixture measures the code; a copy of a real database measures
+# what the code does to a real library. The file named here is only ever read:
+# it is copied into the project's own disposable volume before anything starts.
+if [ -n "$DATABASE" ]; then
+  [ -f "$DATABASE" ] || { echo "--database must be an existing SQLite file." >&2; exit 2; }
+  docker volume create "${PROJECT}_benchmark_db" >/dev/null
+  docker run --rm \
+    -v "${PROJECT}_benchmark_db:/db" \
+    -v "$(cd "$(dirname "$DATABASE")" && pwd):/src:ro" \
+    alpine:3.20 sh -c "cp /src/$(basename "$DATABASE") /db/db.sqlite3 && chown -R 1000:1000 /db" >/dev/null
+  echo "Seeded the benchmark volume from $(basename "$DATABASE")"
+fi
 
 SAMPLER_PID=""
 cleanup() {
@@ -82,6 +97,7 @@ trap cleanup EXIT
   echo "web_concurrency=$WEB_CONCURRENCY scales=$SCALES cycles=$CYCLES request_workers=$REQUEST_WORKERS"
   echo "gunicorn_cmd_args=${FLOPPY_BENCHMARK_GUNICORN_CMD_ARGS:-<image default>}"
   echo "heavy_routes=${FLOPPY_AGING_HEAVY_ROUTES:-0}"
+  echo "database=${DATABASE:-<empty volume>}"
   echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ) epoch=$(date +%s)"
   echo "=== build info ==="
   "${COMPOSE[@]}" exec -T --user root floppy cat /etc/floppy-build-info 2>/dev/null || true
