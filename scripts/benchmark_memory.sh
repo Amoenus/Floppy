@@ -63,7 +63,7 @@ mkdir -p "$OUTPUT_DIR/processes" "$OUTPUT_DIR/cgroups"
 SUMMARY_CSV="$OUTPUT_DIR/summary.csv"
 FAILURES_CSV="$OUTPUT_DIR/failures.csv"
 printf '%s\n' 'label,run,phase' >"$FAILURES_CSV"
-printf '%s\n' 'image,label,run,sample,cgroup_bytes,pss_kib,rss_kib,private_kib,cgroup_minus_pss_bytes,anon_bytes,file_bytes,kernel_bytes,slab_bytes,redis_used_memory,redis_maxmemory,process_count' >"$SUMMARY_CSV"
+printf '%s\n' 'image,label,run,sample,cgroup_bytes,pss_kib,rss_kib,private_kib,cgroup_minus_pss_bytes,anon_bytes,file_bytes,kernel_bytes,slab_bytes,redis_used_memory,redis_maxmemory,process_count,pss_anon_kib,pss_file_kib,pss_shmem_kib,shared_clean_kib,shared_dirty_kib,fd_count,measured_process_count,rss_only_process_count,pss_complete' >"$SUMMARY_CSV"
 
 cleanup_project() {
   docker compose -p "$1" -f docker-compose.memory-benchmark.yml down --volumes --remove-orphans >/dev/null 2>&1 || true
@@ -89,7 +89,8 @@ sample_floppy() {
   ') || return 1
   IFS=, read -r redis_used redis_max <<<"$redis"
   process_file="$OUTPUT_DIR/processes/${label}-run${run}-sample${sample}.csv"
-  IFS=, read -r cgroup pss rss private count remainder anon file kernel slab < <(
+  IFS=, read -r cgroup pss rss private count remainder anon file kernel slab \
+    pss_anon pss_file pss_shmem shared_clean shared_dirty fds measured rss_only complete < <(
     python3 - "$cgroup_sample" "$process_file" <<'PY'
 import csv
 import json
@@ -97,16 +98,37 @@ import sys
 
 sample = json.load(open(sys.argv[1], encoding="utf-8"))
 with open(sys.argv[2], "w", newline="", encoding="utf-8") as output:
-    fields = ("pid", "ppid", "role", "name", "argv0", "pss_kib", "rss_kib", "private_kib")
+    fields = (
+        "pid", "ppid", "role", "name", "argv0", "measurement",
+        "pss_kib", "rss_kib", "private_kib",
+        "pss_anon_kib", "pss_file_kib", "pss_shmem_kib",
+        "shared_clean_kib", "shared_dirty_kib",
+        "fd_count", "uptime_seconds",
+    )
     writer = csv.DictWriter(output, fieldnames=fields)
     writer.writeheader()
     writer.writerows(sample["processes"])
 stat = sample["memory_stat"]
 reconciliation = sample["reconciliation"]
+
+
+def total(key):
+    """Sum a counter across processes, or blank it if any process lacks it."""
+    values = [process[key] for process in sample["processes"]]
+    if any(value is None for value in values):
+        return ""
+    return sum(values)
+
+
+def kib(value):
+    """Render a reconciliation byte total in KiB, blank when unavailable."""
+    return "" if value is None else value // 1024
+
+
 print(",".join(str(value) for value in (
     sample["current_bytes"],
     reconciliation["process_pss_bytes"] // 1024,
-    sum(process["rss_kib"] for process in sample["processes"]),
+    total("rss_kib"),
     reconciliation["process_private_bytes"] // 1024,
     len(sample["processes"]),
     reconciliation["cgroup_minus_process_pss_bytes"],
@@ -114,10 +136,19 @@ print(",".join(str(value) for value in (
     stat.get("file", 0),
     stat.get("kernel", 0),
     stat.get("slab", 0),
+    kib(reconciliation["process_pss_anon_bytes"]),
+    kib(reconciliation["process_pss_file_bytes"]),
+    kib(reconciliation["process_pss_shmem_bytes"]),
+    total("shared_clean_kib"),
+    total("shared_dirty_kib"),
+    total("fd_count"),
+    sample["measured_processes"],
+    sample["rss_only_processes"],
+    reconciliation["process_pss_complete"],
 )))
 PY
   )
-  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' "$image" "$label" "$run" "$sample" "$cgroup" "$pss" "$rss" "$private" "$remainder" "$anon" "$file" "$kernel" "$slab" "$redis_used" "$redis_max" "$count" >>"$SUMMARY_CSV"
+  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' "$image" "$label" "$run" "$sample" "$cgroup" "$pss" "$rss" "$private" "$remainder" "$anon" "$file" "$kernel" "$slab" "$redis_used" "$redis_max" "$count" "$pss_anon" "$pss_file" "$pss_shmem" "$shared_clean" "$shared_dirty" "$fds" "$measured" "$rss_only" "$complete" >>"$SUMMARY_CSV"
 }
 
 run_image() {
@@ -168,33 +199,49 @@ from pathlib import Path
 import statistics
 import sys
 
+NUMERIC_COLUMNS = (
+    "run", "cgroup_bytes", "pss_kib", "rss_kib", "private_kib",
+    "cgroup_minus_pss_bytes", "anon_bytes", "file_bytes", "kernel_bytes", "slab_bytes",
+    "redis_used_memory", "redis_maxmemory", "process_count",
+    "pss_anon_kib", "pss_file_kib", "pss_shmem_kib",
+    "shared_clean_kib", "shared_dirty_kib", "fd_count",
+    "measured_process_count", "rss_only_process_count",
+)
+MEDIAN_COLUMNS = tuple(
+    column for column in NUMERIC_COLUMNS if column not in ("run", "redis_maxmemory")
+)
+
 rows = list(csv.DictReader(open(sys.argv[1], newline="", encoding="utf-8")))
 for row in rows:
-    for key in (
-        "run", "cgroup_bytes", "pss_kib", "rss_kib", "private_kib",
-        "cgroup_minus_pss_bytes", "anon_bytes", "file_bytes", "kernel_bytes", "slab_bytes",
-        "redis_used_memory", "redis_maxmemory", "process_count",
-    ):
-        row[key] = int(row[key])
+    for key in NUMERIC_COLUMNS:
+        # A blank means the counter was unavailable for that sample, not zero.
+        # int("") would otherwise abort the whole report.
+        row[key] = int(row[key]) if row.get(key) not in (None, "") else None
+
+
+def median_of(label_rows, key):
+    """Return the median of the samples that actually carried this counter."""
+    values = [row[key] for row in label_rows if row[key] is not None]
+    return statistics.median(values) if values else None
 
 by_label = {}
 for label in ("baseline", "candidate"):
     label_rows = [
         row for row in rows if row["label"] == label and row["sample"].isdigit()
     ]
-    medians = {
-        key: statistics.median(row[key] for row in label_rows) if label_rows else 0
-        for key in (
-            "cgroup_bytes", "pss_kib", "rss_kib", "private_kib",
-            "cgroup_minus_pss_bytes", "anon_bytes", "file_bytes", "kernel_bytes",
-            "slab_bytes", "redis_used_memory", "process_count",
-        )
+    medians = {key: median_of(label_rows, key) for key in MEDIAN_COLUMNS}
+    by_label[label] = {
+        "samples": len(label_rows),
+        "median": medians,
+        "counted": {
+            key: sum(1 for row in label_rows if row[key] is not None)
+            for key in MEDIAN_COLUMNS
+        },
     }
-    by_label[label] = {"samples": len(label_rows), "median": medians}
 
 baseline = by_label["baseline"]["median"]["cgroup_bytes"]
 candidate = by_label["candidate"]["median"]["cgroup_bytes"]
-delta = (candidate - baseline) / baseline * 100 if baseline else None
+delta = (candidate - baseline) / baseline * 100 if baseline and candidate else None
 cgroup_samples = {
     path.stem: json.loads(path.read_text())
     for path in (Path(sys.argv[1]).parent / "cgroups").glob("*.json") if path.stat().st_size
@@ -213,8 +260,20 @@ for label in ("baseline", "candidate"):
             roles.setdefault(role, []).append(values)
     role_medians[label] = {
         role: {
-            key: statistics.median(values[key] for values in measurements)
-            for key in ("process_count", "pss_kib", "rss_kib", "private_kib")
+            key: (
+                statistics.median(present)
+                if (present := [
+                    values[key] for values in measurements if values.get(key) is not None
+                ])
+                else None
+            )
+            for key in (
+                "process_count", "measured_count", "rss_only_count",
+                "pss_kib", "rss_kib", "private_kib",
+                "pss_anon_kib", "pss_file_kib", "pss_shmem_kib",
+                "shared_clean_kib", "shared_dirty_kib",
+                "fd_count", "max_uptime_seconds",
+            )
         }
         for role, measurements in roles.items()
     }
@@ -235,8 +294,13 @@ with open(sys.argv[2], "w", encoding="utf-8") as output:
         indent=2,
     )
 
-print(f"baseline median cgroup: {baseline / 1024 / 1024:.1f} MiB")
-print(f"candidate median cgroup: {candidate / 1024 / 1024:.1f} MiB")
+def mib(value):
+    """Render a byte median, or say so when no sample carried one."""
+    return "unavailable" if value is None else f"{value / 1024 / 1024:.1f} MiB"
+
+
+print(f"baseline median cgroup: {mib(baseline)}")
+print(f"candidate median cgroup: {mib(candidate)}")
 print(f"delta: {delta:+.1f}%" if delta is not None else "delta: unavailable")
 print(f"candidate below 1GB with no OOM events: {passed}")
 if not passed:

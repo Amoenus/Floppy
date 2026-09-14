@@ -15,7 +15,6 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 from celery.schedules import crontab
-from debug_toolbar.settings import PANELS_DEFAULTS
 from decouple import (
     Csv,
     Undefined,
@@ -1328,14 +1327,21 @@ DEBUG_TOOLBAR_CONFIG = {
     ),
     "ROOT_TAG_EXTRA_ATTRS": "hx-preserve",
 }
-DEBUG_TOOLBAR_PANELS = [
-    panel
-    for panel in PANELS_DEFAULTS
-    if (
-        DEBUG_TOOLBAR_INCLUDE_TEMPLATES_PANEL
-        or panel != "debug_toolbar.panels.templates.TemplatesPanel"
-    )
-]
+if ENABLE_DEBUG_TOOLBAR:
+    # Imported here rather than at module scope: debug_toolbar is a runtime
+    # dependency, so a top-level import loads it into every long-lived process
+    # -- gunicorn and all three Celery roles -- even though the toolbar only
+    # ever runs with DEBUG on.
+    from debug_toolbar.settings import PANELS_DEFAULTS
+
+    DEBUG_TOOLBAR_PANELS = [
+        panel
+        for panel in PANELS_DEFAULTS
+        if (
+            DEBUG_TOOLBAR_INCLUDE_TEMPLATES_PANEL
+            or panel != "debug_toolbar.panels.templates.TemplatesPanel"
+        )
+    ]
 
 SELECT2_CACHE_BACKEND = "default"
 SELECT2_JS = [
@@ -1430,11 +1436,18 @@ CELERY_WORKER_MAX_TASKS_PER_CHILD = config(
     cast=int,
 )
 # A hard RSS ceiling per child: Celery retires the child after the task that
-# crosses it finishes. Unset on standard hosts, where a large import legitimately
-# needs the headroom and there is memory to spare.
+# crosses it finishes, so no task is lost to it.
+#
+# Standard hosts had no ceiling at all, on the reasoning that a large import
+# needs the headroom and there is memory to spare. The second half of that has
+# stopped being the goal: a child that grew during one import then stays
+# resident until max_tasks_per_child recycles it, which on a warm-idle install
+# can be days. The ceiling here is several times a freshly started child (~100
+# MiB of imports) so an import still has room to work, while the creep an idle
+# instance accumulates is returned to the OS.
 CELERY_WORKER_MAX_MEMORY_PER_CHILD = config(
     "CELERY_WORKER_MAX_MEMORY_PER_CHILD",
-    default=by_tier(180 * 1024, 250 * 1024, 0),
+    default=by_tier(180 * 1024, 250 * 1024, 400 * 1024),
     cast=int,
 )
 if not CELERY_WORKER_MAX_MEMORY_PER_CHILD:
