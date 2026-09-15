@@ -1895,10 +1895,15 @@ def export_logs(request):
     from app.log_safety import redact_secrets
 
     log_path = Path(settings.LOG_FILE)
-    raw_logs = (
-        log_path.read_text(encoding="utf-8", errors="replace")
-        if log_path.exists()
-        else ""
+    backups = sorted(
+        log_path.parent.glob(f"{log_path.name}.*"),
+        key=lambda p: int(p.suffix[1:]),
+        reverse=True,
+    )
+    raw_logs = "".join(
+        p.read_text(encoding="utf-8", errors="replace")
+        for p in [*backups, log_path]
+        if p.exists()
     )
 
     sanitized_logs = redact_secrets(raw_logs)
