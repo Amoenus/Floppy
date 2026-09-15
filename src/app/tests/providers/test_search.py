@@ -207,10 +207,10 @@ class Search(TestCase):
         response = hardcover.search("xjkqzptmvnsieurytowahdbfglc", 1)
         self.assertEqual(response["results"], [])
 
-    @override_settings(MU_NSFW=False)
+    @override_settings(MU_NSFW=False, MAL_NSFW=False)
     @patch("app.providers.mangaupdates.services.api_request")
-    def test_mangaupdates_nsfw_filter_uses_its_own_setting(self, mock_api_request):
-        """MU_NSFW must gate MangaUpdates, not MAL_NSFW (which it used to read)."""
+    def test_mangaupdates_filter_applied_when_both_flags_off(self, mock_api_request):
+        """With MU_NSFW off, the adult genres are excluded."""
         cache.clear()
         mock_api_request.return_value = {"results": [], "total_hits": 0}
 
@@ -219,7 +219,23 @@ class Search(TestCase):
         params = mock_api_request.call_args.kwargs["params"]
         self.assertEqual(params["exclude_genre"], ["Adult", "Hentai", "Doujinshi"])
 
-    @override_settings(MU_NSFW=True)
+    @override_settings(MU_NSFW=False, MAL_NSFW=True)
+    @patch("app.providers.mangaupdates.services.api_request")
+    def test_mangaupdates_nsfw_filter_uses_its_own_setting(self, mock_api_request):
+        """MAL_NSFW must not loosen MangaUpdates.
+
+        This is the case the bug got wrong: the provider used to read
+        MAL_NSFW, so an anime setting silently un-filtered manga search.
+        """
+        cache.clear()
+        mock_api_request.return_value = {"results": [], "total_hits": 0}
+
+        mangaupdates.search("one piece", 1)
+
+        params = mock_api_request.call_args.kwargs["params"]
+        self.assertEqual(params["exclude_genre"], ["Adult", "Hentai", "Doujinshi"])
+
+    @override_settings(MU_NSFW=True, MAL_NSFW=False)
     @patch("app.providers.mangaupdates.services.api_request")
     def test_mangaupdates_nsfw_setting_drops_the_filter(self, mock_api_request):
         """Turning MU_NSFW on must lift the exclusion list."""
@@ -231,7 +247,7 @@ class Search(TestCase):
         params = mock_api_request.call_args.kwargs["params"]
         self.assertNotIn("exclude_genre", params)
 
-    @override_settings(MU_NSFW=False)
+    @override_settings(MU_NSFW=False, MAL_NSFW=False)
     @patch("app.providers.mangaupdates.services.api_request")
     def test_mangaupdates_nsfw_cached_under_its_own_key(self, mock_api_request):
         """Both flag states must be cached separately, not share one entry.
@@ -249,13 +265,13 @@ class Search(TestCase):
 
         self.assertEqual(mock_api_request.call_count, 2)
 
-    @override_settings(MU_NSFW=False)
+    @override_settings(MU_NSFW=False, MAL_NSFW=False)
     @patch("app.providers.mangaupdates.services.api_request")
-    def test_mangaupdates_nsfw_cache_is_reused_within_one_flag_state(
-        self,
-        mock_api_request,
-    ):
-        """Same flag state must still hit the cache, so the fix costs no calls."""
+    def test_mangaupdates_same_flag_state_reuses_the_cache(self, mock_api_request):
+        """One flag state must still hit its own cache, so the fix costs no calls.
+
+        Guards over-invalidation, not the flag bug itself.
+        """
         cache.clear()
         mock_api_request.return_value = {"results": [], "total_hits": 0}
 
