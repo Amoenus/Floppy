@@ -275,10 +275,38 @@ someone who can land one. The one-line version is an `env:` entry on the
           FLOPPY_TEST_WATCHDOG: "2400"
 ```
 
+### CPython confirms the dead result handler
+
+An attempt to mitigate this (a `TEST_RUNNER` that stops waiting after a stall
+and re-runs the missing subsuites in-process) was built, tested and then
+**reverted** — but it produced the best evidence so far. On detecting the
+stall it called `pool.terminate()`, which raised:
+
+```
+AssertionError: Cannot have cache with result_handler not alive
+```
+
+That is `multiprocessing.pool._terminate_pool` asserting that a pool with
+outstanding results in its cache must still have a live `_result_handler`
+thread. It does not. So the py-spy reading is now confirmed by CPython's own
+invariant: **results are outstanding and the thread that would deliver them is
+dead.** That is the bug, stated precisely.
+
+Why the mitigation was reverted: on a second reproduction the stall branch
+never fired at all — the run hung without the `next(timeout=0.1)` loop ever
+timing out, which means the parent blocks somewhere other than where the
+mitigation assumed. Shipping a runner override that changes how every test run
+works, to paper over a race that is not yet understood, is worse than the
+disease. The diagnosis belongs here; the fix belongs in its own change, once
+someone knows where the parent actually blocks.
+
 ### What should be done next
 
-* When a run does hang, read the dumped parent stacks: the question to answer
-  is what killed `_handle_results`, which the dump should show directly.
+* Find where the parent actually blocks when the stall branch does not fire.
+  `py-spy dump` on the parent during a hang answers this directly; the loop
+  timing out would point at `IMapIterator.next`, and not timing out points at
+  `pool.join()`, `initialize_suite()`, or teardown instead.
+* Then read what killed `_handle_results`, which is the root cause.
 * Try a smaller `--parallel` worker count and see whether the rate changes;
   that would confirm the timing-race reading.
 * Until then, treat a suite run that produces no output well past its usual

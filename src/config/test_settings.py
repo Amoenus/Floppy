@@ -82,13 +82,13 @@ _watchdog_seconds = os.environ.get("FLOPPY_TEST_WATCHDOG")
 if _watchdog_seconds:
     faulthandler.dump_traceback_later(float(_watchdog_seconds), repeat=True)
 
-# The lost results look like queue corruption, which points at forking workers
-# from a parent that already has pool threads running. "spawn" re-imports
-# instead of forking, so it cannot inherit a half-held lock -- slower to start
-# each worker, but a way to test that theory and a usable workaround.
+# "spawn" re-imports instead of forking. It was used to test (and disprove) the
+# theory that the lost results came from forking workers out of a parent that
+# already had pool threads running; it hangs under spawn too. Kept as a knob.
 _start_method = os.environ.get("FLOPPY_TEST_START_METHOD")
 if _start_method:
     multiprocessing.set_start_method(_start_method, force=True)
+
 
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_RESULT_BACKEND = "cache+memory://"
