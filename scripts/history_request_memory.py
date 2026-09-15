@@ -253,9 +253,12 @@ def main():
     # whole cost into an unmeasured call and leave every later delta reading ~0.
     fetch("/api/v1/info/", headers)
 
+    # A scaling ladder wants the delta per scenario, not the retention curve;
+    # settling six scenarios costs six minutes of nothing happening.
+    settle = os.environ.get("FLOPPY_HISTORY_SETTLE", "1") != "0"
     for run in range(int(os.environ.get("FLOPPY_HISTORY_RUNS", "2"))):
         for label, route in scenarios:
-            measure(f"{label}#{run}", route, headers)
+            measure(f"{label}#{run}", route, headers, settle=settle)
 
     # Repeated-cycle: does the worker settle back, or ratchet upward?
     cycle_route = scenarios[0][1]
