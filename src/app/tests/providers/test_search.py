@@ -2,7 +2,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from django.core.cache import cache
-from django.test import TestCase, tag
+from django.test import TestCase, override_settings, tag
 
 from app.models import MediaTypes, Sources
 from app.providers import (
@@ -206,6 +206,30 @@ class Search(TestCase):
         """Test the search method for books from Hardcover with no results."""
         response = hardcover.search("xjkqzptmvnsieurytowahdbfglc", 1)
         self.assertEqual(response["results"], [])
+
+    @override_settings(MU_NSFW=False)
+    @patch("app.providers.mangaupdates.services.api_request")
+    def test_mangaupdates_nsfw_filter_uses_its_own_setting(self, mock_api_request):
+        """MU_NSFW must gate MangaUpdates, not MAL_NSFW (which it used to read)."""
+        cache.clear()
+        mock_api_request.return_value = {"results": [], "total_hits": 0}
+
+        mangaupdates.search("one piece", 1)
+
+        params = mock_api_request.call_args.kwargs["params"]
+        self.assertEqual(params["exclude_genre"], ["Adult", "Hentai", "Doujinshi"])
+
+    @override_settings(MU_NSFW=True)
+    @patch("app.providers.mangaupdates.services.api_request")
+    def test_mangaupdates_nsfw_setting_drops_the_filter(self, mock_api_request):
+        """Turning MU_NSFW on must lift the exclusion list."""
+        cache.clear()
+        mock_api_request.return_value = {"results": [], "total_hits": 0}
+
+        mangaupdates.search("one piece", 1)
+
+        params = mock_api_request.call_args.kwargs["params"]
+        self.assertNotIn("exclude_genre", params)
 
     @patch("app.providers.hardcover.services.api_request")
     def test_hardcover_title_query_is_capped(self, mock_api_request):
