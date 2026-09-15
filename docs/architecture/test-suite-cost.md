@@ -13,7 +13,7 @@ All numbers below are from one cloud container: 4 CPUs, 16 GiB RAM, SQLite,
 | | before | after |
 | --- | --- | --- |
 | test-database setup, every run | 141 s | 141 s (2.8 s with `FLOPPY_TEST_FAST_DB=1`) |
-| `app.tests.views.test_history` (35 tests), execution only | 53.6 s | 31.0 s |
+| `app.tests.views.test_history` (35 tests), execution only | 53.6 s | 25.6 s |
 | whole suite, one app at a time | — | 398 s with `FLOPPY_TEST_FAST_DB=1` |
 | whole suite, single invocation | 21 min+, sometimes never finishes | unchanged; now bounded by a timeout |
 
@@ -66,13 +66,51 @@ It is **opt-in, not the default**, for two honest reasons:
 Use it while iterating. Do not use it as the final gate on a migration change,
 and CI should not use it.
 
-### What should be done next
+### The squash: attempted, measured, and deliberately not shipped
 
-Squash the `users` migrations. That is the real fix: it helps CI and every
-contributor, permanently, with none of the flag's caveats, and would remove
-most of 88.8 s. The repo has done this before (`users.0009_..._squashed_0022_...`),
-and `check_migration_hygiene` plus `scripts/replay_upgrade_matrix.sh` are the
-gates a squash has to satisfy. It deserves its own change, not a drive-by.
+Squashing `users` is the obvious real fix, so it was tried rather than assumed.
+What came back changes the recommendation.
+
+`squashmigrations users 0044_merge_20251115_1520 0132_user_appearance` succeeds,
+and the operation count is a genuine win:
+
+| | operations |
+| --- | --- |
+| originals, 0044-0132 | 1,097 |
+| squashed | 410 |
+
+63% fewer operations means roughly 63% fewer `users_user` table rebuilds, so
+most of the 88.8 s is recoverable. Two things stop it being a drive-by:
+
+1. **Django's optimizer is defeated by the fork's own migration operations.**
+   `AddFieldIfNotExists`, `AddConstraintIfNotExists` and
+   `RemoveConstraintIfExists` are redefined *inline inside 21 separate
+   migration files* rather than imported from one module. The optimizer sees
+   21 unrelated classes, none of which implement `reduce()`, so it cannot
+   collapse a `RemoveConstraintIfExists` against the matching
+   `AddConstraintIfNotExists`. That is why 410 operations survive instead of
+   something closer to the ~100 the final model state actually needs. Eleven
+   `RunPython` operations act as further optimization barriers.
+
+2. **31 RunPython functions need hand-porting** into the squashed file, which
+   Django cannot do automatically. On a fresh install those data fixes run
+   against empty tables and are no-ops, so most are probably `elidable`, but
+   "probably" is not good enough for code that runs against real upgrade
+   paths. Squashing across the 0038-0043 merge points is a further wrinkle:
+   those numbers are duplicated by merge migrations, and `0038` contains a
+   `lambda` that blocks serialization outright
+   (`ValueError: Cannot serialize function: lambda`).
+
+So: a squash is worth doing, it is worth roughly 50-55 s of every test run, and
+it needs its own change with the maintainer reviewing the ported functions and
+the upgrade matrix (`scripts/replay_upgrade_matrix.sh`) replayed. It is not
+something to bolt onto an unrelated PR.
+
+**The cheap prerequisite worth doing first:** move the idempotent operations
+into one shared module (e.g. `users/migrations/_operations.py`) that new
+migrations import, and give them `reduce()`. That does not touch a single
+shipped migration's behaviour, and it means the *next* squash optimizes
+properly instead of dragging 410 operations forward.
 
 ## Cause 2: password hashing, 42% of an auth-heavy module
 
@@ -97,12 +135,51 @@ PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 cut, with no test changes. Tests assert on authorization, never on hash
 strength, and this is test settings only — production is untouched.
 
-### What should be done next
+## Cause 2b: fixtures rebuilt for every test method
 
-Move the expensive per-class fixtures from `setUp` to `setUpTestData`. 586
-against 17 is the wrong ratio; `setUpTestData` builds once per class inside an
-atomic block instead of once per test method. This is a mechanical but
-file-by-file change and is not attempted here.
+With hashing fixed, `setUp` was still **37% of what `app.tests.views.test_history`
+spent executing tests** — 11.7 s of 31.7 s, rebuilding the same rows for every
+test method. The suite has 586 `setUp` methods against 17 `setUpTestData`.
+
+`setUpTestData` builds the fixture once per class inside a class-level atomic
+block, and Django rolls each test method back to that state, so for a fixture
+that is only *read* the two are equivalent. Django also wraps the attributes so
+a test that mutates them does not leak into the next one.
+
+Three classes in that module were converted:
+
+| | setUp | module setUp share | module tests |
+| --- | --- | --- | --- |
+| before | 11.7 s | 37% | 53.6 s (31.0 s after MD5) |
+| after | 2.7 s | 11% | **25.6 s** |
+
+`HistoryMonthViewTests` alone went from 22.0 s to 15.0 s.
+
+### The recipe
+
+Not every `setUp` can move, and the split matters:
+
+* **Moves to `setUpTestData`:** creating users, items and tracked media — rows
+  the tests only read.
+* **Stays in `setUp`:** `self.client.login(...)` (the test client is per-test),
+  `cache.clear()`, and anything with a side effect outside the database, such as
+  `history_cache.invalidate_history_cache(...)`.
+* **`mock.patch` needs care.** `setUpTestData` is a classmethod with no
+  `addCleanup`, so a fixture that must not hit providers starts the patches and
+  stops them itself. `_begin_model_metadata_patches()` in
+  `app/tests/views/test_history.py` is the shape to copy;
+  `_start_model_metadata_patches(self)` stays in `setUp` for the test bodies.
+* **`captureOnCommitCallbacks` is a classmethod**, so `cls.captureOnCommitCallbacks(...)`
+  works in a class fixture — but on-commit callbacks behave differently inside
+  the class-level atomic block, so check any fixture that depends on them.
+
+Classes whose `setUp` mutates fixture objects or touches the cache were
+deliberately left alone here. Audit before converting: the cheap filter is
+whether the body does anything other than create rows.
+
+The remaining 583 `setUp` methods are the same opportunity, module by module.
+Convert the slowest first (`--durations` names them) and verify each module
+against real migrations, not `FLOPPY_TEST_FAST_DB`.
 
 ## Cause 3: the parallel runner can lose results and hang forever
 
