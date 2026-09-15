@@ -28,7 +28,7 @@ class HomeCardProjectionTests(TestCase):
     def setUpTestData(cls):
         cls.user = get_user_model().objects.create_user(
             username="home-projection",
-            password="12345",  # noqa: S106
+            password="12345",
         )
         cls.custom_list = CustomList.objects.create(
             name="Projection List", owner=cls.user,

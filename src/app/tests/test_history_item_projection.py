@@ -39,7 +39,7 @@ class HistoryItemProjectionTests(TestCase):
     def setUpTestData(cls):
         cls.user = get_user_model().objects.create_user(
             username="history-projection",
-            password="12345",  # noqa: S106
+            password="12345",
         )
         tv_item = Item.objects.create(
             media_id="projection-show",

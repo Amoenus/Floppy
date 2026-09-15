@@ -1102,7 +1102,8 @@ class HomeScreenViewTests(TestCase):
 
     def test_home_screen_post_round_trips_seeded_filters_without_error(self):
         """Regression test for #1177: saving unmodified seeded filters must not
-        fail with e.g. "Filter 'completed_date_within_unit' is not available"."""
+        fail with e.g. "Filter 'completed_date_within_unit' is not available".
+        """
         self._set_enabled_media_types(MediaTypes.TV.value)
 
         get_response = self.client.get(reverse("home_screen"))
