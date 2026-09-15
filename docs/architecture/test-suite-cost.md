@@ -211,6 +211,7 @@ Ruled out:
 * **not the `FLOPPY_TEST_FAST_DB` flag.** The first full-suite run in this
   session, with real migrations and no flag, also ran 21 minutes without
   producing output.
+* **not the fork start method.** See below — it hangs under `spawn` too.
 
 It is **intermittent** — a later identical run of `app integrations` passed
 (659/659 received). That matches the reported experience of the GitHub run
@@ -228,12 +229,44 @@ silently.
 now fails loudly with a non-zero exit instead of never returning. CI already
 has `timeout-minutes` on its jobs.
 
+### `spawn` does not fix it
+
+The leading theory was fork-related: workers forked from a parent that already
+has pool threads can inherit a half-held queue lock, and corrupted bytes on the
+result queue would kill the unpickling thread. `spawn` re-imports instead of
+forking and cannot inherit a lock, so it was the obvious test.
+
+`FLOPPY_TEST_START_METHOD=spawn`, `app integrations`, three attempts:
+
+| attempt | result |
+| --- | --- |
+| 1 | passed, 194 s |
+| 2 | **hung** (killed at 900 s) |
+| 3 | passed, 166 s |
+
+So the hang survives `spawn`, and the fork theory is wrong. Worth noting that
+spawn is not slower here, despite re-importing per worker.
+
+It is also load-dependent: four consecutive `app integrations` runs on an
+otherwise idle box all passed, while the hangs in this session all happened
+when something else was competing for CPU. That is consistent with a timing
+race and is why it resists a small reproduction.
+
+### What is armed for next time
+
+`config/test_settings.py` now calls `faulthandler.enable()` unconditionally,
+and `FLOPPY_TEST_WATCHDOG=<seconds>` arms `faulthandler.dump_traceback_later`
+so every thread's stack is dumped if a run outlives its budget.
+`scripts/test.sh` sets that automatically to 120 s before
+`FLOPPY_TEST_TIMEOUT`, so a hang now dumps its stacks *before* the timeout
+kills it, with no one needing to remember a flag.
+
 ### What should be done next
 
-* Try `--parallel` with a `spawn` start method, or a smaller worker count, and
-  see whether the race survives.
-* Capture a reproduction with `faulthandler` armed in the parent so the
-  `_handle_results` death can be attributed to a specific result.
+* When a run does hang, read the dumped parent stacks: the question to answer
+  is what killed `_handle_results`, which the dump should show directly.
+* Try a smaller `--parallel` worker count and see whether the rate changes;
+  that would confirm the timing-race reading.
 * Until then, treat a suite run that produces no output well past its usual
   wall time as this bug, not as a slow test.
 

@@ -1,3 +1,5 @@
+import faulthandler
+import multiprocessing
 import os
 
 from django.db.backends.signals import connection_created
@@ -66,6 +68,27 @@ if os.environ.get("FLOPPY_TEST_FAST_DB") == "1":
     MIGRATION_MODULES = dict.fromkeys(
         ("app", "users", "lists", "integrations", "events")
     )
+
+# Django's parallel runner has been seen to lose worker results and then wait
+# for them forever: every worker idle, the parent blocked, and the pool's
+# _handle_results thread gone. See docs/architecture/test-suite-cost.md.
+#
+# faulthandler costs nothing until something goes wrong and turns a hard crash
+# into a stack trace. FLOPPY_TEST_WATCHDOG=<seconds> additionally dumps every
+# thread's stack if the run outlives that budget, which is how to capture the
+# hang the next time it happens.
+faulthandler.enable()
+_watchdog_seconds = os.environ.get("FLOPPY_TEST_WATCHDOG")
+if _watchdog_seconds:
+    faulthandler.dump_traceback_later(float(_watchdog_seconds), repeat=True)
+
+# The lost results look like queue corruption, which points at forking workers
+# from a parent that already has pool threads running. "spawn" re-imports
+# instead of forking, so it cannot inherit a half-held lock -- slower to start
+# each worker, but a way to test that theory and a usable workaround.
+_start_method = os.environ.get("FLOPPY_TEST_START_METHOD")
+if _start_method:
+    multiprocessing.set_start_method(_start_method, force=True)
 
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_RESULT_BACKEND = "cache+memory://"
