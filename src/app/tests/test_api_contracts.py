@@ -482,6 +482,7 @@ class OpenAPIArtifactTests(SimpleTestCase):
             "consumptions_number",
             "consumptions",
             "lists",
+            "media_type_status",
         }
         self.assertEqual(
             set(schemas["CompleteMediaResponse"]["properties"]), complete_keys

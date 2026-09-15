@@ -77,7 +77,6 @@ from .contract_serializers import (
 )
 from .helpers import (
     MEDIA_TYPE_COMPLETE_MODEL_MAP,
-    apply_aggregated_sort,
     apply_image_url,
     apply_list_sort,
     build_game_lengths_summary,
@@ -86,8 +85,9 @@ from .helpers import (
     check_valid_type,
     get_item_lists,
     get_media_status,
-    get_sorts,
+    get_media_type_availability,
     paginate_data,
+    paginate_list_items,
     parse_limit_offset,
     parse_sort_filter,
     resolve_calendar_date_range,
@@ -486,7 +486,7 @@ class ListDetailView(drf_views.APIView):
             # TODO: move to lists/models.py
             user_list = (
                 CustomList.objects.select_related("owner")
-                .prefetch_related("collaborators", "items")
+                .prefetch_related("collaborators")
                 .get(id=list_id)
             )
         except CustomList.DoesNotExist:
@@ -503,54 +503,9 @@ class ListDetailView(drf_views.APIView):
                 status=HTTP.FORBIDDEN,
             )
 
-        items = user_list.items.order_by(
-            "customlistitem__date_added",
-            "customlistitem__pk",
-        )
-
-        search_query = request.GET.get("search", "")
-        sort_filter = request.GET.get("sort", "")
-        # TODO: move to lists/models.py
-        if search_query:
-            items = items.filter(title__icontains=search_query)
-
-        limit, offset, err = parse_limit_offset(request)
+        paginated_data, err = paginate_list_items(request, user, user_list)
         if err:
             return err
-
-        media_objects = []
-        for item in items:
-            # Shows info about the last consumption of the media if it's tracked
-            media = BasicMedia.objects.filter_media_prefetch(
-                user,
-                item.media_id,
-                item.media_type,
-                item.source,
-                season_number=item.season_number,
-                episode_number=item.episode_number,
-                annotate_progress=False,
-            ).first()
-
-            media_objects.append(media if media is not None else item)
-
-        BasicMedia.objects.annotate_episode_progress(
-            [media for media in media_objects if getattr(media, "item", None) is not None],
-        )
-
-        if sort_filter:
-            sort, sort_order = parse_sort_filter(sort_filter)
-            if sort not in get_sorts(None, sort_type="all"):
-                return Response(
-                    {"detail": "Invalid sorting"},
-                    status=HTTP.NOT_FOUND,
-                )
-            media_objects = apply_aggregated_sort(media_objects, sort)
-            if isinstance(media_objects, Response):
-                return media_objects
-            if sort_order == "desc":
-                media_objects.reverse()
-
-        paginated_data = paginate_data(request, media_objects, limit, offset)
         lists_by_item_id = build_lists_by_item_id(user, paginated_data["results"])
         serialized_list = serialize_data(
             user_list,
@@ -655,11 +610,9 @@ class ListItemsView(drf_views.APIView):
 
         try:
             # TODO: move to lists/models.py
-            user_list = (
-                CustomList.objects.select_related("owner")
-                .prefetch_related("items")
-                .get(id=list_id)
-            )
+            # No items prefetch: this view paginates the list at the database
+            # layer, so hydrating every item up front is work it never reads.
+            user_list = CustomList.objects.select_related("owner").get(id=list_id)
         except CustomList.DoesNotExist:
             return Response(
                 {"detail": "List not found."},
@@ -674,54 +627,9 @@ class ListItemsView(drf_views.APIView):
                 status=HTTP.FORBIDDEN,
             )
 
-        items = user_list.items.order_by(
-            "customlistitem__date_added",
-            "customlistitem__pk",
-        )
-
-        search_query = request.GET.get("search", "")
-        sort_filter = request.GET.get("sort", "")
-        # TODO: move to lists/models.py
-        if search_query:
-            items = items.filter(title__icontains=search_query)
-
-        limit, offset, err = parse_limit_offset(request)
+        paginated_data, err = paginate_list_items(request, user, user_list)
         if err:
             return err
-
-        media_objects = []
-        for item in items:
-            # Shows info about the last consumption of the media if it's tracked
-            media = BasicMedia.objects.filter_media_prefetch(
-                user,
-                item.media_id,
-                item.media_type,
-                item.source,
-                season_number=item.season_number,
-                episode_number=item.episode_number,
-                annotate_progress=False,
-            ).first()
-
-            media_objects.append(media if media is not None else item)
-
-        BasicMedia.objects.annotate_episode_progress(
-            [media for media in media_objects if getattr(media, "item", None) is not None],
-        )
-
-        if sort_filter:
-            sort, sort_order = parse_sort_filter(sort_filter)
-            if sort not in get_sorts(None, sort_type="all"):
-                return Response(
-                    {"detail": "Invalid sorting"},
-                    status=HTTP.NOT_FOUND,
-                )
-            media_objects = apply_aggregated_sort(media_objects, sort)
-            if isinstance(media_objects, Response):
-                return media_objects
-            if sort_order == "desc":
-                media_objects.reverse()
-
-        paginated_data = paginate_data(request, media_objects, limit, offset)
         lists_by_item_id = build_lists_by_item_id(user, paginated_data["results"])
         serialized_data = serialize_data(
             paginated_data["results"],
@@ -1420,6 +1328,10 @@ class MediaDetailView(drf_views.APIView):
             "lists": lists,
             "item": top_level_item,
             "library_media_type": library_media_type,
+            "media_type_status": get_media_type_availability(
+                user,
+                library_media_type or media_type,
+            ),
         }
 
         serialized = serialize_data(
@@ -2300,6 +2212,10 @@ class MediaSeasonsView(drf_views.APIView):
             },
             serializer_class=MediaSerializer,
         )
+        paginated_data["media_type_status"] = get_media_type_availability(
+            user,
+            season_bucket or media_type,
+        )
         return Response(paginated_data, status=HTTP.OK)
 
 
@@ -2634,6 +2550,10 @@ class MediaSeasonDetailView(drf_views.APIView):
             "lists": lists,
             "item": season_item,
             "library_media_type": library_media_type,
+            "media_type_status": get_media_type_availability(
+                user,
+                library_media_type or media_type,
+            ),
         }
 
         serialized = serialize_data(
@@ -2935,6 +2855,10 @@ class MediaSeasonEpisodesView(drf_views.APIView):
                 "lists_by_number": lists_by_number,
             },
             serializer_class=EpisodeSerializer,
+        )
+        paginated["media_type_status"] = get_media_type_availability(
+            user,
+            request.query_params.get("library_media_type") or media_type,
         )
         return Response(paginated, status=HTTP.OK)
 
@@ -3814,6 +3738,10 @@ class MediaEpisodeDetailView(drf_views.APIView):
             "user_medias": user_medias,
             "lists": lists,
             "item": episode_item,
+            "media_type_status": get_media_type_availability(
+                user,
+                request.query_params.get("library_media_type") or media_type,
+            ),
         }
 
         serialized = serialize_data(

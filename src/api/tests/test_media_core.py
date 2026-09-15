@@ -925,6 +925,7 @@ class MediaCoreTests(FloppyApiTestCase):
                 "consumptions_number",
                 "consumptions",
                 "lists",
+                "media_type_status",
             },
         )
         self.assertEqual(payload["episodes_left"], 2)
@@ -1107,6 +1108,57 @@ class MediaCoreTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.data["imdb_rating"])
         self.assertIsNone(response.data["imdb_rating_count"])
+
+    def test_media_detail_get_media_type_status_enabled_by_default(self):
+        """media_type_status reports enabled with no message when unrestricted."""
+        response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=(MediaTypes.MOVIE.value, "tmdb", 999999),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data["media_type_status"],
+            {"media_type": "movie", "enabled": True, "message": None},
+        )
+
+    def test_media_detail_get_media_type_status_disabled_suggests_alternate(self):
+        """Disabling anime surfaces a redirect hint toward tv, still enabled."""
+        self.user1.anime_enabled = False
+        self.user1.save(update_fields=["anime_enabled"])
+
+        response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=(MediaTypes.ANIME.value, Sources.MAL.value, 2001),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        status = response.data["media_type_status"]
+        self.assertEqual(status["media_type"], "anime")
+        self.assertFalse(status["enabled"])
+        self.assertIn("tv", status["message"])
+
+    def test_media_detail_get_media_type_status_disabled_without_alternate(self):
+        """Disabling a type with no known alternate omits the redirect hint."""
+        self.user1.game_enabled = False
+        self.user1.save(update_fields=["game_enabled"])
+
+        response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=(MediaTypes.GAME.value, Sources.IGDB.value, 4001),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        status = response.data["media_type_status"]
+        self.assertEqual(status["media_type"], "game")
+        self.assertFalse(status["enabled"])
+        self.assertNotIn("also be available", status["message"])
 
     @patch("api.views.services.get_media_metadata")
     def test_media_detail_get_podcast_resolves_tracked_and_untracked_episodes(

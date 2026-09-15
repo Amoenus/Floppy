@@ -130,26 +130,28 @@ def _filter_queryset_by_item_json_array_ci(
     item_json_field: str,
     normalized_target: str,
 ):
-    """Match Item JSON string arrays with case-insensitive element compare."""
+    """Match Item JSON string arrays with case-insensitive element compare.
+
+    The raw SQL is attached to an ``Item`` queryset and the media queryset is
+    narrowed by the ids it yields, rather than correlating an EXISTS back to
+    the media table. Raw SQL cannot see Django's table aliasing: the previous
+    version referenced the media table by its real name, so the moment the
+    media queryset was nested as a subquery - which
+    ``get_media_list_item_values`` does, via
+    ``Item.objects.filter(pk__in=queryset.values("item_id"))`` - Django
+    aliased that table to ``U0`` and the reference no longer resolved
+    ("no such column: app_movie.item_id"). Referring only to the column of
+    the queryset's own table keeps it alias-independent.
+    """
     if not normalized_target:
         return queryset
-    media_table = queryset.model._meta.db_table
-    item_table = Item._meta.db_table
     col = Item._meta.get_field(item_json_field).column
-    mt = connection.ops.quote_name(media_table)
-    it = connection.ops.quote_name(item_table)
     cc = connection.ops.quote_name(col)
-    id_col = connection.ops.quote_name("id")
-    item_fk = connection.ops.quote_name("item_id")
     if connection.vendor == "postgresql":
         where_sql = f"""
             EXISTS (
                 SELECT 1 FROM jsonb_array_elements_text(
-                    COALESCE(
-                        (SELECT {it}.{cc}::jsonb FROM {it}
-                         WHERE {it}.{id_col} = {mt}.{item_fk}),
-                        '[]'::jsonb
-                    )
+                    COALESCE({cc}::jsonb, '[]'::jsonb)
                 ) AS _arr_el
                 WHERE LOWER(_arr_el::text) = %s
             )
@@ -157,20 +159,18 @@ def _filter_queryset_by_item_json_array_ci(
     elif connection.vendor == "sqlite":
         where_sql = f"""
             EXISTS (
-                SELECT 1 FROM json_each(
-                    COALESCE(
-                        (SELECT {it}.{cc} FROM {it}
-                         WHERE {it}.{id_col} = {mt}.{item_fk}),
-                        '[]'
-                    )
-                )
+                SELECT 1 FROM json_each(COALESCE({cc}, '[]'))
                 WHERE LOWER(json_each.value) = %s
             )
         """
     else:
         kw = {f"item__{item_json_field}__contains": [normalized_target]}
         return queryset.filter(**kw)
-    return queryset.extra(where=[where_sql], params=[normalized_target])
+    matching_item_ids = Item.objects.extra(
+        where=[where_sql],
+        params=[normalized_target],
+    ).values("id")
+    return queryset.filter(item_id__in=matching_item_ids)
 
 
 class MediaManager(models.Manager):
