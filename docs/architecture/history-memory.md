@@ -86,14 +86,48 @@ worker sat at 867 MiB.
 An unfiltered `start_date=1900-01-01` over all 18,230 plays exhausted the 3 GB
 container on the old code and returned 502. It now answers from the index.
 
+### Scaling
+
+The same request at six history sizes, one probe per rung against a freshly
+restarted worker, 8 GB limit so the old code's largest rung completes rather
+than being killed. Every rung returns the same 20-day page.
+
+| plays in range | before | KiB/play | after | KiB/play |
+| --- | --- | --- | --- | --- |
+| 590 | +69 MiB | 119.8 | +5.8 MiB | 10.11 |
+| 1,806 | +200 MiB | 113.3 | +3.8 MiB | 2.17 |
+| 5,045 | +628 MiB | 127.4 | +4.0 MiB | 0.81 |
+| 9,050 | +1,041 MiB | 117.8 | +3.8 MiB | 0.43 |
+| 13,300 | +1,499 MiB | 115.4 | +3.8 MiB | 0.29 |
+| 18,230 | +1,924 MiB | 108.1 | +3.2 MiB | 0.18 |
+
+Before: a flat ~118 KiB of worker memory per historical event, over a 31x
+range. After: a constant ~4 MiB whatever the history size -- the per-play
+slope falls as the history grows, which is what "bounded by the response"
+looks like. Duration goes from 1.1s-22.5s to 0.09s-0.48s.
+
 ### Response equivalence
 
 Same total, same days, same ordering, same entry titles and counts.
+Verified field by field on the real library, comparing the indexed page
+against the builder's output for the same range:
+
+| case | days | index total | day/count/order mismatches | field diffs |
+| --- | --- | --- | --- | --- |
+| `media_type=tv` all-time | 4,260 | 4,260 | 0 | `display_title` x9 |
+| `media_type=movie` from 2019 | 388 | 388 | 0 | none |
+
+The paginated `total` is exact in both, including the sparse case where most
+indexed days hold no matching entry. `played_at_local` renders identically on
+the wire from either path.
+
 `display_title` changes for 9 of ~600 entries -- to the value a type-only
 request already returned before this change. Those media have duplicate `Item`
 rows differing only in `library_media_type` and carrying conflicting titles
 ("Big Boys" stored as the title of a *Big Boys* episode), and the two builders
-picked different rows. Verified on the old build: a type-only request and a
+picked different rows. Projecting the builder's title map to five columns
+does not itself change the winner: compared over all 35,972 keys in the
+library, the map is identical either way. Verified on the old build: a type-only request and a
 date-range request already disagreed on exactly those 9 entries. This removes
 the inconsistency. The duplicate rows are a separate data-integrity issue.
 
