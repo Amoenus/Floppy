@@ -134,6 +134,7 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
                         ep_item.source,
                         ep_item.season_number,
                         ep_item.episode_number,
+                        ep_item.library_media_type,
                     ),
                 )
         if episode_keys:
@@ -141,6 +142,7 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
             sources = {k[1] for k in episode_keys}
             season_numbers = {k[2] for k in episode_keys}
             episode_numbers = {k[3] for k in episode_keys}
+            library_media_types = {k[4] for k in episode_keys}
             titles_qs = (
                 Item.objects.filter(
                     media_type=MediaTypes.EPISODE.value,
@@ -148,6 +150,7 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
                     source__in=sources,
                     season_number__in=season_numbers,
                     episode_number__in=episode_numbers,
+                    library_media_type__in=library_media_types,
                 )
                 .exclude(title__isnull=True)
                 .exclude(title="")
@@ -158,6 +161,7 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
                     item.source,
                     item.season_number,
                     item.episode_number,
+                    item.library_media_type,
                 )
                 if key not in episode_title_map:
                     episode_title_map[key] = item.title

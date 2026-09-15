@@ -1382,17 +1382,19 @@ def build_history_days(
                 getattr(ep.item, "source", None),
                 getattr(ep.item, "season_number", None),
                 getattr(ep.item, "episode_number", None),
+                getattr(ep.item, "library_media_type", None),
             )
             for ep in episodes
             if getattr(ep, "item", None)
         ]
-        episode_keys = [k for k in episode_keys if all(k)]
+        episode_keys = [k for k in episode_keys if all(k[:4])]
         episode_title_map = {}
         if episode_keys:
             media_ids = {k[0] for k in episode_keys}
             sources = {k[1] for k in episode_keys}
             season_numbers = {k[2] for k in episode_keys}
             episode_numbers = {k[3] for k in episode_keys}
+            library_media_types = {k[4] for k in episode_keys}
             # Only the key and the title are used, and there is one row per
             # episode played, so selecting whole items here would reintroduce
             # the cost the deferred fetch above removes.
@@ -1403,6 +1405,7 @@ def build_history_days(
                     source__in=sources,
                     season_number__in=season_numbers,
                     episode_number__in=episode_numbers,
+                    library_media_type__in=library_media_types,
                 )
                 .exclude(title__isnull=True)
                 .exclude(title="")
@@ -1411,12 +1414,13 @@ def build_history_days(
                     "source",
                     "season_number",
                     "episode_number",
+                    "library_media_type",
                     "title",
                 )
             ):
-                key = row[:4]
+                key = row[:5]
                 if key not in episode_title_map:
-                    episode_title_map[key] = row[4]
+                    episode_title_map[key] = row[5]
         for episode in episodes:
             if genre_filters and not matches_genre(episode, MediaTypes.EPISODE.value):
                 continue

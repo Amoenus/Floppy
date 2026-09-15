@@ -105,6 +105,49 @@ class TvProviderMigrationTests(TestCase):
             Episode.objects.filter(item=self.episode_item).exists(),
         )
 
+    @patch("app.services.tv_provider_migration.tvdb.tv_with_seasons")
+    def test_migration_does_not_sweep_duplicate_bucket_items(
+        self,
+        mock_tv_with_seasons,
+    ):
+        """A season/episode row in a different library_media_type bucket is untouched.
+
+        Item allows two rows to share media_id/source/media_type/season/episode
+        as long as library_media_type differs (issue #1147). Migrating the TV
+        bucket's show must not re-key a duplicate row that belongs to another
+        bucket (e.g. grouped anime), or the two collide under identical TVDB
+        coordinates afterwards.
+        """
+        mock_tv_with_seasons.return_value = self._tvdb_payload()
+
+        other_bucket_season = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            library_media_type=MediaTypes.ANIME.value,
+            season_number=1,
+            title="Breaking Bad",
+        )
+        other_bucket_episode = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            library_media_type=MediaTypes.ANIME.value,
+            season_number=1,
+            episode_number=1,
+            title="Breaking Bad",
+        )
+
+        result = migrate_tv_item_to_tvdb(self.show_item)
+
+        self.assertTrue(result.migrated)
+        other_bucket_season.refresh_from_db()
+        other_bucket_episode.refresh_from_db()
+        self.assertEqual(other_bucket_season.source, Sources.TMDB.value)
+        self.assertEqual(other_bucket_season.media_id, "1396")
+        self.assertEqual(other_bucket_episode.source, Sources.TMDB.value)
+        self.assertEqual(other_bucket_episode.media_id, "1396")
+
     @patch("app.services.tv_provider_migration.history_cache.invalidate_history_cache")
     @patch("app.services.tv_provider_migration.tvdb.tv_with_seasons")
     def test_migration_repairs_episode_title_and_history_cache(
