@@ -113,6 +113,7 @@ def _run_lease() -> int:
     """
     return max(60, getattr(settings, "STATISTICS_REFRESH_RUN_LEASE", 300))
 
+
 _COMPACT_DAY_FORMAT = "%Y%m%d"
 
 
