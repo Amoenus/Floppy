@@ -231,6 +231,39 @@ class Search(TestCase):
         params = mock_api_request.call_args.kwargs["params"]
         self.assertNotIn("exclude_genre", params)
 
+    @override_settings(MU_NSFW=False)
+    @patch("app.providers.mangaupdates.services.api_request")
+    def test_mangaupdates_nsfw_cached_under_its_own_key(self, mock_api_request):
+        """Both flag states must be cached separately, not share one entry.
+
+        A shared key would let a search made under one MU_NSFW value satisfy a
+        request made under the other for the rest of the cache lifetime.
+        """
+        cache.clear()
+        mock_api_request.return_value = {"results": [], "total_hits": 0}
+
+        with override_settings(MU_NSFW=False):
+            mangaupdates.search("shared-key-probe", 1)
+        with override_settings(MU_NSFW=True):
+            mangaupdates.search("shared-key-probe", 1)
+
+        self.assertEqual(mock_api_request.call_count, 2)
+
+    @override_settings(MU_NSFW=False)
+    @patch("app.providers.mangaupdates.services.api_request")
+    def test_mangaupdates_nsfw_cache_is_reused_within_one_flag_state(
+        self,
+        mock_api_request,
+    ):
+        """Same flag state must still hit the cache, so the fix costs no calls."""
+        cache.clear()
+        mock_api_request.return_value = {"results": [], "total_hits": 0}
+
+        mangaupdates.search("same-state-probe", 1)
+        mangaupdates.search("same-state-probe", 1)
+
+        self.assertEqual(mock_api_request.call_count, 1)
+
     @patch("app.providers.hardcover.services.api_request")
     def test_hardcover_title_query_is_capped(self, mock_api_request):
         """Test the long title is capped before search."""
