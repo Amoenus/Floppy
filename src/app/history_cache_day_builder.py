@@ -23,6 +23,7 @@ from app.history_cache_utils import (
     _resolve_genres,
     _resolve_music_genres,
     expand_history_media_types,
+    history_deferred_item_fields,
 )
 from app.history_entry_builders import (
     _attach_entry_score,
@@ -102,6 +103,13 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
             "related_season__item",
             "related_season__related_tv__item",
         )
+        .defer(
+            *history_deferred_item_fields(
+                "item",
+                "related_season__item",
+                "related_season__related_tv__item",
+            ),
+        )
         .order_by("-end_date")
         if include_episode
         else Episode.all_objects.none()
@@ -169,6 +177,7 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
             models.Q(end_date__isnull=False) | models.Q(start_date__isnull=False),
         )
         .select_related("item")
+        .defer(*history_deferred_item_fields("item"))
         if include_movie
         else Movie.objects.none()
     )
@@ -225,6 +234,7 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
                 ),
             )
             .select_related("item")
+            .defer(*history_deferred_item_fields("item"))
         )
         for record in records.iterator(chunk_size=500):
             item = getattr(record, "item", None)
@@ -294,7 +304,9 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
                 music.id: music
                 for music in Music.objects.filter(
                     id__in=music_ids, user=user
-                ).select_related("item", "album", "track")
+                )
+                .select_related("item", "album", "track")
+                .defer(*history_deferred_item_fields("item"))
             }
             if music_ids
             else {}
@@ -440,7 +452,9 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
             for p in Podcast.objects.filter(
                 id__in=podcast_ids,
                 user=user,
-            ).select_related("item", "episode", "episode__show", "show")
+            )
+            .select_related("item", "episode", "episode__show", "show")
+            .defer(*history_deferred_item_fields("item"))
         }
 
         podcast_play_counts = {}
@@ -541,6 +555,7 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
                     )
                 )
                 .select_related("item")
+                .defer(*history_deferred_item_fields("item"))
             )
             if include_game
             else Game.objects.none()
@@ -602,6 +617,7 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
                     )
                 )
                 .select_related("item")
+                .defer(*history_deferred_item_fields("item"))
             )
             if include_boardgame
             else BoardGame.objects.none()
