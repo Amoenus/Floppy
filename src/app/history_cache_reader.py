@@ -8,6 +8,7 @@ from datetime import date
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.utils import formats, timezone
+from django.utils.dateparse import parse_date
 
 from app import helpers
 from app.history_cache_day_builder import (
@@ -351,6 +352,25 @@ def _window_history_day(
     return result
 
 
+def _day_keys_within(day_keys, date_filters):
+    """Drop the day keys outside an inclusive start_date/end_date range."""
+    if not date_filters:
+        return day_keys
+    start = parse_date(date_filters.get("start_date") or "")
+    end = parse_date(date_filters.get("end_date") or "")
+    if start is None and end is None:
+        return day_keys
+    kept = []
+    for day_key in day_keys:
+        try:
+            day = _date_from_day_key(day_key)
+        except (TypeError, ValueError):
+            continue
+        if (start is None or day >= start) and (end is None or day <= end):
+            kept.append(day_key)
+    return kept
+
+
 def get_cached_history_window(
     user,
     limit,
@@ -358,8 +378,16 @@ def get_cached_history_window(
     filters=None,
     logging_style_override=None,
     max_entries_per_day=None,
+    date_filters=None,
 ):
-    """Read one API page from indexed/day-cached history payloads."""
+    """Read one API page from indexed/day-cached history payloads.
+
+    `date_filters` are applied to the day index rather than to the builders.
+    start_date/end_date are whole-day bounds, so a date range only ever drops
+    whole days -- it never changes what a day contains -- which is what lets a
+    date-filtered request page the index instead of rebuilding every matching
+    entry to throw almost all of them away.
+    """
     filters = filters or {}
     entry_cap = (
         max_entries_per_day
@@ -422,6 +450,7 @@ def get_cached_history_window(
         for day_key in (_day_key_from_value(value) for value in index_days)
         if day_key
     ]
+    normalized_day_keys = _day_keys_within(normalized_day_keys, date_filters)
     total_days = len(normalized_day_keys)
     page_day_keys = normalized_day_keys[offset : offset + limit]
     payload_keys = [
