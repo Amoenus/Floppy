@@ -490,10 +490,13 @@ def _deduplicate_season_related_tv_item_rows(seasons):
 def bulk_create_media(bulk_media_list, user, *, backfill_completed=True):
     """Bulk create all media objects.
 
-    Returns warning messages for any seasons whose Completed-status
+    Returns warning messages for any episodes skipped because no matching
+    season could be found, and for any seasons whose Completed-status
     episode backfill failed, for callers that want to surface them.
     """
     from integrations.episode_orders import resolve_incoming, season_for_target
+
+    warnings = []
 
     # Importers build rows using their source provider's numbering. Resolve
     # before persistence so those numbers never become active-order numbers.
@@ -558,6 +561,46 @@ def bulk_create_media(bulk_media_list, user, *, backfill_completed=True):
                 "Updating references for episodes to existing TV seasons",
             )
             update_episode_references(bulk_media, user)
+            resolved_episodes = []
+            skipped_season_keys = defaultdict(int)
+            for episode in bulk_media:
+                if episode.related_season_id is not None:
+                    resolved_episodes.append(episode)
+                    continue
+                # related_season_id can still read empty here for a
+                # resolvable episode: bulk_create()'s own
+                # _prepare_related_fields_for_save() re-derives the column
+                # from a *cached* related_season object's pk right before
+                # insert (e.g. an importer that linked an episode directly to
+                # a not-yet-created Season instance). hasattr() is the safe
+                # way to probe that cache: accessing .related_season on a
+                # non-nullable FK with nothing cached and no id raises
+                # RelatedObjectDoesNotExist (an AttributeError subclass).
+                if (
+                    hasattr(episode, "related_season")
+                    and episode.related_season.pk is not None
+                ):
+                    resolved_episodes.append(episode)
+                    continue
+                skipped_season_keys[
+                    (episode.item.media_id, episode.item.season_number)
+                ] += 1
+            if skipped_season_keys:
+                warnings.append(
+                    "Skipped {count} episode(s) with no matching season for: "
+                    "{keys}. Re-import once those seasons have been "
+                    "tracked.".format(
+                        count=sum(skipped_season_keys.values()),
+                        keys=", ".join(
+                            f"{media_id} S{season_number}"
+                            for media_id, season_number in sorted(
+                                skipped_season_keys,
+                            )
+                        ),
+                    ),
+                )
+            bulk_media = resolved_episodes
+            bulk_media_list[media_type] = bulk_media
         elif media_type == MediaTypes.PODCAST.value:
             logger.info("Updating references for podcasts to existing episodes")
             update_podcast_references(bulk_media)
@@ -580,10 +623,12 @@ def bulk_create_media(bulk_media_list, user, *, backfill_completed=True):
     # episodes" check below sees the importer's own episodes too.
     bulk_seasons = bulk_media_list.get(MediaTypes.SEASON.value)
     if bulk_seasons and backfill_completed:
-        return retry_on_lock(
-            lambda: _backfill_completed_season_episodes(bulk_seasons),
+        warnings.extend(
+            retry_on_lock(
+                lambda: _backfill_completed_season_episodes(bulk_seasons),
+            ),
         )
-    return []
+    return warnings
 
 
 def backfill_completed_seasons(season_ids):
