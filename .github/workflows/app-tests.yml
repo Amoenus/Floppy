@@ -85,13 +85,6 @@ jobs:
           if [ -n "${{ secrets.COMICVINE_API }}" ]; then echo "COMICVINE_API=${{ secrets.COMICVINE_API }}" >> $GITHUB_ENV; fi
 
       - name: Run Tests
-        env:
-          # Django's parallel runner can lose worker results and then wait for
-          # them forever (docs/architecture/test-suite-cost.md). Without this a
-          # hang just burns the job's 45 minutes and reports a timeout with no
-          # evidence. This dumps every thread's stack a few minutes before that
-          # happens; it never fires on a healthy run.
-          FLOPPY_TEST_WATCHDOG: "2400"
         run: |
           # Tests tagged "network" call live provider APIs. They are slow and
           # flaky, and a pull request from a fork cannot read repository secrets,

@@ -261,6 +261,20 @@ so every thread's stack is dumped if a run outlives its budget.
 `FLOPPY_TEST_TIMEOUT`, so a hang now dumps its stacks *before* the timeout
 kills it, with no one needing to remember a flag.
 
+**CI cannot be wired up the same way from a pull request.** The
+`check-workflow-changes` job fails any PR that touches `.github/workflows/**`,
+by design. So arming the watchdog for CI -- which is where the hang is most
+expensive, since the job just burns its 45 minutes and reports a timeout with
+no evidence -- has to be done as a deliberate, separate workflow change by
+someone who can land one. The one-line version is an `env:` entry on the
+"Run Tests" step:
+
+```yaml
+      - name: Run Tests
+        env:
+          FLOPPY_TEST_WATCHDOG: "2400"
+```
+
 ### What should be done next
 
 * When a run does hang, read the dumped parent stacks: the question to answer
