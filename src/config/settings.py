@@ -1595,6 +1595,27 @@ STATISTICS_REFRESH_RUN_LEASE = config(
     default=300,
     cast=int,
 )
+# How long to let History settle before restarting a run that aborted because
+# History moved under it.
+#
+# A run that notices the version changed must abort: publishing would
+# overwrite a newer result with numbers built against the old version. It then
+# owes a fresh run. Restarting that run immediately is what produced the
+# observed failure: a credits backfill bumps the history version roughly every
+# ten seconds while it drains, so an All Time refresh did about nine seconds
+# of work, aborted, restarted, and repeated seven times in a minute, burning
+# the interactive worker on results that were known to be stale before they
+# were built.
+#
+# Short on purpose. This is a settling window, not a backoff: each window
+# still ends in exactly one run, planned against the latest version, so a
+# History that never stops changing delays each attempt by this much and no
+# more. Set it to 0 to restore the immediate restart.
+STATISTICS_HISTORY_DEBOUNCE_SECONDS = config(
+    "STATISTICS_HISTORY_DEBOUNCE_SECONDS",
+    default=20,
+    cast=int,
+)
 
 CELERY_RESULT_EXTENDED = True
 CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default=None) or REDIS_URL
