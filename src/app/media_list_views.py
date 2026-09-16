@@ -971,6 +971,12 @@ def media_list(request, media_type):
         if comic_subview not in {"comics", "issues"}:
             comic_subview = "comics"
 
+    music_subview = None
+    if route_media_type == MediaTypes.MUSIC.value:
+        music_subview = request.GET.get("subview", "artists")
+        if music_subview not in {"artists", "albums", "tracks"}:
+            music_subview = "artists"
+
     layout, sort_filter, direction, media_type, sorted_media_sort_choices = (
         _resolve_media_list_preferences(request, route_media_type, comic_subview)
     )
@@ -1849,14 +1855,28 @@ def media_list(request, media_type):
                     _media_list_filter_cache_key,
                 )
     elif _media_list_cached is None:
-        media_queryset = BasicMedia.objects.get_media_list(
-            user=request.user,
-            media_type=media_type,
-            status_filter=tracked_status_filter,
-            sort_filter=query_sort_filter,
-            search=search_query,
-            direction=direction,
-            list_sql_filters=list_sql_filters,
+        # Podcasts always render from PodcastShowTracker further below, and
+        # music's artists/albums subviews render from ArtistTracker/
+        # AlbumTracker — in both cases this generic media_list/filter_data
+        # pipeline is discarded, so skip materializing every episode/track
+        # here to avoid an O(row count) Python pass on large libraries (see
+        # issue #1198). Music's "tracks" subview is the one case that
+        # actually needs the per-track list built below.
+        _skip_generic_media_list = media_type == MediaTypes.PODCAST.value or (
+            media_type == MediaTypes.MUSIC.value and music_subview != "tracks"
+        )
+        media_queryset = (
+            BasicMedia.objects.none()
+            if _skip_generic_media_list
+            else BasicMedia.objects.get_media_list(
+                user=request.user,
+                media_type=media_type,
+                status_filter=tracked_status_filter,
+                sort_filter=query_sort_filter,
+                search=search_query,
+                direction=direction,
+                list_sql_filters=list_sql_filters,
+            )
         )
 
         # Convert to list for filtering (rating and collection filters work on lists)
@@ -2721,9 +2741,6 @@ def media_list(request, media_type):
     if media_type == MediaTypes.MUSIC.value:
         from app.models import AlbumTracker, Artist, ArtistTracker
 
-        music_subview = request.GET.get("subview", "artists")
-        if music_subview not in {"artists", "albums", "tracks"}:
-            music_subview = "artists"
         context["current_subview"] = music_subview
 
         if music_subview == "albums":

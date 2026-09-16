@@ -681,3 +681,93 @@ class HistoryDayEpisodeOrderingTests(TestCase):
             if entry["media_type"] == MediaTypes.EPISODE.value
         ]
         self.assertEqual(episode_codes, ["S01E03", "S01E02", "S01E01"])
+
+
+@patch(
+    "app.providers.services.get_media_metadata",
+    return_value={
+        "episodes": [{"episode_number": 1}],
+        "max_progress": 1,
+        "image": "s.jpg",
+        "season/1": {"episodes": [{"episode_number": 1}]},
+    },
+)
+class HistoryEpisodeTitleBucketCollisionTests(TestCase):
+    """A duplicate `library_media_type` bucket must not poison another's title.
+
+    Item has a conditional unique constraint keyed on
+    (media_id, source, media_type, library_media_type, season_number,
+    episode_number), so two rows can share every other field. The history
+    title lookup must scope by library_media_type too, or the wrong row's
+    title wins for every episode sharing that key in a batch (issue #1147).
+    """
+
+    def setUp(self):
+        cache.clear()
+
+    def test_correct_bucket_title_wins_over_duplicate_bucket_row(
+        self,
+        _mock_metadata,
+    ):
+        user = get_user_model().objects.create_user(
+            username="bucket-collision",
+            password="12345",
+        )
+        tv_item = Item.objects.create(
+            media_id="900",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Show",
+        )
+        tv = TV.objects.create(item=tv_item, user=user)
+        season_item = Item.objects.create(
+            media_id="900",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Show",
+            season_number=1,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        # The row the Episode actually points to: correct episode title.
+        real_episode_item = Item.objects.create(
+            media_id="900",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            library_media_type=MediaTypes.EPISODE.value,
+            title="The Real Episode Title",
+            season_number=1,
+            episode_number=1,
+        )
+        # A duplicate-bucket row (e.g. from the anime grouping path) sharing
+        # every field except library_media_type, holding a placeholder title.
+        Item.objects.create(
+            media_id="900",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Show",
+            season_number=1,
+            episode_number=1,
+        )
+
+        played_at = timezone.now().replace(microsecond=0)
+        Episode.objects.create(
+            item=real_episode_item,
+            related_season=season,
+            end_date=played_at,
+        )
+
+        day_key = history_cache.history_day_key(played_at)
+        day = history_cache.build_history_day(user, day_key)
+
+        episode_entries = [
+            entry for entry in day["entries"] if entry["media_type"] == MediaTypes.EPISODE.value
+        ]
+        self.assertEqual(len(episode_entries), 1)
+        self.assertEqual(episode_entries[0]["display_title"], "The Real Episode Title")

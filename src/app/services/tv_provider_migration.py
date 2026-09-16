@@ -41,12 +41,18 @@ def _resolve_tvdb_id(item: Item) -> str | None:
 
 
 def _local_season_items(item: Item) -> list[Item]:
+    # `migrate_tv_item_to_tvdb` only reaches here for non-anime items (grouped
+    # anime is bailed out on earlier), so exclude the anime bucket the same
+    # way `_scoped_season_item_qs()` does in season_details_views.py — a
+    # season/episode row's own library_media_type defaults to its media_type,
+    # not the show's, so matching `item.library_media_type` verbatim would
+    # exclude the show's own seasons/episodes.
     return list(
         Item.objects.filter(
             media_id=item.media_id,
             source=Sources.TMDB.value,
             media_type=MediaTypes.SEASON.value,
-        ),
+        ).exclude(library_media_type=MediaTypes.ANIME.value),
     )
 
 
@@ -57,7 +63,7 @@ def _local_episode_items(item: Item, season_numbers: list[int]) -> list[Item]:
             source=Sources.TMDB.value,
             media_type=MediaTypes.EPISODE.value,
             season_number__in=season_numbers,
-        ),
+        ).exclude(library_media_type=MediaTypes.ANIME.value),
     )
 
 
