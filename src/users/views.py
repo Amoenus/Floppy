@@ -46,7 +46,6 @@ from app.models import (
     Status,
 )
 from app.providers import credentials, tmdb
-from app.services import metadata_resolution
 from app.templatetags import app_tags
 from integrations import exports, plex, stremio_catalog, tasks
 from integrations.imports import trakt as trakt_imports
@@ -83,7 +82,6 @@ from users.home_screen import (
 )
 from users.models import (
     ActivityHistoryViewChoices,
-    AnimeLibraryModeChoices,
     DateFormatChoices,
     DurationFormatChoices,
     GameLoggingStyleChoices,
@@ -91,7 +89,6 @@ from users.models import (
     ImportModeChoices,
     LogoStyleChoices,
     MediaCardSubtitleDisplayChoices,
-    MetadataSourceDefaultChoices,
     MobileGridLayoutChoices,
     PlannedHomeDisplayChoices,
     RatingScaleChoices,
@@ -951,22 +948,6 @@ def preferences(request):
         )
         for code, label in metadata_language_choices
     ]
-    tv_metadata_source_choices = [
-        (choice.value, choice.label)
-        for choice in metadata_resolution.available_metadata_sources(
-            MediaTypes.TV.value,
-        )
-    ]
-    anime_metadata_source_choices = [
-        (choice.value, choice.label)
-        for choice in metadata_resolution.available_metadata_sources(
-            MediaTypes.ANIME.value,
-        )
-    ]
-    tvdb_enabled = metadata_resolution.provider_is_enabled(
-        MetadataSourceDefaultChoices.TVDB,
-    )
-
     if request.method == "POST":
         # Prevent demo users from updating preferences
         if request.user.is_demo:
@@ -987,12 +968,6 @@ def preferences(request):
         title_display_preference = request.POST.get("title_display_preference")
         top_talent_sort_by = request.POST.get("top_talent_sort_by")
         rating_scale = request.POST.get("rating_scale")
-        tv_metadata_source_default = request.POST.get("tv_metadata_source_default")
-        anime_metadata_source_default = request.POST.get(
-            "anime_metadata_source_default"
-        )
-        anime_library_mode = request.POST.get("anime_library_mode")
-        anime_provider_changed = False
         hide_completed_recommendations_raw = request.POST.get(
             "hide_completed_recommendations"
         )
@@ -1243,31 +1218,6 @@ def preferences(request):
             request.user.metadata_language = ""
             fields_to_update.append("metadata_language")
 
-        if (
-            tv_metadata_source_default
-            in {choice[0] for choice in tv_metadata_source_choices}
-            and request.user.tv_metadata_source_default != tv_metadata_source_default
-        ):
-            request.user.tv_metadata_source_default = tv_metadata_source_default
-            fields_to_update.append("tv_metadata_source_default")
-
-        if anime_metadata_source_default in {
-            choice[0] for choice in anime_metadata_source_choices
-        } and (
-            request.user.anime_metadata_source_default != anime_metadata_source_default
-        ):
-            request.user.anime_metadata_source_default = anime_metadata_source_default
-            fields_to_update.append("anime_metadata_source_default")
-            anime_provider_changed = True
-
-        if (
-            anime_library_mode
-            in [choice[0] for choice in AnimeLibraryModeChoices.choices]
-            and request.user.anime_library_mode != anime_library_mode
-        ):
-            request.user.anime_library_mode = anime_library_mode
-            fields_to_update.append("anime_library_mode")
-
         session_duration = request.POST.get("session_duration")
         if session_duration is not None:
             try:
@@ -1301,16 +1251,6 @@ def preferences(request):
                     request.user.id,
                     debounce_seconds=0,
                 )
-        if anime_provider_changed:
-            # Switching provider only decides the shape of newly added shows.
-            # Existing ones are left alone unless the user asks, because the
-            # MAL-to-series mapping is N:1 and cannot be re-derived in bulk.
-            from app.tasks_anime_library_repair import anime_rows_needing_conversion
-
-            convertible = anime_rows_needing_conversion(request.user)
-            if convertible:
-                request.session["anime_shape_prompt_count"] = len(convertible)
-
         success_message = (
             "Settings updated successfully."
             if "media_types_checkboxes" in request.POST
@@ -1328,16 +1268,8 @@ def preferences(request):
         "watch_provider_choices": watch_provider_regions,
         "metadata_language_choices": metadata_language_choices,
         "ui_language_choices": UiLanguageChoices.choices,
-        "tv_metadata_source_choices": tv_metadata_source_choices,
-        "anime_metadata_source_choices": anime_metadata_source_choices,
-        "anime_library_mode_choices": AnimeLibraryModeChoices.choices,
         "session_duration_choices": SessionDurationChoices.choices,
         "week_start_day_choices": WeekStartDayChoices.choices,
-        "tvdb_enabled": tvdb_enabled,
-        "anime_shape_prompt_count": request.session.pop(
-            "anime_shape_prompt_count",
-            None,
-        ),
     }
 
     return render(request, "users/preferences.html", context)

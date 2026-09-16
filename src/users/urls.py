@@ -107,6 +107,11 @@ urlpatterns = [
         metadata_views.save_personal_credential,
         name="save_personal_credential",
     ),
+    path(
+        "settings/metadata/provider-default/<str:media_type>",
+        metadata_views.set_media_type_provider,
+        name="set_media_type_provider",
+    ),
     path("settings/import", views.import_data, name="import_data"),
     path(
         "settings/import/save-settings",
