@@ -1114,7 +1114,13 @@ DB_SNAPSHOT_RETENTION_COUNT = config(
     cast=int,
 )
 DB_SNAPSHOT_HOUR = config("DB_SNAPSHOT_HOUR", default=2, cast=int)
-DB_SNAPSHOT_MINUTE = config("DB_SNAPSHOT_MINUTE", default=30, cast=int)
+# Deliberately not a quarter hour. The incremental metadata backfill runs on
+# crontab(minute="*/15") or "*/30" depending on tier, so the old :30 default
+# started a whole-database copy in the same minute as a bulk sweep -- one
+# filling the page cache while the other allocated. Production showed exactly
+# that pairing at 02:30. :37 collides with nothing else in the schedule below,
+# and an operator who has set DB_SNAPSHOT_MINUTE keeps their own value.
+DB_SNAPSHOT_MINUTE = config("DB_SNAPSHOT_MINUTE", default=37, cast=int)
 
 # Runtime population settings
 RUNTIME_POPULATION_DISABLED = config(
