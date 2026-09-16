@@ -89,6 +89,12 @@ _start_method = os.environ.get("FLOPPY_TEST_START_METHOD")
 if _start_method:
     multiprocessing.set_start_method(_start_method, force=True)
 
+# The race is not root-caused, so make it survivable rather than fatal: this
+# runner counts results instead of waiting for StopIteration, bounds every wait
+# including pool teardown, and re-runs any subsuite whose result never arrived.
+# It skips nothing.
+TEST_RUNNER = "config.test_runner.ResilientDiscoverRunner"
+
 
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_RESULT_BACKEND = "cache+memory://"

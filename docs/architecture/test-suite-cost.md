@@ -15,7 +15,7 @@ All numbers below are from one cloud container: 4 CPUs, 16 GiB RAM, SQLite,
 | test-database setup, every run | 141 s | 141 s (2.8 s with `FLOPPY_TEST_FAST_DB=1`) |
 | `app.tests.views.test_history` (35 tests), execution only | 53.6 s | 25.6 s |
 | whole suite, one app at a time | — | 398 s with `FLOPPY_TEST_FAST_DB=1` |
-| whole suite, single invocation | 21 min+, sometimes never finishes | unchanged; now bounded by a timeout |
+| whole suite, single invocation | 21 min+, sometimes never finishes | **~20 min, deterministic** (runs serially) |
 
 ## Cause 1: 141 seconds of migrations before any test runs
 
@@ -275,6 +275,134 @@ someone who can land one. The one-line version is an `env:` entry on the
           FLOPPY_TEST_WATCHDOG: "2400"
 ```
 
+### Fixed: the suite runs serially, and survives parallel if you ask for it
+
+There turned out to be **two** failures wearing the same costume, and only one
+of them is a delivery race:
+
+* On a *subset* of the suite (`app integrations`), results go missing at random
+  and re-dispatching to a fresh pool recovers them — five runs out of five,
+  clean.
+* On the *whole* suite, the same subsuites go missing every time. Measured:
+  **131 of 923 lost, and three fresh pools recovered only 2 of them.** Work
+  that is lost deterministically is not a delivery race — the workers carrying
+  it are dying, which is consistent with the SIGSEGV seen on CI. No amount of
+  re-dispatching fixes that, and the run ends red after half an hour.
+
+So `config/test_runner.py` (wired in via `TEST_RUNNER`) does two things:
+
+**It runs serially by default.** With `parallel=1` Django builds a plain suite
+and never touches `multiprocessing` at all — `DiscoverRunner.build_suite`
+guards the entire parallel path on `parallel > 1`. No pool, no worker to lose,
+nothing to hang on. Measured on the full suite with real migrations:
+
+```
+Ran 6127 tests in 1185.348s   (~20 min, no hang)
+```
+
+That is inside the 30–40 minutes this suite historically took, and the hashing
+and fixture work above is part of why.
+
+**It makes parallel survivable for anyone who opts in** with
+`FLOPPY_TEST_PARALLEL=<n>`: completion is counted rather than inferred from
+`StopIteration`, a stall re-dispatches the missing work to a fresh pool up to
+`FLOPPY_TEST_MAX_DISPATCH_ATTEMPTS` times, and if that fails the run **fails
+loudly and ends** rather than hanging or pretending the missing tests passed.
+
+#### Three things that had to be learned the hard way
+
+Each was a version of this runner that moved the hang instead of removing it,
+and each is now pinned by a test in `config/tests/test_resilient_test_runner.py`:
+
+1. **`pool.join()` on the healthy path.** Joining waits on the pool's handler
+   threads; when one has died, that wait *is* the hang.
+2. **`pool.terminate()` anywhere.** `_terminate_pool` calls
+   `_help_stuff_finish`, which takes the task queue's `_rlock` — still held by
+   the wedged task handler. Caught live with `py-spy`:
+   `_help_stuff_finish (pool.py:675)` ← `_terminate_pool (pool.py:695)` ←
+   `terminate (pool.py:657)`.
+3. **The pool's atexit finalizer.** `Pool` registers `_terminate_pool` through
+   `util.Finalize`, so multiprocessing's exit handler runs it on the way out —
+   back into the same deadlock *after* the suite printed its results. A run
+   reported "Ran 4302 tests" and then never exited.
+
+#### Why recovery re-dispatches instead of running in the parent
+
+The first working version ran the undelivered subsuites in the parent. It
+completed the suite but produced `tearDownClass` errors —
+`TransactionManagementError: The rollback flag doesn't work outside of an
+'atomic' block` — because the parent spends the parallel phase orchestrating
+and its connections never went through `_init_worker`. Adopting a worker's
+connections with `setup_worker_connection` did not fix it either. The parent
+is not a faithful environment, so that path was removed.
+
+#### What serial execution exposed
+
+Running everything in one process surfaced a latent isolation bug that
+parallelism had been hiding: `app.tests.test_celery_broker` registers stand-in
+Celery tasks under real route names, but `app.finalize()` replays every
+`@shared_task` onto the new app, so the real `import_radarr_recurring` won the
+name and failed its signature check. It only bites when `app` and
+`integrations` tests share a process. Fixed by registering the stand-ins after
+`finalize()`.
+
+### Superseded: the earlier recovery-only design
+
+`config/test_runner.py` (wired in via `TEST_RUNNER` in test settings) replaces
+Django's collection loop. It does not fix the race — nobody has root-caused it
+— it makes the race survivable:
+
+* **Completion is counted**, not inferred from `StopIteration`.
+* **Stalling is bounded.** If nothing arrives for `FLOPPY_TEST_STALL_TIMEOUT`
+  seconds (default 300), the pool is abandoned and whatever never came back is
+  **re-dispatched to a fresh pool**, up to `FLOPPY_TEST_MAX_DISPATCH_ATTEMPTS`
+  times (default 5). Only the missing subsuites are retried, so a successful
+  retry is quick.
+* **Teardown touches neither `pool.join()` nor `pool.terminate()`** — both can
+  block forever on a pool in this state. Workers are killed directly and the
+  pool's atexit finalizer is cancelled.
+* **If every attempt fails**, the run *fails loudly and ends*. It never hangs,
+  and it never reports missing tests as passing.
+
+Measured on the `app integrations` combination that reproduces the race, five
+consecutive runs:
+
+| run | result | stalls | errors | duration |
+| --- | --- | --- | --- | --- |
+| 1 | pass | yes, recovered on attempt 4 | 0 | 462 s |
+| 2-5 | pass | none | 0 | ~141 s |
+
+Before this, the same combination hung outright.
+
+#### Three things that had to be learned the hard way
+
+Each of these was a version of the runner that moved the hang rather than
+removing it, and each is now pinned by a test:
+
+1. **`pool.join()` on the healthy path.** Joining waits on the pool's handler
+   threads; when one has died, that wait *is* the hang.
+2. **`pool.terminate()` anywhere.** `_terminate_pool` calls
+   `_help_stuff_finish`, which takes the task queue's `_rlock` — still held by
+   the wedged task handler. Observed blocking forever:
+   `_help_stuff_finish (pool.py:675)` ← `_terminate_pool (pool.py:695)` ←
+   `terminate (pool.py:657)`.
+3. **The pool's atexit finalizer.** `Pool` registers `_terminate_pool` through
+   `util.Finalize`, so multiprocessing's exit handler runs it on the way out —
+   back into the same deadlock *after* the suite has printed its results. A
+   recovered run reported "Ran 4302 tests" and then never exited. Cancelling
+   the finalizer is what lets the process die.
+
+#### Why recovery re-dispatches instead of running in the parent
+
+The first working version ran the undelivered subsuites in the parent process.
+It completed the suite, but produced `tearDownClass` errors —
+`TransactionManagementError: The rollback flag doesn't work outside of an
+'atomic' block` — because the parent spends the parallel phase orchestrating
+and its connections never went through `_init_worker`. Adopting a worker's
+connections via `setup_worker_connection` did not fix it either. A fresh pool
+is a faithful environment and the parent is not, so recovery retries pools and
+the in-process path was removed entirely.
+
 ### CPython confirms the dead result handler
 
 An attempt to mitigate this (a `TEST_RUNNER` that stops waiting after a stall
@@ -292,21 +420,20 @@ thread. It does not. So the py-spy reading is now confirmed by CPython's own
 invariant: **results are outstanding and the thread that would deliver them is
 dead.** That is the bug, stated precisely.
 
-Why the mitigation was reverted: on a second reproduction the stall branch
-never fired at all — the run hung without the `next(timeout=0.1)` loop ever
-timing out, which means the parent blocks somewhere other than where the
-mitigation assumed. Shipping a runner override that changes how every test run
-works, to paper over a race that is not yet understood, is worse than the
-disease. The diagnosis belongs here; the fix belongs in its own change, once
-someone knows where the parent actually blocks.
+That mitigation was briefly reverted when a second reproduction appeared to
+show the stall branch never firing. `py-spy` on the live hang showed the
+opposite: the stall *was* detected, and the process was then stuck inside
+`pool.terminate()`. That is finding 2 above, and the runner described earlier
+is the result of fixing it.
 
 ### What should be done next
 
-* Find where the parent actually blocks when the stall branch does not fire.
-  `py-spy dump` on the parent during a hang answers this directly; the loop
-  timing out would point at `IMapIterator.next`, and not timing out points at
-  `pool.join()`, `initialize_suite()`, or teardown instead.
-* Then read what killed `_handle_results`, which is the root cause.
+* Root-cause what kills `_handle_results`. The runner survives the symptom;
+  it does not explain it. A `parallel_runner_stalled` line in a CI log is the
+  signal that it is still happening.
+* A segfault (`selectors.py`, exit 139) was seen once, right after a watchdog
+  dump. `selectors` is what `multiprocessing.connection.wait()` uses, which is
+  where `_handle_results` sits — suggestive, but seen once and not confirmed.
 * Try a smaller `--parallel` worker count and see whether the rate changes;
   that would confirm the timing-race reading.
 * Until then, treat a suite run that produces no output well past its usual
