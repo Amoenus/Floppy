@@ -362,12 +362,13 @@ MIDDLEWARE = [
     # login page, which htmx would otherwise swap into a fragment slot (#386)
     "app.middleware.HtmxAuthRedirectMiddleware",
     "simple_history.middleware.HistoryRequestMiddleware",
-    "allauth.account.middleware.AccountMiddleware",
     "app.middleware.ProviderAPIErrorMiddleware",
     "app.middleware.ErrorCaptureMiddleware",
     # Convert HTML error responses for API requests into JSON responses
     "api.middleware.ApiJsonErrorMiddleware",
 ]
+if not _CELERY_PROCESS:
+    MIDDLEWARE.append("allauth.account.middleware.AccountMiddleware")
 
 if ENABLE_DEBUG_TOOLBAR:
     MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")
