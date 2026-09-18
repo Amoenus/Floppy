@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
+from urllib.parse import quote
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.urls import reverse
+from django.urls import get_script_prefix
 from django.utils import timezone
+from django.utils.http import RFC3986_SUBDELIMS, escape_leading_slashes
 from django.utils.text import slugify
 
 from app import helpers
@@ -692,59 +694,60 @@ def _slugify_title(title: str, media_id: str | None = None) -> str:
     return cleaned
 
 
+def _app_path(path: str = "") -> str:
+    """Return the absolute path to an app page, exactly as ``reverse()`` would.
+
+    Built by hand because the outgoing playback webhook renders this card in a
+    Celery worker, whose ROOT_URLCONF (``config.celery_urls``) is deliberately
+    empty, so every ``reverse()`` there raises NoReverseMatch. Pointing
+    ``reverse()`` at ``config.urls`` instead is no way out: resolving it
+    imports allauth, which workers leave out of INSTALLED_APPS — the same
+    constraint ``audiobookshelf_cover.build_cover_proxy_url`` works around.
+    Callers pass the route from ``app/urls.py`` (``home``, ``media_details``,
+    ``season_details``); ``LiveDetailsUrlTests`` holds them to it.
+
+    A worker also never handles a request, so the script prefix stays at its
+    "/" default and never picks up a BASE_URL subpath. Apply it by hand only
+    while that default is in effect, so a request with the real prefix already
+    set is not double-prefixed. Quoting matches ``reverse()`` byte for byte.
+    """
+    prefix = get_script_prefix()
+    if prefix == "/" and settings.FORCE_SCRIPT_NAME:
+        prefix = settings.FORCE_SCRIPT_NAME.rstrip("/") + "/"
+    return escape_leading_slashes(
+        quote(prefix + path, safe=RFC3986_SUBDELIMS + "/~:@"),
+    )
+
+
 def _build_details_url(state: dict, library_media_type: str | None = None) -> str:
     """Build a URL to the media details page for the playing item."""
     media_id = state.get("media_id")
     source = state.get("source") or Sources.TMDB.value
     playback_media_type = state.get("media_type")
     if not media_id:
-        return reverse("home")
+        return _app_path()
 
     title = (state.get("series_title") or state.get("title") or "").strip()
     slug_title = _slugify_title(title, media_id)
 
     if playback_media_type == MediaTypes.EPISODE.value:
         if library_media_type == MediaTypes.ANIME.value:
-            return reverse(
-                "media_details",
-                kwargs={
-                    "source": source,
-                    "media_type": MediaTypes.ANIME.value,
-                    "media_id": media_id,
-                    "title": slug_title,
-                },
+            return _app_path(
+                f"details/{source}/{MediaTypes.ANIME.value}/{media_id}/{slug_title}",
             )
         season_number = _coerce_int(state.get("season_number"))
         if season_number is not None:
-            return reverse(
-                "season_details",
-                kwargs={
-                    "source": source,
-                    "media_id": media_id,
-                    "title": slug_title,
-                    "season_number": season_number,
-                },
+            return _app_path(
+                f"details/{source}/{MediaTypes.TV.value}/{media_id}/{slug_title}"
+                f"/season/{season_number}",
             )
         # No season number — fall back to TV show details
-        return reverse(
-            "media_details",
-            kwargs={
-                "source": source,
-                "media_type": MediaTypes.TV.value,
-                "media_id": media_id,
-                "title": slug_title,
-            },
+        return _app_path(
+            f"details/{source}/{MediaTypes.TV.value}/{media_id}/{slug_title}",
         )
 
-    return reverse(
-        "media_details",
-        kwargs={
-            "source": source,
-            "media_type": playback_media_type or MediaTypes.MOVIE.value,
-            "media_id": media_id,
-            "title": slug_title,
-        },
-    )
+    media_type = playback_media_type or MediaTypes.MOVIE.value
+    return _app_path(f"details/{source}/{media_type}/{media_id}/{slug_title}")
 
 
 def _resolve_card_title(state, state_item):

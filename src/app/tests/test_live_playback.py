@@ -8,8 +8,8 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import close_old_connections, connection
-from django.test import TestCase, TransactionTestCase
-from django.urls import reverse
+from django.test import TestCase, TransactionTestCase, override_settings
+from django.urls import reverse, set_script_prefix
 
 from app import live_playback
 from app.models import Item, MediaTypes, PlaybackProgress, Sources
@@ -401,6 +401,117 @@ class MalCourCardTests(TestCase):
         self.assertIn(f"/{Sources.MAL.value}/{MediaTypes.ANIME.value}/849/", card["details_url"])
         self.assertEqual(card["image"], "https://example.com/haruhi.jpg")
         self.assertEqual(card["episode_code"], "E03")
+
+
+class LiveDetailsUrlTests(TestCase):
+    """The card's hand-built links are exactly what ``reverse()`` produces.
+
+    They are built without ``reverse()`` so a Celery worker can render the
+    card; this holds each branch to the real route in ``app/urls.py``.
+    """
+
+    CASES = (
+        ({"media_id": None}, None, "home", {}),
+        (
+            {
+                "media_id": "603",
+                "media_type": MediaTypes.MOVIE.value,
+                "title": "The Matrix",
+            },
+            None,
+            "media_details",
+            {
+                "media_type": MediaTypes.MOVIE.value,
+                "media_id": "603",
+                "title": "the-matrix",
+            },
+        ),
+        (
+            {"media_id": "603", "media_type": None, "title": "The Matrix"},
+            None,
+            "media_details",
+            {
+                "media_type": MediaTypes.MOVIE.value,
+                "media_id": "603",
+                "title": "the-matrix",
+            },
+        ),
+        (
+            {
+                "media_id": "849",
+                "media_type": MediaTypes.EPISODE.value,
+                "series_title": "Haruhi",
+            },
+            MediaTypes.ANIME.value,
+            "media_details",
+            {
+                "media_type": MediaTypes.ANIME.value,
+                "media_id": "849",
+                "title": "haruhi",
+            },
+        ),
+        (
+            {
+                "media_id": "1668",
+                "media_type": MediaTypes.EPISODE.value,
+                "series_title": "Friends",
+                "season_number": 3,
+            },
+            None,
+            "season_details",
+            {"media_id": "1668", "title": "friends", "season_number": 3},
+        ),
+        (
+            {
+                "media_id": "1668",
+                "media_type": MediaTypes.EPISODE.value,
+                "series_title": "Friends",
+            },
+            None,
+            "media_details",
+            {"media_type": MediaTypes.TV.value, "media_id": "1668", "title": "friends"},
+        ),
+        # `<path:media_id>` keeps slashes and quotes the rest; so must we.
+        (
+            {
+                "media_id": "a b/ç",
+                "media_type": MediaTypes.MOVIE.value,
+                "title": "Odd Id",
+            },
+            None,
+            "media_details",
+            {
+                "media_type": MediaTypes.MOVIE.value,
+                "media_id": "a b/ç",
+                "title": "odd-id",
+            },
+        ),
+    )
+
+    def _assert_matches_reverse(self):
+        for overrides, library_media_type, name, route_kwargs in self.CASES:
+            state = {"source": Sources.TMDB.value, **overrides}
+            kwargs = (
+                {"source": Sources.TMDB.value, **route_kwargs} if route_kwargs else None
+            )
+            with self.subTest(name=name, state=state):
+                self.assertEqual(
+                    live_playback._build_details_url(state, library_media_type),
+                    reverse(name, kwargs=kwargs),
+                )
+
+    def test_links_match_reverse(self):
+        self._assert_matches_reverse()
+
+    @override_settings(FORCE_SCRIPT_NAME="/floppy")
+    def test_request_script_prefix_is_not_applied_twice(self):
+        """In a request under BASE_URL the prefix is already set; keep it once."""
+        set_script_prefix("/floppy/")
+        self.addCleanup(set_script_prefix, "/")
+        self._assert_matches_reverse()
+        self.assertTrue(
+            live_playback._build_details_url({"media_id": None}).startswith("/floppy/"),
+        )
 
 
 class ResolveStateImageTaskTests(TestCase):
