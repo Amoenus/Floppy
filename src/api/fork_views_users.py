@@ -3,7 +3,6 @@
 import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 
-import apprise
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 from rest_framework import views as drf_views
@@ -401,6 +400,10 @@ class UserNotificationTestView(drf_views.APIView):
                 {"detail": "No notification URLs configured."},
                 status=HTTP.BAD_REQUEST,
             )
+        # Imported here, not at module scope: apprise loads its whole notification
+        # provider tree, which the web process must not pay for at startup.
+        import apprise
+
         apobj = apprise.Apprise()
         for url in notification_urls:
             apobj.add(url)
