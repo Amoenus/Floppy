@@ -1657,15 +1657,14 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
 
-        consumption = user_medias.filter(id=consumption_id).first()
-        if not consumption:
-            # FORK: movie rewatch support (issue #577) — the id may belong to
-            # a MoviePlay rather than the Movie tracker row.
-            consumption = fork_helpers.resolve_movie_play_consumption(
-                user_medias,
-                media_type,
-                consumption_id,
-            )
+        # FORK: movie rewatch support (issue #577) — resolve the entry the same
+        # way `.../history/` lists it, so a colliding Movie id cannot shadow a
+        # MoviePlay id and delete the whole movie.
+        consumption = fork_helpers.resolve_consumption_entry(
+            user_medias,
+            media_type,
+            consumption_id,
+        )
         if not consumption:
             return Response(
                 {"detail": "Consumption entry not found."},
@@ -1709,15 +1708,14 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
 
-        consumption = user_medias.filter(id=consumption_id).first()
-        if not consumption:
-            # FORK: movie rewatch support (issue #577) — the id may belong to
-            # a MoviePlay rather than the Movie tracker row.
-            consumption = fork_helpers.resolve_movie_play_consumption(
-                user_medias,
-                media_type,
-                consumption_id,
-            )
+        # FORK: movie rewatch support (issue #577) — resolve the entry the same
+        # way `.../history/` lists it, so a colliding Movie id cannot shadow a
+        # MoviePlay id.
+        consumption = fork_helpers.resolve_consumption_entry(
+            user_medias,
+            media_type,
+            consumption_id,
+        )
         if not consumption:
             return Response(
                 {"detail": " Consumption entry not found."},
@@ -1774,15 +1772,14 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
 
-        consumption = user_medias.filter(id=consumption_id).first()
-        if not consumption:
-            # FORK: movie rewatch support (issue #577) — the id may belong to
-            # a MoviePlay rather than the Movie tracker row.
-            consumption = fork_helpers.resolve_movie_play_consumption(
-                user_medias,
-                media_type,
-                consumption_id,
-            )
+        # FORK: movie rewatch support (issue #577) — resolve the entry the same
+        # way `.../history/` lists it, so a colliding Movie id cannot shadow a
+        # MoviePlay id.
+        consumption = fork_helpers.resolve_consumption_entry(
+            user_medias,
+            media_type,
+            consumption_id,
+        )
         if not consumption:
             return Response(
                 {"detail": "Consumption entry not found."},
