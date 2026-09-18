@@ -452,6 +452,7 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 "start_date",
                 "end_date",
                 "notes",
+                "external_id",
             },
         )
         complete_keys = {
