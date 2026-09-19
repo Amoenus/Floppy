@@ -2880,6 +2880,104 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context["watch_providers"])
 
+    @patch("app.providers.services.get_media_metadata")
+    def test_media_details_renders_tvdb_series_with_null_country(
+        self,
+        mock_get_metadata,
+    ):
+        """TVDB omits country/languages; the detail page must not 500."""
+        Item.objects.create(
+            media_id="467209",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Liar Game",
+            image="https://example.com/cover.jpg",
+        )
+        mock_get_metadata.return_value = {
+            "media_id": "467209",
+            "title": "Liar Game",
+            "media_type": MediaTypes.TV.value,
+            "source": Sources.TVDB.value,
+            "image": "https://example.com/cover.jpg",
+            "synopsis": "Synopsis",
+            "details": {
+                "format": "TV",
+                "status": "Ended",
+                "episodes": 12,
+                "country": None,
+                "languages": None,
+            },
+            "related": {},
+            "cast": [],
+            "crew": [],
+            "studios_full": [],
+        }
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TVDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": "467209",
+                    "title": "liar-game",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Unknown")
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_media_details_renders_provider_language_list_with_null_entry(
+        self,
+        mock_get_metadata,
+    ):
+        """A null element in a provider language list must not 500 the detail page."""
+        Item.objects.create(
+            media_id="316239",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Toonout",
+            image="https://example.com/cover.jpg",
+        )
+        mock_get_metadata.return_value = {
+            "media_id": "316239",
+            "title": "Toonout",
+            "media_type": MediaTypes.TV.value,
+            "source": Sources.TMDB.value,
+            "image": "https://example.com/cover.jpg",
+            "synopsis": "Synopsis",
+            "details": {
+                "format": "TV",
+                "status": "Ended",
+                "episodes": 12,
+                "country": None,
+                "languages": ["English", None],
+            },
+            "related": {},
+            "cast": [],
+            "crew": [],
+            "studios_full": [],
+        }
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": "316239",
+                    "title": "toonout",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "English")
+
     @patch("app.views.metadata_resolution.resolve_mal_tmdb_identity")
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_enriches_mal_anime_with_tmdb_watch_providers(

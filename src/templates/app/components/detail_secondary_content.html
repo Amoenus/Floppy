@@ -167,7 +167,7 @@
                     {% endwith %}
                     {% if value|is_list %}
                       {% if key == "languages" or key == "country" or key == "countries" or key == "production_countries" or key == "origin_country" %}
-                        {% for item in value %}<p class="text-sm text-[var(--color-text-secondary)]">{% translate item %}</p>{% endfor %}
+                        {% for item in value %}<p class="text-sm text-[var(--color-text-secondary)]">{% if item %}{% translate item %}{% else %}{% translate "Unknown" %}{% endif %}</p>{% endfor %}
                       {% else %}
                         {% for item in value %}<p class="text-sm text-[var(--color-text-secondary)]">{{ item|iso_date_format:request.user }}</p>{% endfor %}
                       {% endif %}
@@ -175,7 +175,7 @@
                       {% if key == 'format' and media_type == MediaTypes.ANIME.value %}
                         <p class="text-sm text-[var(--color-text-secondary)]">{% translate "Anime" %}</p>
                       {% elif key == 'status' or key == 'country' or key == 'countries' or key == 'production_countries' or key == 'origin_country' %}
-                        <p class="text-sm text-[var(--color-text-secondary)]">{% translate value %}</p>
+                        <p class="text-sm text-[var(--color-text-secondary)]">{% if value %}{% translate value %}{% else %}{% translate "Unknown" %}{% endif %}</p>
                       {% else %}
                         <p class="text-sm text-[var(--color-text-secondary)]">{{ value|default_if_none:_("Unknown") }}</p>
                       {% endif %}
