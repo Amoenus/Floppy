@@ -1,7 +1,7 @@
 """Read-only TV and season ratings derived from episode ratings."""
 
 from collections.abc import Mapping
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from django import template
 from django.utils.translation import gettext as _
@@ -12,6 +12,7 @@ from app.models import Episode, MediaTypes
 register = template.Library()
 
 DERIVED_TV_RATINGS_VERSION = "1.1.0"
+FIVE_POINT_SCALE_MAX = 5
 
 
 def _media_value(media, key, default=None):
@@ -33,7 +34,11 @@ def _display_score(user, raw_average):
     except (TypeError, ValueError, AttributeError):
         scale_max = 10
 
-    value = raw_average / Decimal("2") if scale_max == 5 else raw_average
+    value = (
+        raw_average / Decimal(2)
+        if scale_max == FIVE_POINT_SCALE_MAX
+        else raw_average
+    )
     return format(
         value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
         ".2f",
@@ -168,7 +173,7 @@ def _build_derived_rating(user, media_type, media, rows):
     """Build the display payload from latest completed episode rows."""
     total = 0
     rated = 0
-    score_sum = Decimal("0")
+    score_sum = Decimal(0)
     seen_items = set()
 
     for row in rows:
