@@ -7,6 +7,7 @@ from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
 
 import requests
+from django.test import override_settings
 from django.utils import timezone
 
 from app import live_playback
@@ -726,6 +727,56 @@ class PlaybackWebhookTests(FloppyApiTestCase):
         state = live_playback.get_user_playback_state(self.user1.id)
         self.assertIsNotNone(state)
         self.assertEqual(state["status"], live_playback.PLAYBACK_STATUS_PLAYING)
+
+    @override_settings(ROOT_URLCONF="config.celery_urls")
+    def test_delivers_from_a_worker_with_no_url_routes(self):
+        """The task runs in a Celery worker, whose URLconf is deliberately empty.
+
+        Tests run tasks eagerly under the full URLconf, so without pinning the
+        worker's one here, a `reverse()` on the payload path passes every other
+        test and fails on every real delivery.
+        """
+        self.user1.playback_webhook_url = "https://example.com/playback"
+        self.user1.save(update_fields=["playback_webhook_url"])
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+
+        # One state per URL shape the card can link to.
+        cases = {
+            "media details": ({}, f"/{movie_item.media_id}/"),
+            "season details": (
+                {
+                    "media_type": MediaTypes.EPISODE.value,
+                    "series_title": "Some Show",
+                    "season_number": 2,
+                    "episode_number": 5,
+                },
+                "/season/2",
+            ),
+            "home, when the item is unresolved": ({"media_id": None}, None),
+        }
+        for label, (overrides, url_part) in cases.items():
+            with self.subTest(label), patch("requests.post") as post:
+                self._play(self.user1, **overrides)
+
+                post.assert_called_once()
+                body = json.loads(post.call_args.kwargs["data"])
+                self.assertTrue(body["active"])
+                if url_part is None:
+                    self.assertEqual(body["url"], "/")
+                else:
+                    self.assertIn(url_part, body["url"])
+
+    @override_settings(ROOT_URLCONF="config.celery_urls", FORCE_SCRIPT_NAME="/floppy")
+    def test_worker_delivery_keeps_the_base_url_subpath(self):
+        """A worker never handles a request, so BASE_URL has to be applied by hand."""
+        self.user1.playback_webhook_url = "https://example.com/playback"
+        self.user1.save(update_fields=["playback_webhook_url"])
+
+        with patch("requests.post") as post:
+            self._play(self.user1)
+
+        body = json.loads(post.call_args.kwargs["data"])
+        self.assertTrue(body["url"].startswith("/floppy/details/"), body["url"])
 
 
 class NowPlayingTests(FloppyApiTestCase):
