@@ -22,8 +22,8 @@ class DerivedTVRatingsTests(SimpleTestCase):
             derived_tv_ratings,
             "_episode_rows",
             return_value=[
-                {"item_id": 1, "score": Decimal("8")},
-                {"item_id": 1, "score": Decimal("2")},
+                {"item_id": 1, "score": Decimal(8)},
+                {"item_id": 1, "score": Decimal(2)},
                 {"item_id": 2, "score": None},
             ],
         ):
@@ -44,7 +44,7 @@ class DerivedTVRatingsTests(SimpleTestCase):
         with patch.object(
             derived_tv_ratings,
             "_episode_rows",
-            return_value=[{"item_id": 1, "score": Decimal("8")}],
+            return_value=[{"item_id": 1, "score": Decimal(8)}],
         ):
             result = derived_tv_ratings.derived_tv_rating(
                 _user(scale=5),
@@ -79,7 +79,7 @@ class DerivedTVRatingsTests(SimpleTestCase):
         with patch.object(
             derived_tv_ratings,
             "_episode_rows",
-            return_value=[{"item_id": 1, "score": Decimal("7")}],
+            return_value=[{"item_id": 1, "score": Decimal(7)}],
         ):
             result = derived_tv_ratings.derived_tv_rating(
                 _user(),
