@@ -1529,6 +1529,76 @@ class PlexWebhookTests(TestCase):
         mock_tmdb_search.assert_called()
         self.assertEqual(str(mock_tv_with_seasons.call_args_list[0].args[0]), "88396")
 
+    @patch("app.providers.tmdb.search")
+    @patch(
+        "app.providers.tmdb.find",
+        return_value={"tv_episode_results": [], "tv_results": []},
+    )
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_tv_episode_title_search_ignores_episode_year(
+        self,
+        mock_tv_with_seasons,
+        mock_find,
+        mock_tmdb_search,
+    ):
+        """The title-search fallback must not be constrained by the
+        episode's own air year: a recently-aired episode of a multi-season
+        show would never match the show's (earlier) first-air year.
+
+        Regression test for issue #1239: Plex episode payloads never carry a
+        grandparent year, so the fallback fell through to the episode's own
+        `originallyAvailableAt`/`year` and searched for a show whose
+        first-air year equalled the episode's air year, which never matches
+        a show past its first season.
+        """
+        mock_tmdb_search.return_value = {
+            "results": [
+                {
+                    "media_id": 108255,
+                    "title": "All Creatures Great & Small",
+                    "year": "2020",
+                },
+            ],
+        }
+        mock_tv_with_seasons.return_value = {
+            "tvdb_id": "11969114",
+            "title": "All Creatures Great & Small",
+            "image": "",
+            "season/7": {
+                "image": "",
+                "episodes": [{"episode_number": 1, "runtime": 46}],
+            },
+            "related": {"seasons": [{"season_number": 7}]},
+        }
+
+        payload = {
+            "event": "media.scrobble",
+            "Account": {"title": "testuser"},
+            "Metadata": {
+                "type": "episode",
+                "grandparentTitle": "All Creatures Great & Small",
+                "title": "Back to School",
+                "index": 1,
+                "parentIndex": 7,
+                "year": 2026,
+                "originallyAvailableAt": "2026-09-17",
+            },
+        }
+
+        response = self._post_payload(payload)
+
+        self.assertEqual(response.status_code, 200)
+        episode = Episode.objects.get(
+            item__media_id="108255",
+            item__season_number=7,
+            item__episode_number=1,
+        )
+        self.assertIsNotNone(episode.end_date)
+        self.assertEqual(
+            str(mock_tv_with_seasons.call_args_list[0].args[0]),
+            "108255",
+        )
+
     @patch("app.providers.tmdb.find")
     @patch("app.providers.tmdb.tv_with_seasons")
     def test_tv_episode_tmdb_episode_id_collision_prefers_find_resolved_show(
@@ -3012,6 +3082,30 @@ class PlexWebhookTests(TestCase):
             "anidb_id": None,
         }
 
+        self.assertEqual(result, expected)
+
+    def test_extract_external_ids_discards_large_tmdb_style_guid(self):
+        """A TMDB GUID above the IMDB-numeric threshold must be discarded, not
+        coined into a fabricated IMDB ID (issue #1239).
+
+        Modern TMDB episode IDs are 7 digits, so this GUID is too ambiguous
+        to trust as either a show-level TMDB ID or an IMDB ID.
+        """
+        payload = {
+            "Metadata": {
+                "Guid": [{"id": "tmdb://7762130"}, {"id": "tvdb://11969114"}],
+            },
+        }
+
+        result = PlexWebhookProcessor()._extract_external_ids(payload)
+
+        expected = {
+            "tmdb_id": None,
+            "imdb_id": None,
+            "tvdb_id": "11969114",
+            "plex_guid": None,
+            "anidb_id": None,
+        }
         self.assertEqual(result, expected)
 
     def test_extract_external_ids_from_guid_string(self):

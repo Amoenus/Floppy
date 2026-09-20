@@ -445,12 +445,19 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             if media_type == MediaTypes.TV.value
             else metadata.get("title")
         )
-        original_date = (
-            metadata.get("grandparentOriginallyAvailableAt")
-            or metadata.get("grandparentYear")
-            or metadata.get("originallyAvailableAt")
-            or metadata.get("year")
-        )
+        if media_type == MediaTypes.TV.value:
+            # Plex episode payloads never carry a grandparent year, and the
+            # episode's own originallyAvailableAt/year describe when the
+            # EPISODE aired, not the show's first-air year. Falling through
+            # to those would constrain the title search to a year that can
+            # never match a show past its first season. See issue #1239.
+            original_date = metadata.get(
+                "grandparentOriginallyAvailableAt",
+            ) or metadata.get("grandparentYear")
+        else:
+            original_date = metadata.get("originallyAvailableAt") or metadata.get(
+                "year",
+            )
 
         if not search_title:
             logger.debug("Cannot resolve plex:// GUID without title")
@@ -1596,14 +1603,20 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             ):
                 tmdb_id = self._extract_numeric_guid_id(guid_value)
                 if tmdb_id:
-                    # If it looks like an IMDB ID (7+ digits) and we don't have an IMDB ID yet,
-                    # AND it's a TV show, be skeptical of treating it as TMDB.
+                    # If it looks like an IMDB ID (7+ digits) and we don't
+                    # have an IMDB ID yet, be skeptical of treating it as
+                    # TMDB — but discard it rather than coining an IMDB ID
+                    # from it: renaming it to "tt<n>" invents an identifier
+                    # in a different namespace that could collide with an
+                    # unrelated real IMDB entry. See issue #1239.
                     if (
                         int(tmdb_id) > LIKELY_IMDB_NUMERIC_ID_THRESHOLD
                         and ids["imdb_id"] is None
                     ):
-                        ids["imdb_id"] = f"tt{tmdb_id}"
-                        logger.debug("Skeptically treated large TMDB-style ID as IMDB")
+                        logger.debug(
+                            "Discarding large TMDB-style GUID; too ambiguous "
+                            "to trust as a show ID",
+                        )
                     else:
                         ids["tmdb_id"] = tmdb_id
                         logger.debug("Found TMDB ID in Plex GUIDs")
