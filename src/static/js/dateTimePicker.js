@@ -404,6 +404,10 @@ if (!window.__floppyDateTimePickerBound) {
       if (!pairedInput || pairedInput === this.$refs.hiddenInput) {
         return;
       }
+      if (pairedInput.value) {
+        // Don't overwrite a date the user (or an earlier quick action) already set.
+        return;
+      }
 
       if (window.Alpine) {
         try {
