@@ -3691,6 +3691,31 @@ class ListRssFeedTests(TestCase):
             "https://example.com/rss-movie.jpg",
         )
 
+    def test_public_list_rss_feed_preserves_custom_list_order(self):
+        """Return feed items in the list's persisted custom order."""
+        second_item = Item.objects.create(
+            media_id="rss-2",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="RSS Second Movie",
+        )
+        CustomListItem.objects.create(
+            custom_list=self.custom_list,
+            item=second_item,
+        )
+        CustomListItem.objects.filter(
+            custom_list=self.custom_list,
+            item=self.movie_item,
+        ).update(date_added=timezone.now() + timedelta(minutes=1))
+
+        response = self.client.get(reverse("list_rss", args=[self.custom_list.id]))
+        root = ET.fromstring(response.content)
+        titles = [
+            item.findtext("title") for item in root.findall("./channel/item")
+        ]
+
+        self.assertEqual(titles, ["RSS Second Movie", "RSS Movie"])
+
     def test_public_list_rss_feed_accepts_slug(self):
         """RSS feeds should resolve custom public slugs."""
         self.custom_list.public_slug = "public-rss-list"
