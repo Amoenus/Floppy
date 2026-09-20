@@ -227,6 +227,14 @@ until echo "[entrypoint] Applying database migrations (attempt $((migrate_attemp
     sleep 15
 done
 
+# The image collects static files at build time with DEBUG unset, so
+# debug_toolbar's app (and its static assets) are never installed then. If an
+# operator turns DEBUG on for this container, re-collect now under the actual
+# runtime settings so /static/debug_toolbar/... stops 404ing instead of
+# serving a stale, DEBUG-less build (#1224).
+echo "[entrypoint] Collecting static files" >&2
+python manage.py collectstatic --noinput
+
 PUID=${PUID:-1000}
 PGID=${PGID:-1000}
 
