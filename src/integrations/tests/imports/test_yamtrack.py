@@ -293,6 +293,50 @@ class ImportYamtrackEpisodeHistoryDate(TestCase):
         game = Game.objects.get(user=self.user)
         self.assertIsNotNone(game.history.get().history_date)
 
+    def test_overwrite_mode_replaces_game_sessions(self):
+        """Overwrite mode wipes old game sessions instead of appending to them.
+
+        Games have no unique(user, item) constraint - each session is its
+        own Game row, the same way a rewatched episode is its own Episode
+        row (#1183). Regression test for #1231: two session rows sharing
+        the same media_id (distinguished only by progressed_at) both got
+        queued for the overwrite-mode delete, then the second row
+        incorrectly undid the first row's queued delete, thinking it was a
+        later-batch repeat of an already-recreated item. The old session
+        survived and the new ones just piled on top of it.
+        """
+        original_csv = """media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,progressed_at
+1234,igdb,game,Some Game,https://image.url,,,,30,In progress,,,,2025-01-01T10:00:00+00:00
+"""
+        yamtrack.importer(BytesIO(original_csv.encode()), self.user, "new")
+        self.assertEqual(Game.objects.filter(user=self.user).count(), 1)
+
+        overwrite_csv = """media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,progressed_at
+1234,igdb,game,Some Game,https://image.url,,,,60,In progress,,,,2025-02-01T10:00:00+00:00
+1234,igdb,game,Some Game,https://image.url,,,,90,Completed,,,,2025-02-02T10:00:00+00:00
+"""
+        counts, warnings = yamtrack.importer(
+            BytesIO(overwrite_csv.encode()),
+            self.user,
+            "overwrite",
+        )
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(counts["game"], 2)
+        games = Game.objects.filter(user=self.user)
+        self.assertEqual(games.count(), 2)
+        self.assertEqual(set(games.values_list("progress", flat=True)), {3600, 5400})
+        history_dates = {
+            game.history.get().history_date for game in games
+        }
+        self.assertEqual(
+            history_dates,
+            {
+                datetime(2025, 2, 1, 10, 0, tzinfo=UTC),
+                datetime(2025, 2, 2, 10, 0, tzinfo=UTC),
+            },
+        )
+
 
 class ImportYamtrackRaggedRows(TestCase):
     """A CSV row with more columns than the header is skipped, not misparsed.
