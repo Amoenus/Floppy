@@ -144,17 +144,13 @@ class EventManager(models.Manager):
         ):
             return set()
 
-        active_tv_shows = self._active_tv_show_media_ids(user)
-        if not active_tv_shows:
-            return set()
-
-        season_items = list(
+        all_active_tv_items = list(
             Item.objects.filter(
-                media_type=MediaTypes.SEASON.value,
-                media_id__in=active_tv_shows,
-            ),
+                tv__user=user,
+                media_type=MediaTypes.TV.value,
+            ).exclude(tv__status__in=INACTIVE_TRACKING_STATUSES),
         )
-        if not season_items:
+        if not all_active_tv_items:
             return set()
 
         preferred_source = getattr(
@@ -162,12 +158,45 @@ class EventManager(models.Manager):
             "tv_metadata_source_default",
             Sources.TMDB.value,
         )
-        deduped = dedupe_cross_provider_items(season_items, preferred_source)
-        if len(deduped) == len(season_items):
-            return set()
+        kept_tv_media_ids = {
+            item.media_id
+            for item in dedupe_cross_provider_items(
+                all_active_tv_items,
+                preferred_source,
+            )
+        }
 
-        kept_ids = {item.id for item in deduped}
-        return {item.id for item in season_items if item.id not in kept_ids}
+        # Seasons of TV shows discarded by the parent-level dedup above are
+        # duplicates too, even when their own season numbers don't line up
+        # with the kept show's (e.g. TMDB absolute S1 vs TVDB split S4) and
+        # so wouldn't be caught by the per-show dedupe below (#1202).
+        discarded_tv_media_ids = {
+            item.media_id
+            for item in all_active_tv_items
+            if item.media_id not in kept_tv_media_ids
+        }
+        hidden_ids = set(
+            Item.objects.filter(
+                media_type=MediaTypes.SEASON.value,
+                media_id__in=discarded_tv_media_ids,
+            ).values_list("id", flat=True),
+        )
+
+        season_items = list(
+            Item.objects.filter(
+                media_type=MediaTypes.SEASON.value,
+                media_id__in=kept_tv_media_ids,
+            ),
+        )
+        if season_items:
+            deduped = dedupe_cross_provider_items(season_items, preferred_source)
+            if len(deduped) < len(season_items):
+                kept_ids = {item.id for item in deduped}
+                hidden_ids.update(
+                    item.id for item in season_items if item.id not in kept_ids
+                )
+
+        return hidden_ids
 
     def _cross_bucket_hidden_anime_item_ids(self, user, enabled_types):
         """Return Anime `Item` ids to hide because a tracked TV counterpart exists.
