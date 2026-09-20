@@ -749,10 +749,7 @@ def _attach_kometa_episode_urls(items_page):
     """
     items = list(getattr(items_page, "object_list", items_page) or [])
     episode_items = [
-        item
-        for item in items
-        if item.media_type == MediaTypes.EPISODE.value
-        and item.source == Sources.TMDB.value
+        item for item in items if item.media_type == MediaTypes.EPISODE.value
     ]
     if not episode_items:
         return
@@ -769,11 +766,13 @@ def _attach_kometa_episode_urls(items_page):
     tvdb_by_parent_key = {}
     parent_item_ids = []
     parent_key_by_id = {}
+    parent_id_by_key = {}
     parent_title_by_key = {}
     for parent in parent_items:
         parent_item_ids.append(parent.id)
         parent_key = (parent.source, parent.media_id)
         parent_key_by_id[parent.id] = parent_key
+        parent_id_by_key[parent_key] = parent.id
         parent_title_by_key[parent_key] = parent.title
         tvdb_id = (parent.provider_external_ids or {}).get("tvdb_id")
         if str(tvdb_id or "").isdigit():
@@ -794,12 +793,14 @@ def _attach_kometa_episode_urls(items_page):
                     (str(provider_media_id), parent_title_by_key.get(parent_key)),
                 )
 
+    missing_tvdb_parent_ids = set()
     for item in episode_items:
-        tvdb_id, parent_title = tvdb_by_parent_key.get(
-            (item.source, item.media_id),
-            ("", None),
-        )
+        parent_key = (item.source, item.media_id)
+        tvdb_id, parent_title = tvdb_by_parent_key.get(parent_key, ("", None))
         if not tvdb_id.isdigit():
+            parent_id = parent_id_by_key.get(parent_key)
+            if parent_id is not None:
+                missing_tvdb_parent_ids.add(parent_id)
             continue
 
         item.kometa_episode_url = reverse(
@@ -812,6 +813,25 @@ def _attach_kometa_episode_urls(items_page):
                 "episode_number": item.episode_number,
             },
         )
+
+    if missing_tvdb_parent_ids:
+        _enqueue_tvdb_id_backfill(missing_tvdb_parent_ids)
+
+
+def _enqueue_tvdb_id_backfill(item_ids):
+    """Best-effort queue a metadata refresh for shows missing a TVDB id.
+
+    Reuses the existing external-IDs backfill sweep (which fetches provider
+    metadata and persists tvdb_id as a side effect) so future page loads can
+    resolve the Kometa episode anchor. Failures here must never break list
+    rendering.
+    """
+    try:
+        from app.tasks_external_ids import enqueue_external_ids_backfill_items
+
+        enqueue_external_ids_backfill_items(list(item_ids))
+    except Exception:
+        logger.exception("Failed to enqueue TVDB id backfill for items")
 
 
 def _paginate_python_sorted_items(

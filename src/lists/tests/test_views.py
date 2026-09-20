@@ -552,6 +552,93 @@ class ListDetailViewTests(TestCase):
             "/details/tmdb/tv/1668/pilot/season/1/episode/2",
         )
 
+    def test_public_list_exposes_kometa_anchor_for_non_tmdb_episode(self):
+        """Anime (non-TMDB) episode sources should also get a TVDB anchor."""
+        self.custom_list.visibility = "public"
+        self.custom_list.save(update_fields=["visibility"])
+        self.anime_item.provider_external_ids = {"tvdb_id": "12345"}
+        self.anime_item.save(update_fields=["provider_external_ids"])
+        anime_episode_item = Item.objects.create(
+            media_id=self.anime_item.media_id,
+            source=Sources.MAL.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Episode 1",
+            season_number=1,
+            episode_number=1,
+        )
+        CustomListItem.objects.create(
+            custom_list=self.custom_list,
+            item=anime_episode_item,
+        )
+        self.client.logout()
+
+        response = self.client.get(reverse("list_detail", args=[self.custom_list.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "/details/tvdb/tv/12345/test-anime/season/1/episode/1",
+        )
+
+    def test_public_list_table_layout_exposes_kometa_anchor(self):
+        """Table layout must also emit the hidden Kometa episode anchor."""
+        self.custom_list.visibility = "public"
+        self.custom_list.save(update_fields=["visibility"])
+        self.tv_item.provider_external_ids = {"tvdb_id": "81189"}
+        self.tv_item.save(update_fields=["provider_external_ids"])
+        episode_item = Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Pilot",
+            season_number=1,
+            episode_number=2,
+        )
+        CustomListItem.objects.create(
+            custom_list=self.custom_list,
+            item=episode_item,
+        )
+        self.client.logout()
+
+        response = self.client.get(
+            reverse("list_detail", args=[self.custom_list.id]),
+            {"layout": "table"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "/details/tvdb/tv/81189/test-tv-show/season/1/episode/2",
+        )
+
+    @patch("app.tasks_external_ids.enqueue_external_ids_backfill_items")
+    def test_public_list_queues_backfill_when_tvdb_id_missing(
+        self, mock_enqueue
+    ):
+        """Missing TVDB id for a parent show should trigger a best-effort backfill."""
+        self.custom_list.visibility = "public"
+        self.custom_list.save(update_fields=["visibility"])
+        episode_item = Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Pilot",
+            season_number=1,
+            episode_number=2,
+        )
+        CustomListItem.objects.create(
+            custom_list=self.custom_list,
+            item=episode_item,
+        )
+        self.client.logout()
+
+        response = self.client.get(reverse("list_detail", args=[self.custom_list.id]))
+
+        self.assertEqual(response.status_code, 200)
+        mock_enqueue.assert_called_once()
+        (queued_ids,), _kwargs = mock_enqueue.call_args
+        self.assertEqual(list(queued_ids), [self.tv_item.id])
+
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
     def test_list_detail_view(
