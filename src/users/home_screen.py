@@ -2130,7 +2130,25 @@ def sort_home_entries(
     if sort_by == MediaSortChoices.NEXT_EPISODE_AIR_DATE:
         return _sort_numeric(entries, _entry_next_episode_air_date_timestamp, direction)
     if sort_by == HomeSortChoices.RECENT:
-        return _sort_numeric(entries, _entry_recent_timestamp, direction)
+        descending = direction == DirectionChoices.DESC
+        with_recent = [e for e in entries if _entry_recent_timestamp(e) is not None]
+        without_recent = [e for e in entries if _entry_recent_timestamp(e) is None]
+        with_recent.sort(key=_entry_recent_timestamp, reverse=descending)
+
+        now = timezone.now()
+
+        def _unstarted_recent_key(entry):
+            release_dt = _coerce_datetime(_entry_release_date(entry.item))
+            title = _entry_title(entry).lower()
+            if release_dt is None:
+                return (2, 0, title)
+            timestamp = release_dt.timestamp()
+            if release_dt <= now:
+                return (0, -timestamp, title)
+            return (1, timestamp, title)
+
+        without_recent.sort(key=_unstarted_recent_key)
+        return with_recent + without_recent
     if sort_by == HomeSortChoices.COMPLETION:
 
         def completion_value(entry):

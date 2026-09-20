@@ -2069,6 +2069,46 @@ class HomeScreenRecentSortTests(SimpleTestCase):
             ["Actively Watched Show", "Unstarted Auto-Created Season"],
         )
 
+    def _unstarted_entry(self, title, release_datetime):
+        item = SimpleNamespace(title=title, release_datetime=release_datetime)
+        media = SimpleNamespace(
+            progress=0,
+            last_played_at=None,
+            progressed_at=None,
+            created_at=None,
+        )
+        return home_screen.HomeRowEntry(item=item, media=media)
+
+    def test_unstarted_items_sort_by_release_status_not_reverse_title(self):
+        """Regression for #999: unstarted items fell back to reverse-alpha title."""
+        now = timezone.now()
+        entries = [
+            self._unstarted_entry("Elle Season 2", None),
+            self._unstarted_entry("Witch Hat Atelier Season 2", None),
+            self._unstarted_entry("Frieren Season 3", now + timedelta(days=30)),
+            self._unstarted_entry("Upcoming Soon Season", now + timedelta(days=5)),
+            self._unstarted_entry("Bridgerton Season 4", now - timedelta(days=10)),
+            self._unstarted_entry("Older Released Season", now - timedelta(days=100)),
+        ]
+
+        result = home_screen.sort_home_entries(
+            entries,
+            HomeSortChoices.RECENT,
+            DirectionChoices.DESC,
+        )
+
+        self.assertEqual(
+            [entry.item.title for entry in result],
+            [
+                "Bridgerton Season 4",
+                "Older Released Season",
+                "Upcoming Soon Season",
+                "Frieren Season 3",
+                "Elle Season 2",
+                "Witch Hat Atelier Season 2",
+            ],
+        )
+
 
 class CrossProviderDedupTests(TestCase):
     """Home rows must not show duplicate tiles for a verified TMDB/TVDB pair (#620)."""
