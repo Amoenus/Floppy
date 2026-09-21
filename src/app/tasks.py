@@ -1214,6 +1214,7 @@ def backfill_item_metadata_task(
                     item,
                     MetadataBackfillField.DISCOVER,
                     f"exception: {exception_summary(e)}",
+                    terminal=terminal,
                 )
             # A provider id that does not resolve - a MusicBrainz recording id
             # returning 400/404, a season row with no season number - is not a

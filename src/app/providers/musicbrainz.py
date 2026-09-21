@@ -5,6 +5,7 @@ import re
 import time
 from collections import OrderedDict
 from http import HTTPStatus
+from typing import NoReturn
 from urllib.parse import quote
 
 import requests
@@ -236,6 +237,19 @@ def _rate_limit():
     _last_request_time = time.time()
 
 
+def handle_error(error) -> NoReturn:
+    """Wrap a MusicBrainz HTTP failure in the shared provider error type.
+
+    ``services.api_request`` re-raises a bare ``requests.exceptions.HTTPError``
+    for any 4xx it does not retry and leaves wrapping to each provider. Every
+    other large provider module does this; musicbrainz did not, so callers that
+    classify by exception type - notably the metadata backfill's
+    terminal-vs-transient check - saw an unrecognised error and retried dead
+    recording ids forever.
+    """
+    raise services.ProviderAPIError(Sources.MUSICBRAINZ.value, error) from None
+
+
 def _mb_request(endpoint, params=None):
     """Make a rate-limited request to the MusicBrainz API."""
     _rate_limit()
@@ -267,7 +281,7 @@ def _mb_request(endpoint, params=None):
             logger.debug("MusicBrainz API request 404 for %s: %s", url, error)
         else:
             logger.warning("MusicBrainz API request failed: %s", error)
-        raise
+        handle_error(error)
     except Exception as error:  # pragma: no cover - defensive
         logger.warning("MusicBrainz API request failed: %s", error)
         raise
