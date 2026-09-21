@@ -502,9 +502,9 @@ def rss_settings(request):
     media_types = [
         {
             "value": media_type,
-            "label": MediaTypes(media_type).label,
+            "label": gettext(MediaTypes(media_type).label),
             "rows": [
-                {"key": row.key, "title": row.title}
+                {"key": row.key, "title": gettext(row.title)}
                 for row in get_external_row_definitions(media_type)
             ],
         }
@@ -1002,7 +1002,7 @@ def preferences(request):
         "": gettext("Disabled"),
     }
     watch_provider_regions = [
-        (code, region_option_labels.get(code, label))
+        (code, gettext(region_option_labels.get(code, label)))
         for code, label in watch_provider_regions
     ]
     metadata_language_choices = [
@@ -1469,7 +1469,14 @@ def integrations(request):
             "jellyfin_playback_reporting_import": jellyfin_playback_reporting_import,
             "jellyfin_pull_interval_minutes": tasks.JELLYFIN_PULL_INTERVAL_MINUTES,
             "seerr_global_webhook_enabled": bool(settings.SEERR_GLOBAL_WEBHOOK_SECRET),
-            "stremio_catalog_readiness": stremio_catalog.catalog_readiness(user),
+            "stremio_catalog_readiness": [
+                {
+                    **catalog,
+                    "noun": gettext(catalog["noun"]),
+                    "list_name": gettext(catalog["list_name"]),
+                }
+                for catalog in stremio_catalog.catalog_readiness(user)
+            ],
             # Popped, not read: the secret is shown once and never again.
             "new_integration_token": request.session.pop(
                 NEW_TOKEN_SESSION_KEY,

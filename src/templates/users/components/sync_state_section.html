@@ -1,4 +1,4 @@
-{% load user_tags %}
+{% load i18n user_tags %}
 {% comment %}
 Watched-state synchronization settings, one card per connection.
 
@@ -14,10 +14,9 @@ Two things this section is careful about:
      x-show="activeIntegration === 'all' || activeIntegration === 'sync'">
   <div class="flex items-start justify-between mb-4">
     <div>
-      <h2 class="text-xl font-semibold text-[var(--color-text)]">Watched-state sync</h2>
+      <h2 class="text-xl font-semibold text-[var(--color-text)]">{% translate "Watched-state sync" %}</h2>
       <p class="text-sm text-[var(--color-text-muted)] mt-1">
-        Keep completion state in step with your media servers. History imports
-        are configured separately, per connection.
+        {% blocktranslate trimmed %}Keep completion state in step with your media servers. History imports are configured separately, per connection.{% endblocktranslate %}
       </p>
     </div>
   </div>
@@ -72,7 +71,7 @@ Two things this section is careful about:
 
   {% if not sync_bindings %}
     <p class="text-sm text-[var(--color-text-muted)]">
-      No connections yet. Connect a media server above and it will appear here.
+      {% translate "No connections yet. Connect a media server above and it will appear here." %}
     </p>
   {% else %}
     <div class="space-y-4">

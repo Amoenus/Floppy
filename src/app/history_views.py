@@ -786,6 +786,15 @@ def _annotate_history_day_for_template(day):
     if not isinstance(day, dict):
         return None
     annotated_day = day.copy()
+    day_date = annotated_day.get("date")
+    if isinstance(day_date, str):
+        day_date = parse_date(day_date)
+    if day_date:
+        annotated_day["weekday"] = formats.date_format(day_date, "l")
+        annotated_day["date_display"] = formats.date_format(
+            day_date,
+            "DATE_FORMAT",
+        )
     entries = list(annotated_day.get("entries", []))
     entry_count = annotated_day.get("entry_count", len(entries))
     entry_offset = annotated_day.get("_entry_window_offset", 0)
@@ -1201,8 +1210,14 @@ def history(request):
             else:
                 next_year, next_month = view_year, view_month + 1
 
-            prev_month_name = calendar.month_abbr[prev_month]
-            next_month_name = calendar.month_abbr[next_month]
+            prev_month_name = formats.date_format(
+                date(prev_year, prev_month, 1),
+                "M",
+            )
+            next_month_name = formats.date_format(
+                date(next_year, next_month, 1),
+                "M",
+            )
             is_current_month = view_year == now.year and view_month == now.month
             show_next_month = next_year < now.year or (
                 next_year == now.year and next_month <= now.month
@@ -1286,7 +1301,11 @@ def history(request):
         if history_mode == "release":
             active_filters["history_mode"] = "release"
         month_nav_query = urlencode(active_filters)
-        month_name = calendar.month_name[view_month] if use_month_cache else None
+        month_name = (
+            formats.date_format(date(view_year, view_month, 1), "F")
+            if use_month_cache
+            else None
+        )
 
         for day in history_days:
             if day.get("has_more"):
