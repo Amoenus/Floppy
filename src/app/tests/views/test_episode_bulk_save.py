@@ -4,6 +4,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from app.models import (
     TV,
@@ -281,6 +282,147 @@ class EpisodeBulkSaveViewTests(TestCase):
         self.assertLess(episodes[0].end_date, episodes[1].end_date)
         self.assertLess(episodes[1].end_date, episodes[2].end_date)
         self.assertEqual(episodes[0].end_date.date(), episodes[2].end_date.date())
+
+    @patch("app.views.metadata_resolution.resolve_detail_metadata")
+    @patch("app.providers.services.get_media_metadata")
+    def test_bulk_air_date_single_episode_with_range_is_not_midnight(
+        self,
+        mock_get_metadata,
+        mock_resolve_detail_metadata,
+    ):
+        """A single-episode air-date bulk save keeps the picker's time.
+
+        Regression test for #1232: selecting one episode skipped the
+        interpolation math and clamped the raw midnight air date straight
+        into storage, ignoring the start/end time the user picked.
+        """
+        seasons = [
+            {
+                "season_number": 1,
+                "season_title": "Season 1",
+                "episodes": [
+                    _season_episode(1, air_date="2024-01-01"),
+                ],
+            },
+        ]
+        base_payload = _tv_base_payload(
+            "1396",
+            Sources.TMDB.value,
+            title="Breaking Bad",
+            seasons=seasons,
+        )
+        tv_with_seasons = _tv_with_seasons_payload(
+            "1396",
+            Sources.TMDB.value,
+            title="Breaking Bad",
+            seasons=seasons,
+        )
+        mock_get_metadata.side_effect = lambda media_type, *_args, **_kwargs: (
+            tv_with_seasons if media_type == "tv_with_seasons" else base_payload
+        )
+        mock_resolve_detail_metadata.return_value = self.default_resolution
+
+        response = self._post_bulk(
+            {
+                "media_id": "1396",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.TV.value,
+                "library_media_type": MediaTypes.TV.value,
+                "identity_media_type": "",
+                "instance_id": "",
+                "return_url": self.return_url,
+                "first_season_number": 1,
+                "first_episode_number": 1,
+                "last_season_number": 1,
+                "last_episode_number": 1,
+                "write_mode": "add",
+                "distribution_mode": "air_date",
+                "start_date": "2024-02-01T20:15",
+                "end_date": "2024-02-01T20:15",
+            },
+        )
+
+        self.assertEqual(response.status_code, 204)
+        episode = Episode.objects.get(
+            related_season__user=self.user,
+            item__media_id="1396",
+        )
+        local_end = timezone.localtime(episode.end_date)
+        self.assertEqual((local_end.hour, local_end.minute), (20, 15))
+
+    @patch("app.views.metadata_resolution.resolve_detail_metadata")
+    @patch("app.providers.services.get_media_metadata")
+    def test_bulk_even_distribution_keeps_picked_time_of_day(
+        self,
+        mock_get_metadata,
+        mock_resolve_detail_metadata,
+    ):
+        """A bulk-logged range keeps the picker's time, not just its date.
+
+        Regression test for #1232: the background task truncated
+        start_date/end_date to bare dates (`date.fromisoformat(...)`)
+        before handing them to the distribution logic, so every bulk play
+        landed at midnight regardless of the time the user picked in the
+        TRACK_TIME-enabled date/time picker.
+        """
+        seasons = [
+            {
+                "season_number": 1,
+                "season_title": "Season 1",
+                "episodes": [
+                    _season_episode(1, air_date="2024-01-01"),
+                    _season_episode(2, air_date="2024-01-02"),
+                ],
+            },
+        ]
+        base_payload = _tv_base_payload(
+            "1396",
+            Sources.TMDB.value,
+            title="Breaking Bad",
+            seasons=seasons,
+        )
+        tv_with_seasons = _tv_with_seasons_payload(
+            "1396",
+            Sources.TMDB.value,
+            title="Breaking Bad",
+            seasons=seasons,
+        )
+        mock_get_metadata.side_effect = lambda media_type, *_args, **_kwargs: (
+            tv_with_seasons if media_type == "tv_with_seasons" else base_payload
+        )
+        mock_resolve_detail_metadata.return_value = self.default_resolution
+
+        response = self._post_bulk(
+            {
+                "media_id": "1396",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.TV.value,
+                "library_media_type": MediaTypes.TV.value,
+                "identity_media_type": "",
+                "instance_id": "",
+                "return_url": self.return_url,
+                "first_season_number": 1,
+                "first_episode_number": 1,
+                "last_season_number": 1,
+                "last_episode_number": 2,
+                "write_mode": "add",
+                "distribution_mode": "even",
+                "start_date": "2024-02-01T09:30",
+                "end_date": "2024-02-01T09:30",
+            },
+        )
+
+        self.assertEqual(response.status_code, 204)
+        episodes = list(
+            Episode.objects.filter(
+                related_season__user=self.user,
+                item__media_id="1396",
+            ).order_by("item__episode_number"),
+        )
+        self.assertEqual(len(episodes), 2)
+        for episode in episodes:
+            local_end = timezone.localtime(episode.end_date)
+            self.assertEqual((local_end.hour, local_end.minute), (9, 30))
 
     @patch("app.views.metadata_resolution.resolve_detail_metadata")
     @patch("app.providers.services.get_media_metadata")

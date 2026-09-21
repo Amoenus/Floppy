@@ -164,10 +164,15 @@ class TrackModalViewTests(TestCase):
         self.assertTrue(response.context["discover_tab_available"])
         self.assertFalse(response.context["is_hidden_from_discover"])
         content = response.content.decode()
-        self.assertEqual(content.count("Start Now"), 2)
-        self.assertEqual(content.count("Just Finished"), 2)
-        self.assertEqual(content.count("Release Date"), 4)
-        self.assertEqual(content.count(':disabled="!resolvedSuggestionDate()"'), 2)
+        # Split per #1243: the start-date picker shows Start Now + Release
+        # Date, the end-date picker shows only Just Finished. "Release Date"
+        # also appears once per picker in the unconditional x-data config
+        # (see suggestionLabel below), plus once as the start field's
+        # visible quick-action label.
+        self.assertEqual(content.count("Start Now"), 1)
+        self.assertEqual(content.count("Just Finished"), 1)
+        self.assertEqual(content.count("Release Date"), 3)
+        self.assertEqual(content.count(':disabled="!resolvedSuggestionDate()"'), 1)
         general_field_names = [
             field.name for field in response.context["general_fields"]
         ]
@@ -1254,7 +1259,11 @@ class TrackModalViewTests(TestCase):
             response.context["episode_plays_form"]["distribution_mode"].value(),
             "air_date",
         )
-        self.assertContains(response, "Release Date", count=6)
+        # Split per #1243: each date/time picker's Start Now / Just Finished
+        # / Release Date shortcuts are scoped to their own field via
+        # quick_action_mode, on both the General tab's start/end pickers and
+        # the Episode Plays bulk-range start/end pickers.
+        self.assertContains(response, "Release Date", count=4)
         self.assertEqual(
             response.context["episode_plays_domain"]["seasonEpisodeMap"]["1"][0][
                 "runtime_minutes"
