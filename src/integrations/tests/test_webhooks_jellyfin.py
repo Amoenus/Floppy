@@ -1060,6 +1060,153 @@ class JellyfinWebhookTests(TestCase):
                         MediaTypes.ANIME.value,
                     )
 
+    @patch("app.services.grouped_anime.classify_tv_metadata")
+    @patch("app.providers.tmdb.tv_with_seasons")
+    @patch("app.providers.tmdb.find")
+    @patch.object(JellyfinWebhookProcessor, "_find_tv_media_id")
+    def test_stale_grouped_anime_match_does_not_corrupt_recovered_show(
+        self,
+        mock_find_tv_media_id,
+        mock_find,
+        mock_tv_with_seasons,
+        mock_classify,
+    ):
+        """A grouped-anime match computed pre-recovery must not survive it.
+
+        Regression for issue #1246: Jellyfin sent a TVDB episode ID that
+        `_find_tv_media_id` first resolved to an unrelated (but genuinely
+        animated) TMDB show. That wrong show's metadata falsely matched the
+        Anime-IDs mapping, but season recovery then correctly re-resolved the
+        real, already-tracked show. The stale match must not be applied to
+        that real item - doing so previously flipped it into the anime
+        bucket and stamped it with the wrong show's TMDB id.
+        """
+        wrong_show_metadata = {
+            "media_id": "42917",
+            "title": "Wrong Anime Show",
+            "image": "https://example.com/wrong.jpg",
+            "tvdb_id": "83315",
+            "genres": ["Animation"],
+        }
+        real_show_metadata = {
+            "media_id": "3968",
+            "title": "NewsRadio",
+            "image": "https://example.com/newsradio.jpg",
+            "tvdb_id": "75978",
+            "genres": ["Comedy"],
+            "season/2": {
+                "image": "https://example.com/season2.jpg",
+                # A second, unwatched episode keeps the season from being
+                # marked completed by this webhook, which would otherwise
+                # trigger an unrelated "next season" TMDB lookup.
+                "episodes": [{"episode_number": 2}, {"episode_number": 3}],
+            },
+        }
+
+        def tv_with_seasons_side_effect(media_id, _season_numbers, language=None):
+            if str(media_id) == "42917":
+                return wrong_show_metadata
+            if str(media_id) == "3968":
+                return real_show_metadata
+            raise AssertionError(f"unexpected tv_with_seasons media_id={media_id}")
+
+        mock_tv_with_seasons.side_effect = tv_with_seasons_side_effect
+        mock_find.return_value = {"tv_episode_results": [], "tv_results": []}
+        # Jellyfin's live-playback card resolution runs first and resolves
+        # cleanly; the second call (from `_process_tv`) resolves the incoming
+        # TVDB episode id to the wrong show; the third is
+        # `_recover_tv_metadata_for_missing_season`'s independent
+        # re-resolution, which finds the real show.
+        def find_tv_media_id_side_effect(_ids, *args, **kwargs):
+            # The live-playback fallback and `_process_tv`'s initial lookup
+            # both call this with identical args (series_title kwarg
+            # present) and both resolve to the wrong show here, exactly as
+            # the real bug did. Only the missing-season recovery's
+            # alt-ids-only call (no kwargs) resolves to the real show.
+            if kwargs:
+                return ("42917", None, None)
+            return ("3968", None, None)
+
+        mock_find_tv_media_id.side_effect = find_tv_media_id_side_effect
+
+        def classify_side_effect(metadata, snapshot=None):
+            if metadata.get("media_id") == "42917":
+                return GroupedAnimeMatch(
+                    decision="move",
+                    reason="exact_external_id_and_animation_genre",
+                    tmdb_id="42917",
+                    tvdb_id="83315",
+                    mal_ids=("99999",),
+                )
+            return GroupedAnimeMatch(
+                decision="leave",
+                reason="no_exact_anime_ids_external_id_match",
+            )
+
+        mock_classify.side_effect = classify_side_effect
+
+        real_item = Item.objects.create(
+            media_id="3968",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type="",
+            title="NewsRadio",
+            image="https://example.com/newsradio.jpg",
+        )
+        TV.objects.create(
+            item=real_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        payload = {
+            "Event": "Stop",
+            "Item": {
+                "Type": "Episode",
+                "Name": "Rat Funeral",
+                "ProviderIds": {"Tmdb": "", "Imdb": "tt0660219", "Tvdb": "83315"},
+                "UserData": {"Played": True},
+                "SeriesName": "NewsRadio",
+                "ParentIndexNumber": 2,
+                "IndexNumber": 2,
+            },
+        }
+
+        response = self.client.post(
+            self.url,
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        real_item.refresh_from_db()
+        self.assertNotEqual(
+            real_item.library_media_type,
+            MediaTypes.ANIME.value,
+            "the stale match promoted the real, already-tracked item into "
+            "the anime bucket",
+        )
+        self.assertNotEqual(
+            real_item.provider_external_ids.get("tmdb_id"),
+            "42917",
+            "the wrong show's TMDB id leaked onto the real item",
+        )
+        self.assertFalse(
+            ItemProviderLink.objects.filter(
+                provider=Sources.TMDB.value,
+                provider_media_id="42917",
+            ).exists(),
+            "a provider link for the wrong show was created",
+        )
+        self.assertTrue(
+            Episode.objects.filter(
+                item__media_id="3968",
+                item__season_number=2,
+                item__episode_number=2,
+            ).exists(),
+        )
+
     def test_ignored_event_types(self):
         """Test webhook ignores irrelevant event types."""
         payload = {
