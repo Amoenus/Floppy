@@ -336,6 +336,29 @@ def _read_cgroup():
     }
 
 
+def _capture_warning(measured, rss_only, processes):
+    """Explain why a capture is not usable, or return None if it is.
+
+    Note `smaps_detail` reports "full" when nothing was measured at all, since
+    there are then no rss-only processes to report. That is the one case a
+    reader is most likely to mistake for success, so it is named separately.
+    """
+    if not processes:
+        return "no processes found; this is not a capture of a running container"
+    if not measured:
+        return (
+            "no process could be measured via smaps_rollup; re-run with "
+            "`docker exec --privileged -u 0` (CAP_SYS_PTRACE is required to "
+            "read another uid's smaps_rollup, and Docker drops it by default)"
+        )
+    if rss_only:
+        return (
+            f"PSS unavailable for {len(rss_only)} of {len(processes)} "
+            "processes; re-run with `docker exec --privileged -u 0`"
+        )
+    return None
+
+
 def _sum_or_none(processes, key):
     """Return the summed KiB for a key, or None if any process lacks it."""
     total = 0
@@ -411,6 +434,14 @@ def sample():
         "smaps_detail": (
             "full" if not rss_only else ("none" if not measured else "partial")
         ),
+        # A capture that silently fell back to VmRSS reports no PSS for the
+        # processes it could not read, and a reader who does not notice will
+        # compare a partial number against a full one. Docker drops
+        # CAP_SYS_PTRACE by default, so `docker exec --user root` is not
+        # enough: smaps_rollup for a process owned by another uid still fails
+        # the ptrace access check. Re-run with `docker exec --privileged -u 0`.
+        "capture_valid": not rss_only and bool(measured),
+        "capture_warning": _capture_warning(measured, rss_only, processes),
         "pss_breakdown_available": bool(measured)
         and measured[0]["pss_anon_kib"] is not None,
         "clock_ticks_per_second": clock_ticks,
