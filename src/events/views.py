@@ -11,7 +11,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
-from django.utils import timezone
+from django.utils import formats, timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
@@ -69,8 +69,10 @@ def calendar(request):
     calendar_format = cal.Calendar(firstweekday=first_weekday).monthdayscalendar(
         year, month
     )
-    month_name = cal.month_name[month]
-    base_weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    month_name = formats.date_format(current_date, "F")
+    base_weekdays = [
+        formats.date_format(date(2024, 1, day), "D") for day in range(1, 8)
+    ]
     weekday_headers = (
         [base_weekdays[6], *base_weekdays[:6]] if week_start_sunday else base_weekdays
     )
