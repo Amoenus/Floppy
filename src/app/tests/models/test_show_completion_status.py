@@ -105,7 +105,7 @@ class ShowCompletionStatusTests(TestCase):
         self.assertEqual(self.tv.status, Status.COMPLETED.value)
     @patch("app.models.providers.services.get_media_metadata")
     def test_handle_completed_season_with_none_nested_metadata(self, mock_metadata):
-        """_handle_completed_season handles None details and related dicts without crashing."""
+        """None details/related don't crash, and a missing status doesn't complete."""
         mock_metadata.return_value = {
             "details": None,
             "related": None,
@@ -116,7 +116,24 @@ class ShowCompletionStatusTests(TestCase):
         self.season.status = Status.COMPLETED.value
         self.season.save()
 
-        # Should not raise AttributeError
+        # Should not raise AttributeError, and a provider that reports no
+        # status gives no evidence the show has ended.
+        self.tv._handle_completed_season(completed_season_number=1)
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.IN_PROGRESS.value)
+
+    @patch("app.models.providers.services.get_media_metadata")
+    def test_handle_completed_season_completes_manual_show_without_status(
+        self, mock_metadata
+    ):
+        """A manual show has no provider status; watching everything finishes it."""
+        mock_metadata.return_value = {"title": "Home Videos"}
+        self.tv_item.source = Sources.MANUAL.value
+        self.tv_item.save(update_fields=["source"])
+        self.tv.refresh_from_db()
+        self.season.status = Status.COMPLETED.value
+        self.season.save()
+
         self.tv._handle_completed_season(completed_season_number=1)
         self.tv.refresh_from_db()
         self.assertEqual(self.tv.status, Status.COMPLETED.value)

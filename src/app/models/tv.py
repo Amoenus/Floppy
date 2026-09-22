@@ -926,6 +926,15 @@ class TV(Media):
                 )
                 return
 
+            if (
+                classification == PRODUCTION_STATUS_ABSENT
+                and self.tracking_source != Sources.MANUAL.value
+            ):
+                # A provider that answers without any status gives no evidence
+                # the show has ended. Only a manual show, which has no provider
+                # to ask, is finished by watching everything the user added.
+                return
+
             if self.status != Status.COMPLETED.value:
                 self.status = Status.COMPLETED.value
                 bulk_update_with_history(
