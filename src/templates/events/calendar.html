@@ -83,7 +83,7 @@
                 <button type="button"
                         class="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
                         @click="toggleAllTypes()"
-                        x-text="allTypesSelected() ? 'Hide all' : 'Show all'"></button>
+                        x-text="allTypesSelected() ? gettext('Hide all') : gettext('Show all')"></button>
               </div>
               <div class="max-h-64 overflow-y-auto">
                 <template x-for="type in availableMediaTypes" :key="type.value">
@@ -124,11 +124,11 @@
                   {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
                 </button>
                 <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]"
-                     x-text="submenuTypeLabel() + ' Status'"></div>
+                     x-text="submenuTypeLabel() + ' ' + gettext('Status')"></div>
                 <button type="button"
                         class="ml-auto text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
                         @click="toggleAllStatusesForType(statusSubmenuType)"
-                        x-text="allStatusesSelectedForType(statusSubmenuType) ? 'Hide all' : 'Show all'"></button>
+                        x-text="allStatusesSelectedForType(statusSubmenuType) ? gettext('Hide all') : gettext('Show all')"></button>
               </div>
               <div class="max-h-64 overflow-y-auto">
                 <template x-for="status in (availableStatusesByType[statusSubmenuType] || [])" :key="status.value">
@@ -443,18 +443,18 @@
           );
           const statusMarker = statusFiltered ? ' ·' : '';
           if (this.allTypesSelected()) {
-            return `All Types${statusMarker}`;
+            return `${gettext('All Types')}${statusMarker}`;
           }
           if (this.selectedMediaTypes.length === 0) {
-            return 'No Types';
+            return gettext('No Types');
           }
           if (this.selectedMediaTypes.length === 1) {
             const selectedType = this.availableMediaTypes.find(
               type => type.value === this.selectedMediaTypes[0],
             );
-            return selectedType ? `${selectedType.label}${statusMarker}` : '1 Type';
+            return selectedType ? `${selectedType.label}${statusMarker}` : gettext('1 Type');
           }
-          return `${this.selectedMediaTypes.length} Types${statusMarker}`;
+          return `${this.selectedMediaTypes.length} ${gettext('Types')}${statusMarker}`;
         },
         allTypesSelected() {
           return (
@@ -641,10 +641,10 @@
 
             const eventCount = releaseCountByDay.get(day) || 0;
             if (agendaTitle) {
-              agendaTitle.textContent = monthName ? `${monthName} ${day}` : `Day ${day}`;
+              agendaTitle.textContent = monthName ? `${monthName} ${day}` : `${gettext('Day')} ${day}`;
             }
             if (agendaCount) {
-              agendaCount.textContent = eventCount === 1 ? '1 release' : `${eventCount} releases`;
+              agendaCount.textContent = `${eventCount} ${gettext(eventCount === 1 ? 'release' : 'releases')}`;
             }
           };
 

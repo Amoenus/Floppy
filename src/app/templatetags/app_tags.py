@@ -9,8 +9,9 @@ from django.urls import reverse
 from django.utils import formats, timezone
 from django.utils.dateparse import parse_date
 from django.utils.html import format_html
-from django.utils.translation import gettext as _
+from django.utils.translation import get_language_info, gettext as _
 from django.utils.translation import npgettext
+from django.utils.translation import pgettext
 from unidecode import unidecode
 
 from app import config, helpers, image_cache
@@ -21,6 +22,111 @@ from users.models import TimeFormatChoices
 from users.templatetags.user_tags import user_date_format, user_time_format
 
 register = template.Library()
+
+
+@register.filter
+def translate_detail_value(value):
+    """Translate dynamic media-detail values while preserving their data."""
+    if value is None:
+        return _("Unknown")
+
+    text = str(value)
+    season_match = re.fullmatch(r"(Spring|Summer|Fall|Winter)\s+(\d{4})", text)
+    if season_match:
+        season, year = season_match.groups()
+        return _("%(season)s %(year)s") % {"season": _(season), "year": year}
+
+    broadcast_match = re.fullmatch(
+        r"(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)(\s+.+)",
+        text,
+    )
+    if broadcast_match:
+        weekday, remainder = broadcast_match.groups()
+        return f"{_(weekday)}{remainder}"
+
+    players_match = re.fullmatch(r"(\d+(?:-\d+)?)\s+players?", text, re.IGNORECASE)
+    if players_match:
+        return _("%(count)s players") % {"count": players_match.group(1)}
+
+    return _(text)
+
+
+@register.filter
+def translate_language_code(value):
+    """Return the localized language name for an ISO language code."""
+    if not value:
+        return _("Unknown")
+    try:
+        return get_language_info(str(value).replace("_", "-"))["name_translated"]
+    except KeyError:
+        return str(value)
+
+
+@register.filter
+def translate_activity_text(value, media_type=None):
+    """Translate dynamic activity counters shared by all detail pages."""
+    if not value:
+        return ""
+
+    text = str(value)
+    progress_match = re.fullmatch(r"Progress:\s*(.+)", text)
+    if progress_match:
+        return _("Progress: %(value_1)s") % {"value_1": progress_match.group(1)}
+
+    activity_match = re.fullmatch(
+        r"(Watched|Played|Listened|Read)\s+(once|\d+\s+times)",
+        text,
+        re.IGNORECASE,
+    )
+    if not activity_match:
+        return _(text)
+
+    verb = activity_match.group(1).title()
+    amount = activity_match.group(2).lower()
+    if verb == "Played" and media_type in {
+        MediaTypes.GAME.value,
+        MediaTypes.BOARDGAME.value,
+    }:
+        if amount == "once":
+            return pgettext("game activity", "Played once")
+        count = amount.split()[0]
+        return pgettext("game activity", "Played %(value_1)s times") % {
+            "value_1": count,
+        }
+
+    count = amount.split()[0]
+    if verb == "Watched":
+        if amount == "once":
+            return _("Watched once")
+        return _("Watched %(value_1)s times") % {"value_1": count}
+    if verb == "Listened":
+        if amount == "once":
+            return _("Listened once")
+        return _("Listened %(value_1)s times") % {"value_1": count}
+    if verb == "Read":
+        if amount == "once":
+            return _("Read once")
+        return _("Read %(value_1)s times") % {"value_1": count}
+    if amount == "once":
+        return _("Played once")
+    return _("Played %(value_1)s times") % {"value_1": count}
+
+
+@register.filter
+def translate_history_description(value):
+    """Translate dated descriptions that history_processor builds dynamically."""
+    if not value:
+        return ""
+
+    text = str(value)
+    dated_change = re.fullmatch(r"(Started|Finished) on\s+(.+)", text)
+    if not dated_change:
+        return _(text)
+
+    action, formatted_date = dated_change.groups()
+    if action == "Started":
+        return _("Started on %(date)s") % {"date": formatted_date}
+    return _("Finished on %(date)s") % {"date": formatted_date}
 
 
 @register.simple_tag

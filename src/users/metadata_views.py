@@ -6,6 +6,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
+from django.utils.translation import gettext
 from django.views.decorators.http import require_GET, require_POST
 
 from app import config, preflight
@@ -175,8 +176,8 @@ def metadata_settings(request):
             groups.append(
                 {
                     "key": group,
-                    "label": credentials.GROUP_LABELS[group],
-                    "description": credentials.GROUP_DESCRIPTIONS[group],
+                    "label": gettext(credentials.GROUP_LABELS[group]),
+                    "description": gettext(credentials.GROUP_DESCRIPTIONS[group]),
                     "providers": providers,
                 },
             )

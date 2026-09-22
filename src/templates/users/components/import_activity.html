@@ -83,7 +83,7 @@
         </div>
 
         {% if result.status %}
-          {% if result.summary %}<div class="text-sm text-[var(--color-text-secondary)]">{{ result.summary }}</div>{% endif %}
+          {% if result.summary %}<div class="text-sm text-[var(--color-text-secondary)]">{{ result.summary|translate_import_summary }}</div>{% endif %}
 
           {% if result.status == "STARTED" and result.progress_current %}
             <div class="mt-2">
@@ -216,7 +216,7 @@
         <div class="bg-[var(--color-surface-strong)] rounded-lg p-4 flex items-center justify-between gap-3">
           <div class="flex items-center gap-3">
             {% source_display row.source %}
-            <span class="text-sm text-[var(--color-text-secondary)]">{% blocktranslate with media_type=row.media_type count count=row.count %}{{ media_type }} · {{ count }} item{% plural %}{{ media_type }} · {{ count }} items{% endblocktranslate %}</span>
+            <span class="text-sm text-[var(--color-text-secondary)]">{% with media_type=row.media_type|media_type_readable %}{% blocktranslate count count=row.count %}{{ media_type }} · {{ count }} item{% plural %}{{ media_type }} · {{ count }} items{% endblocktranslate %}{% endwith %}</span>
           </div>
           <form action="{% url 'bulk_delete_by_import_source' row.media_type row.source %}"
                 method="post"

@@ -1,5 +1,6 @@
 from django.apps import apps
 from django.template.defaultfilters import pluralize
+from django.utils.translation import gettext
 
 from app import config, helpers
 from app.models import MediaTypes, Status
@@ -164,10 +165,12 @@ def apply_date_status_integration(changes, user):
         and status_change
         and status_change["new"] == Status.IN_PROGRESS.value
     ):
-        date_changes["start_date"]["description"] = (
-            f"Started on "
-            f"{app_tags.datetime_format(date_changes['start_date']['new'], user)}"
+        formatted_date = app_tags.datetime_format(
+            date_changes["start_date"]["new"], user
         )
+        date_changes["start_date"]["description"] = gettext(
+            "Started on %(date)s"
+        ) % {"date": formatted_date}
         changes["status_change"] = None
 
     # Process end date with status
@@ -176,10 +179,12 @@ def apply_date_status_integration(changes, user):
         and status_change
         and status_change["new"] == Status.COMPLETED.value
     ):
-        date_changes["end_date"]["description"] = (
-            f"Finished on "
-            f"{app_tags.datetime_format(date_changes['end_date']['new'], user)}"
+        formatted_date = app_tags.datetime_format(
+            date_changes["end_date"]["new"], user
         )
+        date_changes["end_date"]["description"] = gettext(
+            "Finished on %(date)s"
+        ) % {"date": formatted_date}
         changes["status_change"] = None
 
 

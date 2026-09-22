@@ -125,7 +125,7 @@
                     type="button">
               <span class="flex-shrink-0 mr-3">{% translate "Genre" %}</span>
               <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
-                    x-text="genre || gettext('Any')"></span>
+                    x-text="genre ? gettext(genre) : gettext('Any')"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -135,7 +135,7 @@
                     type="button">
               <span class="flex-shrink-0 mr-3">{% translate "Implied Genre" %}</span>
               <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
-                    x-text="implied_genre || gettext('Any')"></span>
+                    x-text="implied_genre ? gettext(implied_genre) : gettext('Any')"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -176,7 +176,7 @@
                     type="button">
               <span class="flex-shrink-0 mr-3">{% translate "Availability" %}</span>
               <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
-                    x-text="media_status ? media_status : gettext('Any')"></span>
+                    x-text="media_status ? gettext(media_status) : gettext('Any')"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -187,7 +187,7 @@
                     type="button">
               <span class="flex-shrink-0 mr-3">{% translate "Language" %}</span>
               <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
-                    x-text="language ? (language.length <= 3 ? language.toUpperCase() : language) : gettext('Any')"></span>
+                    x-text="language ? gettext(language.length <= 3 ? language.toUpperCase() : language) : gettext('Any')"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -198,7 +198,7 @@
                     type="button">
               <span class="flex-shrink-0 mr-3">{% translate "Country" %}</span>
               <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
-                    x-text="country ? (country.length <= 3 ? country.toUpperCase() : country) : gettext('Any')"></span>
+                    x-text="country ? gettext(country.length <= 3 ? country.toUpperCase() : country) : gettext('Any')"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -366,7 +366,7 @@
                       class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="genre = option; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
                       type="button">
-                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option"></span>
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="gettext(option)"></span>
                 <span class="ml-auto" x-show="genre === option">
                   {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
                 </span>
@@ -411,7 +411,7 @@
                       class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="implied_genre = option; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
                       type="button">
-                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option"></span>
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="gettext(option)"></span>
                 <span class="ml-auto" x-show="implied_genre === option">
                   {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
                 </span>
@@ -577,7 +577,7 @@
                     hx-indicator="#loading-indicator"
                         @click="toggleList(option.id); setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
                         type="button">
-                  <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                  <span class="block min-w-0 truncate max-w-[11rem]" x-text="gettext(option.label)"></span>
                   <span class="ml-auto" x-show="isListSelected(option.id)">
                     {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
                   </span>
@@ -834,7 +834,7 @@
                       class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="year = option.value; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
                       type="button">
-                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="gettext(option.label)"></span>
                 <span class="ml-auto" x-show="year === option.value">
                   {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
                 </span>
@@ -929,7 +929,7 @@
                       class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="source = option.value; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
                       type="button">
-                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="gettext(option.label)"></span>
                 <span class="ml-auto" x-show="source === option.value">
                   {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
                 </span>
@@ -966,7 +966,7 @@
                   {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
                 </span>
               </button>
-              <template x-for="option in filteredMediaStatuses()" :key="option.value">
+            <template x-for="option in filteredMediaStatuses()" :key="option.value">
                 <button hx-trigger="filter-apply"
                     hx-get="{{ filter_hx_endpoint }}"
                         hx-target="{{ filter_hx_target }}"
@@ -975,7 +975,7 @@
                         class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                         @click="media_status = option.value; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
                         type="button">
-                  <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                  <span class="block min-w-0 truncate max-w-[11rem]" x-text="gettext(option.label)"></span>
                   <span class="ml-auto" x-show="media_status === option.value">
                     {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
                   </span>
@@ -1021,7 +1021,7 @@
                       class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="language = option.value; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
                       type="button">
-                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="gettext(option.label)"></span>
                 <span class="ml-auto" x-show="language === option.value">
                   {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
                 </span>
@@ -1066,7 +1066,7 @@
                       class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="country = option.value; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
                       type="button">
-                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="gettext(option.label)"></span>
                 <span class="ml-auto" x-show="country === option.value">
                   {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
                 </span>
@@ -1333,7 +1333,7 @@
                       class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="provider = ''; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
                       type="button">
-                <span>Any Streaming Service</span>
+                <span>{% translate "Any Streaming Service" %}</span>
                 <span class="ml-auto" x-show="provider === ''">
                   {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
                 </span>
