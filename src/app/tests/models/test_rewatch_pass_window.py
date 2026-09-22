@@ -20,6 +20,7 @@ class RewatchPassWindowTests(TestCase):
     """Which plays count towards an open rewatch pass."""
 
     def setUp(self):
+        """Create a user tracking one show with a watched season."""
         self.factory = RequestFactory()
         self.user = User.objects.create_user(
             username="testuser",
