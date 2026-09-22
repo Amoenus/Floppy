@@ -22,6 +22,7 @@ class StremioStatusSyncTests(TestCase):
     """A recurring Stremio sync must not overwrite a tracked show's status."""
 
     def setUp(self):
+        """Create a user tracking one show with a watched season."""
         self.factory = RequestFactory()
         self.user = User.objects.create_user(
             username="testuser",
@@ -70,7 +71,7 @@ class StremioStatusSyncTests(TestCase):
             )
     @patch("integrations.imports.helpers.decrypt_or_raise", return_value="dummy-key")
     @patch("app.providers.tmdb.tv_with_seasons")
-    def test_stremio_recurring_sync_overwrites_in_progress_tv_status(
+    def test_stremio_recurring_sync_does_not_complete_in_progress_show(
         self, mock_tv_with_seasons, mock_decrypt
     ):
         """Stremio sync does NOT promote IN_PROGRESS show to COMPLETED (season is marked COMPLETED)."""
@@ -178,7 +179,7 @@ class StremioStatusSyncTests(TestCase):
     def test_stremio_sync_does_not_complete_show_with_unknown_status(
         self, mock_metadata, mock_decrypt
     ):
-        """An unrecognized status is not the positive evidence the sync requires."""
+        """An unrecognized status can't complete the show; watching still starts it."""
         mock_metadata.return_value = {
             "title": "Alien: Earth",
             "details": {"status": "Terminada"},
@@ -193,9 +194,9 @@ class StremioStatusSyncTests(TestCase):
             Status.COMPLETED.value,
         )
 
-        self.assertFalse(advanced)
+        self.assertTrue(advanced)
         self.tv.refresh_from_db()
-        self.assertEqual(self.tv.status, Status.PLANNING.value)
+        self.assertEqual(self.tv.status, Status.IN_PROGRESS.value)
     @patch("integrations.imports.helpers.decrypt_or_raise", return_value="dummy-key")
     @patch("app.models.providers.services.get_media_metadata")
     def test_stremio_sync_completes_show_the_provider_calls_ended(

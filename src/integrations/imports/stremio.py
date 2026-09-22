@@ -497,8 +497,10 @@ class StremioImporter:
             # Completing it here overwrites a status the user set (#375), so
             # require positive evidence from the provider instead - and require
             # it whether the row is Planning or In progress, so the two can't
-            # disagree.
-            return False
+            # disagree. Watching still moves a Planning show to In progress.
+            new_status = Status.IN_PROGRESS.value
+            if _STATUS_RANK[new_status] <= old_rank:
+                return False
 
         instance.status = new_status
         for field, value in field_updates.items():
