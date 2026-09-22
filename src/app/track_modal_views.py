@@ -875,13 +875,19 @@ def _render_standard_track_modal(
         "episode_plays_domain_script_id": f"{track_form_id}-episode-domain",
         "collection_tab_available": False,
         "collection_context": None,
-        "status_changes": (
-            history_processor.status_change_log(media)
-            if media is not None
-            and media_type in (MediaTypes.TV.value, MediaTypes.SEASON.value)
-            else []
-        ),
     }
+    context["status_history_tab_available"] = bool(
+        media is not None
+        and media_type in (MediaTypes.TV.value, MediaTypes.SEASON.value),
+    )
+    context["status_changes"] = (
+        history_processor.status_change_log(
+            media,
+            limit=history_processor.STATUS_HISTORY_TAB_LENGTH,
+        )
+        if context["status_history_tab_available"]
+        else []
+    )
     koreader_account = getattr(request.user, "koreader_account", None)
     context["show_koreader_document_field"] = bool(
         media_type == MediaTypes.BOOK.value

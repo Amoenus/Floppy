@@ -104,8 +104,8 @@ class StatusChangeReasonTests(TestCase):
         self.assertEqual(self.tv.status, Status.PAUSED.value)
         self.assertEqual(status_change_log(self.tv)[0]["reason"], "you")
 
-    def test_edit_tracking_modal_shows_recent_status_changes(self):
-        """The Edit Tracking modal lists what changed the show's status."""
+    def test_edit_tracking_modal_has_status_history_tab(self):
+        """The Edit Tracking modal has a Status history tab naming each change's cause."""
         self._verified_play()
         self.client.login(**self.credentials)
 
@@ -121,7 +121,8 @@ class StatusChangeReasonTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Recent status changes")
+        self.assertTrue(response.context["status_history_tab_available"])
+        self.assertContains(response, "activeTab = 'status-history'")
         self.assertContains(response, "by Stremio playback")
 
     def test_diagnose_command_reports_changes_and_schedules(self):

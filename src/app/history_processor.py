@@ -340,7 +340,8 @@ def format_description(field_name, old_value, new_value, media_type=None, user=N
 # status log can tell their edits apart from automatic ones (#1133).
 USER_EDIT_REASON = "you"
 STATUS_LOG_LENGTH = 5
-_STATUS_LOG_SCAN = 200
+STATUS_HISTORY_TAB_LENGTH = 50
+_STATUS_LOG_SCAN = 500
 
 
 def status_change_log(media, limit=STATUS_LOG_LENGTH):
