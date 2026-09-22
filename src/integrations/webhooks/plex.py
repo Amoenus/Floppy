@@ -60,6 +60,8 @@ tasks = _TasksProxy()
 class PlexWebhookProcessor(BaseWebhookProcessor):
     """Processor for Plex webhook events."""
 
+    SOURCE_LABEL = "plex"
+
     MEDIA_TYPE_MAPPING = {
         **BaseWebhookProcessor.MEDIA_TYPE_MAPPING,
         "Track": MediaTypes.MUSIC.value,

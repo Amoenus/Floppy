@@ -348,6 +348,7 @@ class MediaForm(RatingScaleFormMixin, forms.ModelForm):
             "start_date",
             "end_date",
             "notes",
+            "entry_source",
         ]
         widgets = {
             "score": forms.NumberInput(
@@ -367,6 +368,20 @@ class MediaForm(RatingScaleFormMixin, forms.ModelForm):
             "notes": forms.Textarea(
                 attrs={"placeholder": _("Add any notes or comments..."), "rows": "5"},
             ),
+            "entry_source": forms.TextInput(
+                attrs={
+                    "placeholder": _("e.g. Plex, Jellyfin, Theatre..."),
+                    # A plain text input's native Enter-to-submit can bypass
+                    # htmx's own submit handling (issue: Enter here fell back
+                    # to a raw form POST/navigation instead of the AJAX
+                    # save). Route Enter through the same requestSubmit()
+                    # path a real click on the submit button uses.
+                    "@keydown.enter.prevent": "$el.closest('form').requestSubmit()",
+                },
+            ),
+        }
+        labels = {
+            "entry_source": _("Source"),
         }
 
     def __init__(self, *args, **kwargs):
@@ -453,6 +468,7 @@ class MovieForm(MediaForm):
             "start_date",
             "end_date",
             "notes",
+            "entry_source",
         ]
 
 
@@ -575,7 +591,7 @@ class TvForm(MediaForm):
         """Bind form to model."""
 
         model = TV
-        fields = ["score", "status", "notes"]
+        fields = ["score", "status", "notes", "entry_source"]
 
 
 class SeasonForm(MediaForm):
@@ -597,6 +613,7 @@ class SeasonForm(MediaForm):
             "score",
             "status",
             "notes",
+            "entry_source",
         ]
 
 
@@ -617,7 +634,7 @@ class EpisodeForm(RatingScaleFormMixin, forms.ModelForm):
         """Bind form to model."""
 
         model = Episode
-        fields = ("score", "status", "start_date", "end_date", "notes")
+        fields = ("score", "status", "start_date", "end_date", "notes", "entry_source")
         widgets = {
             "score": forms.NumberInput(
                 attrs={"min": 0, "max": 10, "step": 0.1, "placeholder": "0-10"},
@@ -629,6 +646,15 @@ class EpisodeForm(RatingScaleFormMixin, forms.ModelForm):
             "notes": forms.Textarea(
                 attrs={"placeholder": _("Add any notes or comments..."), "rows": "5"},
             ),
+            "entry_source": forms.TextInput(
+                attrs={
+                    "placeholder": _("e.g. Plex, Jellyfin, Theatre..."),
+                    "@keydown.enter.prevent": "$el.closest('form').requestSubmit()",
+                },
+            ),
+        }
+        labels = {
+            "entry_source": _("Source"),
         }
 
     def __init__(self, *args, **kwargs):

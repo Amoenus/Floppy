@@ -27,6 +27,8 @@ def _ticks_to_seconds(ticks) -> int | None:
 class EmbyWebhookProcessor(BaseWebhookProcessor):
     """Processor for Emby webhook events."""
 
+    SOURCE_LABEL = "emby"
+
     def process_payload(self, payload, user):
         """Process the incoming Emby webhook payload."""
         logger.debug(

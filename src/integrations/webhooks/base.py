@@ -26,6 +26,11 @@ ANIME_EPISODE_REFUSED = object()
 class BaseWebhookProcessor:
     """Base class for webhook processors."""
 
+    # Short label recorded on `Media.entry_source`/`MoviePlay.entry_source`/
+    # `Episode.entry_source` for rows this processor creates. Subclasses set
+    # their provider name.
+    SOURCE_LABEL = ""
+
     MEDIA_TYPE_MAPPING = {
         "Episode": MediaTypes.TV.value,
         "Movie": MediaTypes.MOVIE.value,
@@ -1320,6 +1325,9 @@ class BaseWebhookProcessor:
                 current_instance.start_date = now
                 current_instance.status = Status.IN_PROGRESS.value
 
+            if self.SOURCE_LABEL and not current_instance.entry_source:
+                current_instance.entry_source = self.SOURCE_LABEL
+
             if current_instance.tracker.changed():
                 current_instance.save()
                 logger.info(
@@ -1357,6 +1365,7 @@ class BaseWebhookProcessor:
                     else Status.IN_PROGRESS.value,
                     start_date=now if not movie_played else None,
                     end_date=now if movie_played else None,
+                    entry_source=self.SOURCE_LABEL,
                 )
                 logger.info(
                     "Created new movie instance with status: %s",
@@ -1954,7 +1963,10 @@ class BaseWebhookProcessor:
         tv_instance, tv_created = app.models.TV.objects.get_or_create(
             item=tv_item,
             user=user,
-            defaults={"status": Status.IN_PROGRESS.value},
+            defaults={
+                "status": Status.IN_PROGRESS.value,
+                "entry_source": self.SOURCE_LABEL,
+            },
         )
 
         if tv_created:
@@ -2062,7 +2074,10 @@ class BaseWebhookProcessor:
             item=season_item,
             user=user,
             related_tv=tv_instance,
-            defaults={"status": Status.IN_PROGRESS.value},
+            defaults={
+                "status": Status.IN_PROGRESS.value,
+                "entry_source": self.SOURCE_LABEL,
+            },
         )
 
         if season_created:
@@ -2119,7 +2134,11 @@ class BaseWebhookProcessor:
                     item=episode_item,
                     related_season=season_instance,
                     end_date=now,
+                    entry_source=self.SOURCE_LABEL,
                 )
+                if self.SOURCE_LABEL and not season_instance.entry_source:
+                    season_instance.entry_source = self.SOURCE_LABEL
+                    season_instance.save(update_fields=["entry_source"])
                 logger.info(
                     "Marked episode as played: %s S%02dE%02d",
                     tv_metadata["title"],

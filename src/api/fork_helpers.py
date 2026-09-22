@@ -41,7 +41,10 @@ FORK_EXTRA_SOURCES = {
     MediaTypes.ANIME.value: [Sources.TMDB.value, Sources.TVDB.value],
 }
 
-_MODIFIABLE_FIELDS = {"score", "status", "progress", "start_date", "end_date", "notes"}
+_MODIFIABLE_FIELDS = {
+    "score", "status", "progress", "start_date", "end_date", "notes",
+    "entry_source",
+}
 
 
 # FORK: sort vocabulary for consumption-history endpoints (upstream TODO:

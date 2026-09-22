@@ -141,6 +141,12 @@ class MediaUpdateRequestSerializer(serializers.Serializer):
     start_date = DateOrDateTimeField(required=False, allow_null=True)
     end_date = DateOrDateTimeField(required=False, allow_null=True)
     notes = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    # How this entry was created ("plex", "jellyfin", "trakt", "manual", …).
+    # Distinct from the top-level `source` field on TrackMediaRequestSerializer,
+    # which identifies the metadata provider.
+    entry_source = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True,
+    )
 
 
 class TrackedMediaUpdateRequestSerializer(MediaUpdateRequestSerializer):
@@ -189,6 +195,7 @@ class TrackedMediaResponseSerializer(serializers.Serializer):
     start_date = serializers.DateTimeField(allow_null=True)
     end_date = serializers.DateTimeField(allow_null=True)
     notes = serializers.CharField(allow_blank=True, allow_null=True)
+    source = serializers.CharField(allow_blank=True, allow_null=True)
     lists = serializers.ListField(child=serializers.DictField())
     next_episode = NextEpisodeSerializer(allow_null=True)
     show = ShowSerializer(allow_null=True)
@@ -213,6 +220,7 @@ class ConsumptionResponseSerializer(serializers.Serializer):
     start_date = serializers.DateTimeField(allow_null=True)
     end_date = serializers.DateTimeField(allow_null=True)
     notes = serializers.CharField(allow_blank=True, allow_null=True)
+    source = serializers.CharField(allow_blank=True, allow_null=True)
     external_id = serializers.CharField(allow_blank=True, allow_null=True)
 
 

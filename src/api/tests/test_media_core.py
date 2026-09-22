@@ -105,6 +105,7 @@ class MediaCoreTests(FloppyApiTestCase):
                     "start_date",
                     "end_date",
                     "notes",
+                    "source",
                     "lists",
                     "next_episode",
                     "show",
@@ -2156,6 +2157,7 @@ class MediaCoreTests(FloppyApiTestCase):
                 "start_date",
                 "end_date",
                 "notes",
+                "source",
             },
         )
 

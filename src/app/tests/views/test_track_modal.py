@@ -334,7 +334,7 @@ class TrackModalViewTests(TestCase):
         self.assertEqual(response.context["media"], episode)
         self.assertEqual(
             [field.name for field in response.context["general_fields"]],
-            ["score", "status", "start_date", "end_date"],
+            ["score", "status", "start_date", "end_date", "entry_source"],
         )
         self.assertContains(response, 'name="score"', html=False)
         self.assertContains(response, 'value="7.0"', html=False)

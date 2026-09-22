@@ -3110,6 +3110,9 @@ components:
         notes:
           type: string
           nullable: true
+        source:
+          type: string
+          nullable: true
         external_id:
           type: string
           nullable: true
@@ -3122,6 +3125,7 @@ components:
       - progress
       - progressed_at
       - score
+      - source
       - start_date
       - status
     DetailError:
@@ -3366,6 +3370,9 @@ components:
           description: ISO 8601 date or date-time accepted by this deployment.
           nullable: true
         notes:
+          type: string
+          nullable: true
+        entry_source:
           type: string
           nullable: true
     NextEpisode:
@@ -3640,6 +3647,9 @@ components:
         notes:
           type: string
           nullable: true
+        source:
+          type: string
+          nullable: true
         lists:
           type: array
           items:
@@ -3671,6 +3681,7 @@ components:
       - progressed_at
       - score
       - show
+      - source
       - start_date
       - status
       - total_episodes_left
@@ -3702,6 +3713,9 @@ components:
           description: ISO 8601 date or date-time accepted by this deployment.
           nullable: true
         notes:
+          type: string
+          nullable: true
+        entry_source:
           type: string
           nullable: true
         image_url:

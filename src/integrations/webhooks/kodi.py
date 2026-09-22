@@ -22,6 +22,8 @@ class KodiEvent(StrEnum):
 class KodiWebhookProcessor(BaseWebhookProcessor):
     """Processor for Kodi webhook events via the HTTP Scrobbler add-on."""
 
+    SOURCE_LABEL = "kodi"
+
     def process_payload(self, payload, user):
         """Return the process payload."""
         event_type = payload.get("event")

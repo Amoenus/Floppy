@@ -72,10 +72,12 @@ def resolve_episode_coordinate_for_request(
     return coordinate, None
 
 MEDIA_MODIFIABLE_FIELDS = {
-    MediaTypes.MOVIE.value: {"score", "status", "start_date", "end_date", "notes"},
-    MediaTypes.TV.value: {"score", "status", "notes"},
-    MediaTypes.SEASON.value: {"score", "status", "notes"},
-    MediaTypes.EPISODE.value: {"end_date"},
+    MediaTypes.MOVIE.value: {
+        "score", "status", "start_date", "end_date", "notes", "entry_source",
+    },
+    MediaTypes.TV.value: {"score", "status", "notes", "entry_source"},
+    MediaTypes.SEASON.value: {"score", "status", "notes", "entry_source"},
+    MediaTypes.EPISODE.value: {"end_date", "entry_source"},
     MediaTypes.ANIME.value: {
         "score",
         "status",
@@ -83,6 +85,7 @@ MEDIA_MODIFIABLE_FIELDS = {
         "start_date",
         "end_date",
         "notes",
+        "entry_source",
     },
     MediaTypes.MANGA.value: {
         "score",
@@ -91,6 +94,7 @@ MEDIA_MODIFIABLE_FIELDS = {
         "start_date",
         "end_date",
         "notes",
+        "entry_source",
     },
     MediaTypes.GAME.value: {
         "score",
@@ -99,6 +103,7 @@ MEDIA_MODIFIABLE_FIELDS = {
         "start_date",
         "end_date",
         "notes",
+        "entry_source",
     },
     MediaTypes.BOOK.value: {
         "score",
@@ -107,6 +112,7 @@ MEDIA_MODIFIABLE_FIELDS = {
         "start_date",
         "end_date",
         "notes",
+        "entry_source",
     },
     MediaTypes.COMIC.value: {
         "score",
@@ -115,6 +121,7 @@ MEDIA_MODIFIABLE_FIELDS = {
         "start_date",
         "end_date",
         "notes",
+        "entry_source",
     },
     MediaTypes.BOARDGAME.value: {
         "score",
@@ -123,6 +130,7 @@ MEDIA_MODIFIABLE_FIELDS = {
         "start_date",
         "end_date",
         "notes",
+        "entry_source",
     },
 }
 

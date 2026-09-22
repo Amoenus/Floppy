@@ -392,6 +392,7 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 "start_date",
                 "end_date",
                 "notes",
+                "entry_source",
             },
         )
         self.assertEqual(
@@ -403,6 +404,7 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 "start_date",
                 "end_date",
                 "notes",
+                "entry_source",
                 "image_url",
             },
         )
@@ -427,6 +429,7 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 "start_date",
                 "end_date",
                 "notes",
+                "source",
                 "lists",
                 "next_episode",
                 "show",
@@ -452,6 +455,7 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 "start_date",
                 "end_date",
                 "notes",
+                "source",
                 "external_id",
             },
         )

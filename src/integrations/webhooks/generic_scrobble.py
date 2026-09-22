@@ -52,6 +52,8 @@ def is_played(payload):
 class GenericScrobbleProcessor(BaseWebhookProcessor):
     """Processor for normalized scrobble-stop events from the API."""
 
+    SOURCE_LABEL = "scrobble"
+
     def process_payload(self, payload, user):
         """Resolve and persist a stop/completion event from the API."""
         ids = self._extract_external_ids(payload)

@@ -81,6 +81,13 @@ class Media(models.Model):
     start_date = models.DateTimeField(null=True, blank=True)
     end_date = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True, default="")
+    # How this row was created: a short free-text label. Built-in writers use
+    # conventional values ("plex", "jellyfin", "trakt", "manual", …); the user
+    # can override it with any text (e.g. "Theatre") from the edit UI. Named
+    # distinctly from `Item.source` (the metadata provider) to avoid colliding
+    # with it in the generic CSV export/import column mapping (both would
+    # otherwise share the header name "source").
+    entry_source = models.CharField(max_length=50, blank=True, default="")
 
     class Meta:
         """Meta options for the model."""
@@ -858,7 +865,7 @@ class Movie(Media):
 
     tracker = FieldTracker()
 
-    def watch(self, end_date, external_id=None):
+    def watch(self, end_date, external_id=None, entry_source=""):
         """Create a play of the movie, returning (play, created)."""
         if external_id:
             existing = self.plays.filter(external_id=external_id).first()
@@ -873,12 +880,21 @@ class Movie(Media):
             movie=self,
             end_date=end_date,
             external_id=external_id or None,
+            entry_source=entry_source,
         )
 
+        update_fields = []
         if self.end_date is None or end_date > self.end_date:
             self.end_date = end_date
             self.status = Status.COMPLETED.value
-            self.save(update_fields=["end_date", "status"])
+            update_fields += ["end_date", "status"]
+
+        if entry_source and self.entry_source != entry_source:
+            self.entry_source = entry_source
+            update_fields.append("entry_source")
+
+        if update_fields:
+            self.save(update_fields=update_fields)
 
         return play, True
 
@@ -910,6 +926,7 @@ class MoviePlay(models.Model):
     movie = models.ForeignKey(Movie, on_delete=models.CASCADE, related_name="plays")
     end_date = models.DateTimeField(null=True, blank=True)
     external_id = models.CharField(max_length=255, null=True, blank=True)
+    entry_source = models.CharField(max_length=50, blank=True, default="")
 
     class Meta:
         """Meta options for MoviePlay."""

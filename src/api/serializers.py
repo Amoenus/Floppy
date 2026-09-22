@@ -579,6 +579,7 @@ class EpisodeSerializer(serializers.ModelSerializer):
                 "start_date": instance.start_date,
                 "end_date": instance.end_date,
                 "notes": instance.notes,
+                "source": instance.entry_source,
                 "lists": lists_by_item_id.get(item.id, []),
                 "next_episode": None,
                 "show": None,
@@ -767,6 +768,7 @@ class HistorySerializer(serializers.Serializer):
                 "start_date": getattr(instance, "start_date", None),
                 "end_date": instance.end_date,
                 "notes": getattr(instance, "notes", ""),
+                "source": getattr(instance, "entry_source", ""),
                 # FORK: client-supplied play id, so a syncing client can match
                 # its own event to the stored play after a restart.
                 "external_id": getattr(instance, "external_id", None),
@@ -794,6 +796,9 @@ class HistorySerializer(serializers.Serializer):
             else None,
             "notes": instance.notes
             if hasattr(instance, "notes") and instance.notes is not None
+            else None,
+            "source": instance.entry_source
+            if hasattr(instance, "entry_source") and instance.entry_source is not None
             else None,
         }
 
@@ -965,6 +970,7 @@ class MediaSerializer(serializers.ModelSerializer):
             else None,
             "end_date": instance.end_date if hasattr(instance, "end_date") else None,
             "notes": instance.notes if hasattr(instance, "notes") else None,
+            "source": instance.entry_source if hasattr(instance, "entry_source") else None,
             "lists": lists,
             "next_episode": next_episode,
             "show": _serialize_show(show),

@@ -22,6 +22,7 @@ from app.db_retry import run_retryable_db_operation
 from app.models import Episode, MediaTypes, Status
 from app.services.completion import normalize_completed_entry
 from integrations import import_progress
+from integrations.models import ImportRun
 
 logger = logging.getLogger(__name__)
 
@@ -546,8 +547,16 @@ def bulk_create_media(bulk_media_list, user, *, backfill_completed=True):
 
         import_run_id = import_progress.get_current_import_run_id()
         if import_run_id:
+            import_source = (
+                ImportRun.objects.filter(id=import_run_id)
+                .values_list("source", flat=True)
+                .first()
+                or ""
+            )
             for media_obj in bulk_media:
                 media_obj.import_run_id = import_run_id
+                if import_source and not media_obj.entry_source:
+                    media_obj.entry_source = import_source
 
         logger.info("Bulk importing %s", media_type)
 

@@ -50,6 +50,8 @@ def _ticks_to_seconds(ticks) -> int | None:
 class JellyfinWebhookProcessor(BaseWebhookProcessor):
     """Processor for Jellyfin webhook events."""
 
+    SOURCE_LABEL = "jellyfin"
+
     MEDIA_TYPE_MAPPING = {
         **BaseWebhookProcessor.MEDIA_TYPE_MAPPING,
         "Series": MediaTypes.TV.value,

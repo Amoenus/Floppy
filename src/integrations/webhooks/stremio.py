@@ -25,6 +25,8 @@ VIDEO_ID_PARTS = 3
 class StremioWebhookProcessor(BaseWebhookProcessor):
     """Processor for Stremio addon playback-start events."""
 
+    SOURCE_LABEL = "stremio"
+
     MEDIA_TYPE_MAPPING = {
         "series": MediaTypes.TV.value,
         "movie": MediaTypes.MOVIE.value,

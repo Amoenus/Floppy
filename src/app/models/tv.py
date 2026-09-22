@@ -1297,6 +1297,11 @@ class Season(Media):
             logger.info("%s created successfully.", result.episode)
             cache_utils.clear_time_left_cache_for_user(self.user_id)
             cache_utils.clear_media_list_cache_for_user(self.user_id)
+
+            entry_source = episode_fields.get("entry_source")
+            if entry_source and self.entry_source != entry_source:
+                self.entry_source = entry_source
+                self.save(update_fields=["entry_source"])
         return result
 
     def decrease_progress(self):
@@ -1836,6 +1841,7 @@ class Episode(models.Model):
             # the history modal can show "Started on …" (issue #377).
             "status",
             "notes",
+            "entry_source",
         ],
     )
 
@@ -1856,6 +1862,7 @@ class Episode(models.Model):
         default=Status.COMPLETED.value,
     )
     notes = models.TextField(blank=True, default="")
+    entry_source = models.CharField(max_length=50, blank=True, default="")
     dropped = models.BooleanField(default=False)
     score = models.DecimalField(
         null=True,

@@ -1738,6 +1738,7 @@ class PlexWebhookTests(TestCase):
         )
         self.assertEqual(movie.status, Status.COMPLETED.value)
         self.assertEqual(movie.progress, 1)
+        self.assertEqual(movie.entry_source, "plex")
 
     @patch("app.providers.tmdb.search")
     def test_movie_plex_guid_does_not_match_unrelated_title(self, mock_tmdb_search):

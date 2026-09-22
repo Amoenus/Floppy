@@ -91,6 +91,7 @@ class ListenBrainzScrobbleProcessor:
             external_ids=external_ids,
             completed=True,
             played_at=played_at,
+            entry_source="listenbrainz",
         )
 
         try:

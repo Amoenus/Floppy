@@ -249,6 +249,9 @@ def format_description(field_name, old_value, new_value, media_type=None, user=N
         if field_name == "notes":
             return "Added notes"
 
+        if field_name == "entry_source":
+            return f"Added via {new_value}" if new_value else "Source not recorded"
+
         return f"Set {field_name.replace('_', ' ').lower()} to {new_value}"
 
     # Regular change (old_value to new_value)
@@ -318,6 +321,11 @@ def format_description(field_name, old_value, new_value, media_type=None, user=N
         if not new_value:
             return "Removed notes"
         return "Updated notes"
+
+    if field_name == "entry_source":
+        if not new_value:
+            return "Source cleared"
+        return f"Source changed to {new_value}"
 
     field_label = field_name.replace("_", " ").lower()
     return f"Updated {field_label} from {old_value} to {new_value}"
