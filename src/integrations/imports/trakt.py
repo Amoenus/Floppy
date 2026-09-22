@@ -651,6 +651,10 @@ class TraktImporter(TraktMetadataResolverMixin):
         return set(
             app.models.Episode.objects.filter(
                 related_season__user=self.user,
+                # Scoped to the source this importer resolves against: an
+                # episode tracked from another provider can share a media_id
+                # with a TMDB one, and matching it would skip a real play.
+                item__source=Sources.TMDB.value,
                 end_date__isnull=False,
             ).values_list(
                 "item__media_id",
