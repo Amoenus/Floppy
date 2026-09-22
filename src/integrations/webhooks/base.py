@@ -2,6 +2,7 @@ import logging
 import re
 from datetime import UTC, datetime
 
+from django.db.models import Q
 from django.utils import timezone
 
 import app
@@ -1648,6 +1649,25 @@ class BaseWebhookProcessor:
         source = (self.SOURCE_LABEL or "webhook").capitalize()
         return f"{source} playback"
 
+    @staticmethod
+    def _show_deleted_by_user(user, tv_item, tmdb_id, tvdb_id):
+        """Return whether the user deleted this show under any of its ids.
+
+        The tombstone keeps the identity the show was tracked under, which can
+        differ from the one this event resolved to (a TVDB-tracked show seen
+        here through TMDB, say), so check every id the show is known by.
+        """
+        identities = Q(source=tv_item.source, media_id=tv_item.media_id)
+        if tmdb_id:
+            identities |= Q(source=Sources.TMDB.value, media_id=str(tmdb_id))
+        if tvdb_id:
+            identities |= Q(source=Sources.TVDB.value, media_id=str(tvdb_id))
+        return app.models.DeletedMedia.objects.filter(
+            identities,
+            user=user,
+            media_type=MediaTypes.TV.value,
+        ).exists()
+
     def _handle_tv_episode(
         self,
         media_id,
@@ -1971,13 +1991,13 @@ class BaseWebhookProcessor:
         played = self._is_played(payload)
         if (
             not played
-            and app.models.DeletedMedia.objects.filter(
-                user=user,
-                media_type=MediaTypes.TV.value,
-                source=tv_item.source,
-                media_id=tv_item.media_id,
-            ).exists()
             and not app.models.TV.objects.filter(item=tv_item, user=user).exists()
+            and self._show_deleted_by_user(
+                user,
+                tv_item,
+                media_id,
+                tv_metadata.get("tvdb_id"),
+            )
         ):
             logger.info(
                 "Ignoring playback start for deleted show: %s",

@@ -126,6 +126,32 @@ class WebhookRespectsUserStatusTests(TestCase):
         self.assertFalse(TV.objects.filter(user=self.user).exists())
         self.assertTrue(DeletedMedia.objects.filter(media_id=SHOW_ID).exists())
 
+    def test_start_ping_does_not_revive_show_deleted_under_another_provider(self):
+        """A show deleted as TVDB stays deleted when a ping resolves it via TMDB."""
+        DeletedMedia.objects.create(
+            user=self.user,
+            media_type=MediaTypes.TV.value,
+            source=Sources.TVDB.value,
+            media_id="81189",
+        )
+
+        with patch(
+            "app.providers.tmdb.tv_with_seasons",
+            side_effect=lambda *args, **kwargs: {
+                **_webhook_tv_metadata(*args, **kwargs),
+                "tvdb_id": "81189",
+            },
+        ):
+            StremioWebhookProcessor()._handle_tv_episode(
+                SHOW_ID,
+                1,
+                1,
+                {"id": f"{SHOW_IMDB}:1:1", "type": "series"},
+                self.user,
+            )
+
+        self.assertFalse(TV.objects.filter(user=self.user).exists())
+
     def test_start_ping_still_starts_a_planned_show(self):
         """Planning is not a held status: a start ping moves it along."""
         tv = _tracked_show(self.user, Status.PLANNING.value)
