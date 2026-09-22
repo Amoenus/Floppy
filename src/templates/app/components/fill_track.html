@@ -142,6 +142,28 @@
             {% endfor %}
           {% if general_fields|length > 1 %}</div>{% endif %}
 
+          {% if status_changes %}
+            <div class="mb-4 sm:mb-5" data-status-changes>
+              <p class="block text-xs sm:text-sm font-medium mb-1 text-[var(--color-text-secondary)]">
+                {% translate "Recent status changes" %}
+              </p>
+              <ul class="space-y-0.5 text-xs text-[var(--color-text-muted)]">
+                {% for change in status_changes %}
+                  <li>
+                    {{ change.date|user_datetime_format:user }} ·
+                    {% if change.old %}{% translate change.old %} → {% endif %}{% translate change.new %}
+                    ·
+                    {% if change.reason %}
+                      {% blocktranslate trimmed with reason=change.reason %}by {{ reason }}{% endblocktranslate %}
+                    {% else %}
+                      {% translate "source not recorded" %}
+                    {% endif %}
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+
           {% if show_koreader_document_field %}
             <div class="mb-4 sm:mb-5">
               <label class="block text-xs sm:text-sm font-medium mb-1 text-[var(--color-text-secondary)]"

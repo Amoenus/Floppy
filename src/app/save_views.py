@@ -21,6 +21,7 @@ from app import cache_utils, fork_services_episode, helpers, history_cache
 from app.activity_builders import _build_detail_activity_state
 from app.discover import tab_cache as discover_tab_cache
 from app.forms import EpisodeForm, get_form_class
+from app.history_processor import USER_EDIT_REASON
 from app.models import (
     TV,
     BasicMedia,
@@ -258,6 +259,9 @@ def media_save(request):
         if isinstance(instance, (Season, TV)):
             media = form.save(commit=False)
             media._pending_end_date = form.cleaned_data.get("end_date")
+            # Recorded in history so an automatic change can be told apart
+            # from the user's own edit (#1133).
+            media._change_reason = USER_EDIT_REASON
             media.save()
             if (
                 isinstance(media, Season)

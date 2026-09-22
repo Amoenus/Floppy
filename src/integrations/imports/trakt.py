@@ -706,14 +706,25 @@ class TraktImporter(TraktMetadataResolverMixin):
 
         if self.completed_seasons:
             bulk_update_with_history(
-                self.completed_seasons, app.models.Season, fields=["status"]
+                self.completed_seasons,
+                app.models.Season,
+                fields=["status"],
+                default_change_reason=f"Trakt import ({self.mode})",
             )
         if self.completed_tvs:
             bulk_update_with_history(
-                self.completed_tvs, app.models.TV, fields=["status"]
+                self.completed_tvs,
+                app.models.TV,
+                fields=["status"],
+                default_change_reason=f"Trakt import ({self.mode})",
             )
         if self.dropped_tvs:
-            bulk_update_with_history(self.dropped_tvs, app.models.TV, fields=["status"])
+            bulk_update_with_history(
+                self.dropped_tvs,
+                app.models.TV,
+                fields=["status"],
+                default_change_reason=f"Trakt import ({self.mode})",
+            )
 
         # Neither bulk_create_media() nor bulk_update_with_history() call
         # TV.save(), so the season/episode cascade it normally fires for a

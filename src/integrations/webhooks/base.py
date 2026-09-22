@@ -1643,6 +1643,11 @@ class BaseWebhookProcessor:
 
         return Sources.TMDB.value, str(media_id), tv_metadata, season_metadata
 
+    def _status_change_reason(self):
+        """Label recorded in history when this webhook changes a status."""
+        source = (self.SOURCE_LABEL or "webhook").capitalize()
+        return f"{source} playback"
+
     def _handle_tv_episode(
         self,
         media_id,
@@ -2000,6 +2005,7 @@ class BaseWebhookProcessor:
             )
         elif tv_instance.status != Status.IN_PROGRESS.value:
             tv_instance.status = Status.IN_PROGRESS.value
+            tv_instance._change_reason = self._status_change_reason()
             tv_instance.save()
             logger.info(
                 "Updated TV instance status to %s: %s",
@@ -2122,6 +2128,7 @@ class BaseWebhookProcessor:
             pass
         elif season_instance.status != Status.IN_PROGRESS.value:
             season_instance.status = Status.IN_PROGRESS.value
+            season_instance._change_reason = self._status_change_reason()
             season_instance.save()
             logger.info(
                 "Updated season instance status to %s: %s S%02d",

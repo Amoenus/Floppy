@@ -65,6 +65,10 @@ def classify_stremio_id(entry_id):
         return (namespace, raw)
     return None
 
+
+# History label for status changes this sync makes (#1133).
+STREMIO_IMPORT_REASON = "Stremio import"
+
 # Forward-only status ranking used to decide whether the recurring sync may
 # advance an already-tracked Movie/TV/Season's status (see #580: the sync
 # must pick up completion the webhook deferred to it, but must never
@@ -505,6 +509,7 @@ class StremioImporter:
         instance.status = new_status
         for field, value in field_updates.items():
             setattr(instance, field, value)
+        instance._change_reason = STREMIO_IMPORT_REASON
         instance.save()
         return True
 
@@ -876,6 +881,7 @@ class StremioImporter:
                         [existing_season],
                         app.models.Season,
                         ["status"],
+                        default_change_reason=STREMIO_IMPORT_REASON,
                     )
                 season_instance = existing_season
             elif season_item.id in self.bulk_season_by_item_id:

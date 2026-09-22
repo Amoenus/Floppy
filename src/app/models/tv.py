@@ -32,6 +32,10 @@ _UNSET_END_DATE = object()
 # Marks an open-but-unfilled metadata memo, see `TV._fetch_tv_metadata`.
 _UNSET_TV_METADATA = object()
 MIN_VALID_RELEASE_YEAR = 1900
+# History labels for status changes Floppy makes on its own, so the Edit
+# Tracking modal can say what moved a show (#1133).
+NEXT_SEASON_REASON = "Next season started"
+EPISODE_PLAYED_REASON = "Episode played"
 
 # How a provider's production status is classified. Only ENDED permits
 # finalizing a tracked show, so UNKNOWN (the provider said something we do not
@@ -815,7 +819,11 @@ class TV(Media):
                         related_tv=self,
                         status=Status.IN_PROGRESS.value,
                     )
-                    bulk_create_with_history([next_unwatched_season], Season)
+                    bulk_create_with_history(
+                        [next_unwatched_season],
+                        Season,
+                        default_change_reason=NEXT_SEASON_REASON,
+                    )
                     season_started = True
                     break
 
@@ -825,6 +833,7 @@ class TV(Media):
                 [next_unwatched_season],
                 Season,
                 fields=["status"],
+                default_change_reason=NEXT_SEASON_REASON,
             )
             season_started = True
         else:
@@ -836,6 +845,7 @@ class TV(Media):
                 [self],
                 TV,
                 fields=["status"],
+                default_change_reason=NEXT_SEASON_REASON,
             )
 
         return season_started
@@ -922,6 +932,7 @@ class TV(Media):
                     [self],
                     TV,
                     fields=["status"],
+                    default_change_reason="All seasons watched",
                 )
 
 
@@ -1089,6 +1100,7 @@ class Season(Media):
                     [self.related_tv],
                     TV,
                     fields=["status"],
+                    default_change_reason="Season dropped",
                 )
 
             elif (
@@ -1100,6 +1112,7 @@ class Season(Media):
                     [self.related_tv],
                     TV,
                     fields=["status"],
+                    default_change_reason="Season started",
                 )
 
             self.item.fetch_releases(delay=True)
@@ -2255,6 +2268,7 @@ class Episode(models.Model):
                 [self.related_season],
                 Season,
                 fields=["status"],
+                default_change_reason=EPISODE_PLAYED_REASON,
             )
 
         # Close an explicit rewatch once this play completed it, so the next
@@ -2269,6 +2283,7 @@ class Episode(models.Model):
                 [self.related_season.related_tv],
                 TV,
                 fields=["status"],
+                default_change_reason=EPISODE_PLAYED_REASON,
             )
 
     @property

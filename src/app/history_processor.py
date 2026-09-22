@@ -334,3 +334,45 @@ def format_description(field_name, old_value, new_value, media_type=None, user=N
 
     field_label = field_name.replace("_", " ").lower()
     return f"Updated {field_label} from {old_value} to {new_value}"
+
+
+# Recorded on history rows the user makes through the track form, so the
+# status log can tell their edits apart from automatic ones (#1133).
+USER_EDIT_REASON = "you"
+STATUS_LOG_LENGTH = 5
+_STATUS_LOG_SCAN = 200
+
+
+def status_change_log(media, limit=STATUS_LOG_LENGTH):
+    """Return the latest status changes of a tracked entry, newest first.
+
+    Each change says what made it (the history change reason), so a user
+    whose show keeps flipping back can see which sync did it.
+    """
+    history = getattr(media, "history", None)
+    if history is None or not hasattr(history, "order_by"):
+        return []
+
+    rows = list(
+        history.order_by("-history_date", "-history_id").values_list(
+            "history_date",
+            "status",
+            "history_change_reason",
+        )[:_STATUS_LOG_SCAN],
+    )
+    rows.reverse()
+
+    changes = []
+    previous_status = None
+    for index, (history_date, status, reason) in enumerate(rows):
+        if index == 0 or status != previous_status:
+            changes.append(
+                {
+                    "date": history_date,
+                    "old": previous_status if index else None,
+                    "new": status,
+                    "reason": reason or "",
+                },
+            )
+        previous_status = status
+    return list(reversed(changes))[:limit]
