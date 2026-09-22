@@ -9,9 +9,8 @@ from django.urls import reverse
 from django.utils import formats, timezone
 from django.utils.dateparse import parse_date
 from django.utils.html import format_html
-from django.utils.translation import get_language_info, gettext as _
-from django.utils.translation import npgettext
-from django.utils.translation import pgettext
+from django.utils.translation import get_language_info, npgettext, pgettext
+from django.utils.translation import gettext as _
 from unidecode import unidecode
 
 from app import config, helpers, image_cache

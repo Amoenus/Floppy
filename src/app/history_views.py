@@ -1,4 +1,3 @@
-import calendar
 import contextlib
 import logging
 import time
