@@ -69,7 +69,7 @@ class ShowCompletionStatusTests(TestCase):
                 status=Status.COMPLETED.value,
             )
     @patch("app.models.providers.services.get_media_metadata")
-    def test_handle_completed_season_overwrites_in_progress_tv_when_no_future_seasons(
+    def test_handle_completed_season_keeps_returning_series_in_progress(
         self, mock_metadata
     ):
         """_handle_completed_season preserves TV.status IN_PROGRESS when TMDB has no unstarted seasons."""
