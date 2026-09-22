@@ -17,7 +17,7 @@ from simple_history.utils import bulk_create_with_history, bulk_update_with_hist
 
 import events
 from app import cache_utils, providers
-from app.models.choices import MediaTypes, Sources, Status
+from app.models.choices import USER_HELD_STATUSES, MediaTypes, Sources, Status
 from app.models.item import Item
 from app.models.manager import MediaManager
 from app.models.media import Media
@@ -686,6 +686,11 @@ class TV(Media):
         completed_season_number,
     ):
         """Start the next season, or complete the TV show if no seasons remain."""
+        if self.status in USER_HELD_STATUSES:
+            # The user dropped or paused this show; finishing one of its
+            # seasons (often via an import backfill) must not restart it.
+            return
+
         if self._start_next_available_season(
             completed_season_number,
         ):

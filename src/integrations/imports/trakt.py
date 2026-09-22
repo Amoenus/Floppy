@@ -1116,7 +1116,13 @@ class TraktImporter(TraktMetadataResolverMixin):
                     item=season_item,
                     user=self.user,
                     related_tv=tv_obj,
-                    status=Status.IN_PROGRESS.value,
+                    # History for a new season of a show the user dropped or
+                    # paused is recorded without reopening the show.
+                    status=(
+                        tv_obj.status
+                        if tv_obj.status in app.models.USER_HELD_STATUSES
+                        else Status.IN_PROGRESS.value
+                    ),
                 )
                 if watched_at_dt is not None:
                     season_obj._history_date = watched_at_dt
@@ -1749,8 +1755,22 @@ class TraktImporter(TraktMetadataResolverMixin):
         tv_key = f"{tmdb_id}"
 
         # Create or get the TV object
+        existing_tv = None
+        if (
+            tv_key not in self.media_instances[MediaTypes.TV.value]
+            and tmdb_id not in self.to_delete[MediaTypes.TV.value][Sources.TMDB.value]
+        ):
+            # A season row for a show the user already tracks belongs to that
+            # show; creating a second, In progress TV row would override the
+            # status the user chose.
+            existing_tv = self.existing_media[MediaTypes.TV.value][
+                Sources.TMDB.value
+            ].get(tmdb_id)
         if tv_key in self.media_instances[MediaTypes.TV.value]:
             tv_obj = self.media_instances[MediaTypes.TV.value][tv_key][0]
+        elif existing_tv is not None:
+            tv_obj = existing_tv
+            self.media_instances[MediaTypes.TV.value][tv_key] = [tv_obj]
         else:
             tv_obj = app.models.TV(
                 item=tv_item,

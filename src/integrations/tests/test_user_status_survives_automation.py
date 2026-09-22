@@ -268,11 +268,24 @@ class TraktImportRespectsUserStatusTests(TestCase):
                     importer.process_watched_episode(entry)
 
                 new_seasons = importer.bulk_media[MediaTypes.SEASON.value]
+                self.assertEqual(importer.bulk_media[MediaTypes.TV.value], [])
                 self.assertEqual([s.status for s in new_seasons], [status])
                 self.assertEqual(importer.bulk_media[MediaTypes.TV.value], [])
                 tv.refresh_from_db()
                 self.assertEqual(tv.status, status)
 
+
+    def test_season_watchlist_entry_reuses_the_tracked_show(self):
+        """A season-level Trakt row must not queue a second, In progress show."""
+        tv = _tracked_show(self.user, Status.DROPPED.value)
+
+        with patch.object(TraktImporter, "_get_metadata", side_effect=self._metadata):
+            importer = TraktImporter("u", self.user, "new")
+            tv_obj = importer._get_tv_obj(SHOW_ID, {"title": "Breaking Bad"}, None)
+
+        self.assertEqual(tv_obj.pk, tv.pk)
+        self.assertEqual(tv_obj.status, Status.DROPPED.value)
+        self.assertEqual(importer.bulk_media[MediaTypes.TV.value], [])
 
 class ModelRecomputeRespectsUserStatusTests(TestCase):
     """Automatic next-season logic in the TV/Season models."""
@@ -306,3 +319,4 @@ class ModelRecomputeRespectsUserStatusTests(TestCase):
                     tv.seasons.get(item__season_number=2).status,
                     status,
                 )
+

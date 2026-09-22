@@ -1960,6 +1960,27 @@ class BaseWebhookProcessor:
             provider_media_type=MediaTypes.TV.value,
         )
 
+        # A playback-start event proves nothing was watched yet, so it must not
+        # undo a status the user chose or bring back a show they deleted. Only
+        # a real play may do that (#1133).
+        played = self._is_played(payload)
+        if (
+            not played
+            and app.models.DeletedMedia.objects.filter(
+                user=user,
+                media_type=MediaTypes.TV.value,
+                source=tv_item.source,
+                media_id=tv_item.media_id,
+            ).exists()
+            and not app.models.TV.objects.filter(item=tv_item, user=user).exists()
+        ):
+            logger.info(
+                "Ignoring playback start for deleted show: %s",
+                item_tv_metadata["title"],
+            )
+            return None
+        start_keeps = {*app.models.USER_HELD_STATUSES, Status.COMPLETED.value}
+
         tv_instance, tv_created = app.models.TV.objects.get_or_create(
             item=tv_item,
             user=user,
@@ -1971,6 +1992,12 @@ class BaseWebhookProcessor:
 
         if tv_created:
             logger.info("Created new TV instance: %s", item_tv_metadata["title"])
+        elif not played and tv_instance.status in start_keeps:
+            logger.info(
+                "Keeping %s status on playback start: %s",
+                tv_instance.status,
+                item_tv_metadata["title"],
+            )
         elif tv_instance.status != Status.IN_PROGRESS.value:
             tv_instance.status = Status.IN_PROGRESS.value
             tv_instance.save()
@@ -2075,7 +2102,12 @@ class BaseWebhookProcessor:
             user=user,
             related_tv=tv_instance,
             defaults={
-                "status": Status.IN_PROGRESS.value,
+                "status": (
+                    tv_instance.status
+                    if not played
+                    and tv_instance.status in app.models.USER_HELD_STATUSES
+                    else Status.IN_PROGRESS.value
+                ),
                 "entry_source": self.SOURCE_LABEL,
             },
         )
@@ -2086,6 +2118,8 @@ class BaseWebhookProcessor:
                 tv_metadata["title"],
                 season_number,
             )
+        elif not played and season_instance.status in start_keeps:
+            pass
         elif season_instance.status != Status.IN_PROGRESS.value:
             season_instance.status = Status.IN_PROGRESS.value
             season_instance.save()
