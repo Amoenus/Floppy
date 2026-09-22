@@ -57,6 +57,15 @@
             <span class="font-medium text-xs sm:text-sm">{% translate episode_plays_tab_label|default:_("Episode Plays") %}</span>
           </button>
         {% endif %}
+        {% if status_history_tab_available %}
+          <button type="button"
+                  @click="activeTab = 'status-history'"
+                  class="flex flex-1 sm:flex-none items-center justify-center sm:justify-start gap-2 sm:gap-3 px-3 py-2 sm:px-4 sm:py-3 w-full rounded-lg text-left transition-colors cursor-pointer"
+                  :class="activeTab === 'status-history' ? 'text-[var(--color-text)] bg-[var(--color-border)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]'">
+            {% include "app/icons/clock-reversing.svg" with classes="w-4 h-4 sm:w-5 sm:h-5 shrink-0" %}
+            <span class="font-medium text-xs sm:text-sm">{% translate "Status history" %}</span>
+          </button>
+        {% endif %}
         {% if discover_tab_available %}
           <button type="button"
                   @click="activeTab = 'discover'"
@@ -268,6 +277,35 @@
       {% if episode_plays_tab_available %}
         <section x-show="activeTab === 'episode-plays'" x-cloak>
           {% include "app/components/fill_track_episode_bulk.html" %}
+        </section>
+      {% endif %}
+      {% if status_history_tab_available %}
+        <section x-show="activeTab === 'status-history'" x-cloak data-status-changes>
+          <h3 class="text-sm font-medium text-[var(--color-text-secondary)] mb-1">{% translate "Status history" %}</h3>
+          <p class="text-xs text-[var(--color-text-muted)] mb-4">{% translate "Every status change, newest first, with what made it." %}</p>
+          {% if status_changes %}
+            <ul class="space-y-2">
+              {% for change in status_changes %}
+                <li class="bg-[var(--color-surface-strong)] rounded-lg px-4 py-3">
+                  <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <span class="text-sm text-[var(--color-text)]">
+                      {% if change.old %}{% translate change.old %} → {% endif %}{% translate change.new %}
+                    </span>
+                    <span class="text-xs text-[var(--color-text-muted)]">{{ change.date|user_datetime_format:user }}</span>
+                  </div>
+                  <p class="text-xs text-[var(--color-text-secondary)] mt-1">
+                    {% if change.reason %}
+                      {% blocktranslate trimmed with reason=change.reason %}by {{ reason }}{% endblocktranslate %}
+                    {% else %}
+                      {% translate "source not recorded" %}
+                    {% endif %}
+                  </p>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="text-sm text-[var(--color-text-muted)]">{% translate "No status changes recorded yet." %}</p>
+          {% endif %}
         </section>
       {% endif %}
       {% if discover_tab_available %}

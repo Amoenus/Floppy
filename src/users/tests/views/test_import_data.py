@@ -110,9 +110,9 @@ class ImportDataViewTests(TestCase):
         )
 
         self.assertContains(response, "Imported Media by Source")
-        self.assertContains(response, "movie · 2 items")
-        self.assertContains(response, "movie · 1 item")
-        self.assertEqual(response.content.decode().count("movie · 2 items"), 1)
+        self.assertContains(response, "Movie · 2 items")
+        self.assertContains(response, "Movie · 1 item")
+        self.assertEqual(response.content.decode().count("Movie · 2 items"), 1)
         self.assertContains(
             response,
             reverse("bulk_delete_by_import_source", args=["movie", "trakt"]),

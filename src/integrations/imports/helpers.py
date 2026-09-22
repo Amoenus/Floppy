@@ -546,6 +546,7 @@ def bulk_create_media(bulk_media_list, user, *, backfill_completed=True):
         bulk_media = _deduplicate_unique_user_item_rows(model, bulk_media)
 
         import_run_id = import_progress.get_current_import_run_id()
+        import_source = ""
         if import_run_id:
             import_source = (
                 ImportRun.objects.filter(id=import_run_id)
@@ -614,13 +615,26 @@ def bulk_create_media(bulk_media_list, user, *, backfill_completed=True):
             logger.info("Updating references for podcasts to existing episodes")
             update_podcast_references(bulk_media)
 
-        def create_media(bulk_media=bulk_media, model=model):
+        # Imports are written as the user, so the reason is what tells an
+        # imported status apart from one the user set (#1133).
+        change_reason = (
+            f"{import_source.replace('_', ' ').capitalize()} import"
+            if import_source
+            else "Import"
+        )
+
+        def create_media(
+            bulk_media=bulk_media,
+            model=model,
+            change_reason=change_reason,
+        ):
             return bulk_create_with_history(
                 bulk_media,
                 model,
                 batch_size=500,
                 default_user=user,
                 default_date=timezone.now(),
+                default_change_reason=change_reason,
             )
 
         created_media = retry_on_lock(create_media)
