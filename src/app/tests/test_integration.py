@@ -600,15 +600,23 @@ class IntegrationTest(StaticLiveServerTestCase):
         expect(end_quick_actions).to_be_visible()
         expect(start_quick_actions).to_be_visible()
         expect(create_modal.get_by_text("Select date", exact=True)).to_have_count(0)
+        # Split per #1243: the start picker offers Start Now and Release Date,
+        # the end picker only Just Finished.
         expect(
-            end_quick_actions.get_by_role("button", name="Start Now", exact=True)
+            start_quick_actions.get_by_role("button", name="Start Now", exact=True)
+        ).to_be_visible()
+        expect(
+            start_quick_actions.get_by_role("button", name="Release Date", exact=True)
         ).to_be_visible()
         expect(
             end_quick_actions.get_by_role("button", name="Just Finished", exact=True)
         ).to_be_visible()
         expect(
+            end_quick_actions.get_by_role("button", name="Start Now", exact=True)
+        ).to_have_count(0)
+        expect(
             end_quick_actions.get_by_role("button", name="Release Date", exact=True)
-        ).to_be_visible()
+        ).to_have_count(0)
         end_picker_dialog = create_modal.get_by_role(
             "dialog", name="End date picker"
         )
@@ -653,26 +661,19 @@ class IntegrationTest(StaticLiveServerTestCase):
         expect(start_quick_actions).to_be_visible()
         expect(end_quick_actions).to_be_visible()
 
-        before_start_now = self.page.evaluate("Date.now()")
-        end_quick_actions.get_by_role("button", name="Start Now", exact=True).click()
-        after_start_now = self.page.evaluate("Date.now()")
+        before_end_finished = self.page.evaluate("Date.now()")
+        end_quick_actions.get_by_role(
+            "button", name="Just Finished", exact=True
+        ).click()
+        after_end_finished = self.page.evaluate("Date.now()")
         expect(end_picker_dialog).not_to_be_visible()
         expect(end_quick_actions).not_to_be_visible()
         end_value_ms = self.page.evaluate(
             "value => new Date(value).getTime()",
             end_date_input.input_value(),
         )
-        self.assertGreaterEqual(
-            end_value_ms,
-            before_start_now + 95 * 60 * 1000 - 1000,
-        )
-        self.assertLessEqual(
-            end_value_ms,
-            after_start_now + 95 * 60 * 1000 + 1000,
-        )
-        expect(create_modal.locator('select[name="status"]')).to_have_value(
-            Status.IN_PROGRESS.value
-        )
+        self.assertGreaterEqual(end_value_ms, before_end_finished - 1000)
+        self.assertLessEqual(end_value_ms, after_end_finished + 1000)
 
         create_modal.locator(".date-picker-closed-field").first.get_by_role(
             "button", name="Clear date"
@@ -695,7 +696,9 @@ class IntegrationTest(StaticLiveServerTestCase):
         create_modal.locator(".date-picker-closed-field").first.get_by_role(
             "button", name="Clear date"
         ).click()
-        expect(start_quick_actions).to_be_visible()
+        if end_clear.is_visible():
+            end_clear.click()
+        expect(end_quick_actions).to_be_visible()
         # Bracket the click, the way the two assertions above already do. Taking
         # a single timestamp after the click and using it for the lower bound
         # charges every millisecond of click handling, re-render and round-trip
@@ -703,10 +706,10 @@ class IntegrationTest(StaticLiveServerTestCase):
         # input loses by truncating to whole seconds. That left about a
         # millisecond of real headroom, and CI duly missed it by 49ms.
         before_just_finished = self.page.evaluate("Date.now()")
-        start_quick_actions.get_by_role(
+        end_quick_actions.get_by_role(
             "button", name="Just Finished", exact=True
         ).click()
-        expect(start_quick_actions).not_to_be_visible()
+        expect(end_quick_actions).not_to_be_visible()
         after_just_finished = self.page.evaluate("Date.now()")
         just_finished_start_ms = self.page.evaluate(
             "value => new Date(value).getTime()",
@@ -734,9 +737,10 @@ class IntegrationTest(StaticLiveServerTestCase):
         ).click()
 
         self.page.set_viewport_size({"width": 375, "height": 812})
-        expect(end_quick_actions).to_be_visible()
+        expect(start_quick_actions).to_be_visible()
+        # At phone width the shortcut shows its short label.
         expect(
-            end_quick_actions.get_by_role("button", name="Release Date", exact=True)
+            start_quick_actions.get_by_role("button", name="Release", exact=True)
         ).to_be_visible()
 
         end_time_segment = "14:25"
@@ -1293,4 +1297,6 @@ class IntegrationTest(StaticLiveServerTestCase):
             desktop_signal_box["x"] + desktop_signal_box["width"],
             desktop_row_box["x"] + desktop_row_box["width"],
         )
-        self.assertEqual(desktop_signal_box["height"], 16)
+        # Layout boxes are sub-pixel (15.99997 is 16 on screen), so compare
+        # to within a rounding error rather than exactly.
+        self.assertAlmostEqual(desktop_signal_box["height"], 16, delta=0.5)
