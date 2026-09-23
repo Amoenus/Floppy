@@ -18,8 +18,6 @@ from .base import BaseWebhookProcessor
 
 logger = logging.getLogger(__name__)
 
-# Ignore "media.stop" events reported before this much playback (ms) has elapsed.
-MIN_STOP_VIEW_OFFSET_MS = 60_000
 
 # Plex ratings arrive on a 0-5, 0-10, or 0-100 scale depending on source; normalize to 0-10.
 RATING_HALF_SCALE_MAX = 5
@@ -215,16 +213,15 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             playback_media_type,
         )
 
-        if event_type in ("media.play", "media.resume"):
+        # Plex omits viewOffset at position 0, so a missing offset is a known
+        # zero (a skim), not an unknown position.
+        view_offset_ms = (payload.get("Metadata") or {}).get("viewOffset") or 0
+        if not self._should_record(
+            event_type,
+            played=self._is_played(payload),
+            position_seconds=view_offset_ms / 1000,
+        ):
             return None
-
-        if event_type == "media.pause":
-            return None
-
-        if event_type == "media.stop":
-            view_offset_ms = (payload.get("Metadata") or {}).get("viewOffset") or 0
-            if view_offset_ms < MIN_STOP_VIEW_OFFSET_MS:
-                return None
 
         if not any(
             ids.get(key) for key in ("tmdb_id", "imdb_id", "tvdb_id", "anidb_id")

@@ -188,6 +188,17 @@
         <h3 class="text-base font-medium">{% translate "Jellyfin Integration (Official Repo)" %}</h3>
       </div>
       <p class="text-[var(--color-text-muted)] mb-4 text-sm">{% translate "Connect Jellyfin to automatically track your watching progress. Use this method if your server has access to the official Jellyfin plugin repository." %}</p>
+      {% if jellyfin_template_outdated %}
+        <div class="flex items-start gap-2 mb-4" data-testid="jellyfin-template-outdated">
+          {% include "app/icons/warning.svg" with classes="w-4 h-4 mt-0.5 text-[var(--color-warning-text)] shrink-0" %}
+          <div class="text-sm text-[var(--color-text-secondary)]">
+            <p class="font-medium text-[var(--color-warning-text)]">{% translate "Webhook template needs updating" %}</p>
+            <p class="text-[var(--color-text-muted)] mt-1">
+              {% translate "Floppy is receiving updates from an older Jellyfin webhook template. Re-copy the template below into the Webhook plugin so the watched checkmark you set in Jellyfin can sync." %}
+            </p>
+          </div>
+        </div>
+      {% endif %}
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
         <h4 class="text-sm font-medium mb-3">{% translate "Setup Instructions" %}</h4>
         {% url 'jellyfin_webhook' request.user.token as jellyfin_webhook_path %}
@@ -223,7 +234,8 @@
               <textarea readonly id="jellyfin-json-template" class="w-full bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text-secondary)] text-sm border-0 focus:ring-0 outline-none font-mono p-3 resize-none overflow-auto max-h-72" rows="14">
 {% verbatim %}{
   "Event": "{{#if_equals NotificationType 'PlaybackStart'}}Play{{/if_equals}}{{#if_equals NotificationType 'PlaybackStop'}}Stop{{/if_equals}}{{#if_equals NotificationType 'PlaybackProgress'}}{{#if IsPaused}}Pause{{else}}Play{{/if}}{{/if_equals}}{{#if_equals NotificationType 'UserDataSaved'}}UserDataSaved{{/if_equals}}{{#if_equals NotificationType 'ItemAdded'}}ItemAdded{{/if_equals}}{{#if_equals NotificationType 'ItemDeleted'}}ItemDeleted{{/if_equals}}",
-  "PlaybackPositionTicks": "{{PlaybackPositionTicks}}",
+  "PlaybackPositionTicks": "{{PlaybackPositionTicks}}",{{#if_equals NotificationType 'UserDataSaved'}}
+  "SaveReason": "{{SaveReason}}",{{/if_equals}}
   "Item": {
     "Id": "{{ItemId}}",
     "Type": "{{ItemType}}",
@@ -235,7 +247,7 @@
       "Tvdb": "{{Provider_tvdb}}"
     },
     "UserData": {
-      "Played": {{#if_equals PlayedToCompletion 'True'}}true{{else}}false{{/if_equals}},
+      "Played": {{#if_equals NotificationType 'UserDataSaved'}}{{#if_equals Played 'True'}}true{{else}}false{{/if_equals}}{{else}}{{#if_equals PlayedToCompletion 'True'}}true{{else}}false{{/if_equals}}{{/if_equals}},
       "LastPlayedDate": "{{LastPlayedDate}}"{{#if_equals NotificationType 'UserDataSaved'}}{{#if Rating}},
       "Rating": {{Rating}}{{/if}}{{/if_equals}}
     }{{#if_equals ItemType 'Episode'}},
@@ -306,10 +318,20 @@
           </li>
         </ol>
       </div>
-      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mt-4">
-        <h4 class="text-sm font-medium mb-3">{% translate "Webhook Events" %}</h4>
+    </div>
+
+    {# Jellyfin webhook events (both plugins) #}
+    <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
+         x-show="activeIntegration === 'all' || activeIntegration === 'jellyfin'"
+         x-transition.opacity.duration.150ms>
+      <div class="flex items-center mb-3">
+        {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
+        <h3 class="text-base font-medium">{% translate "Jellyfin Webhook Events" %}</h3>
+      </div>
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
+        <h4 class="text-sm font-medium mb-3">{% translate "Manual Watched Changes" %}</h4>
         <p class="text-[var(--color-text-muted)] mb-4 text-sm">
-          {% translate "Play and Stop events are always processed. Enable these to sync manual watched changes from the unofficial Webhooks plugin." %}
+          {% translate "Stop events always record what you watched; Play and Pause only update Now Playing. Enable these to also sync the watched checkmark you set by hand in Jellyfin. Official plugin: needs the User Data Saved notification type and the current template above. Unofficial plugin: needs the MarkPlayed and MarkUnplayed events." %}
         </p>
         <form method="post"
               action="{% url 'update_jellyfin_webhook_events' %}"

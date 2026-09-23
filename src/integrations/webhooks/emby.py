@@ -52,6 +52,13 @@ class EmbyWebhookProcessor(BaseWebhookProcessor):
             playback_media_type,
         )
 
+        if not self._should_record(
+            EMBY_EVENT_MAP[event_type],
+            played=self._is_played(payload),
+            position_seconds=self._get_position_seconds(payload),
+        ):
+            return
+
         if not any(ids.values()):
             logger.warning("Ignoring Emby webhook call because no ID was found.")
             return
@@ -69,6 +76,17 @@ class EmbyWebhookProcessor(BaseWebhookProcessor):
 
     def _is_played(self, payload):
         return payload.get("PlaybackInfo", {}).get("PlayedToCompletion", False) is True
+
+    def _get_position_seconds(self, payload):
+        """Return the playback position in seconds, or None when not sent."""
+        item = payload.get("Item") or {}
+        candidates = (
+            payload.get("PlaybackPositionTicks"),
+            item.get("PlaybackPositionTicks"),
+            (payload.get("PlaybackInfo") or {}).get("PositionTicks"),
+        )
+        # First field present, so a real zero is not mistaken for missing.
+        return _ticks_to_seconds(next((t for t in candidates if t is not None), None))
 
     def _get_media_type(self, payload):
         return self.MEDIA_TYPE_MAPPING.get(payload["Item"].get("Type"))
@@ -185,9 +203,7 @@ class EmbyWebhookProcessor(BaseWebhookProcessor):
 
         # Duration / offset from ticks (100 ns units, same as Jellyfin)
         duration_seconds = _ticks_to_seconds(item.get("RunTimeTicks"))
-        offset_seconds = _ticks_to_seconds(
-            payload.get("PlaybackPositionTicks") or item.get("PlaybackPositionTicks"),
-        )
+        offset_seconds = self._get_position_seconds(payload)
         provider_completed = None
         if payload.get("Event") == "playback.stop":
             played = (payload.get("PlaybackInfo") or {}).get("PlayedToCompletion")

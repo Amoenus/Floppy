@@ -6,7 +6,7 @@ from unittest import mock
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
-from app import media_list_filters
+from app import image_cache, media_list_filters
 from app.models import Item, MediaTypes, Movie, Sources, Status
 
 from .base import FloppyApiTestCase
@@ -47,6 +47,10 @@ class MediaListPageCostTests(FloppyApiTestCase):
             hydrated.append(len(items))
             return original(user, items)
 
+        # The image-caching toggle is loaded lazily and cached for 5 minutes in a
+        # cache other tests share, so warm it first or the count depends on
+        # which test ran before this one.
+        image_cache.is_enabled()
         with (
             mock.patch.object(media_list_filters, "media_list_entries_for_items", spy),
             CaptureQueriesContext(connection) as ctx,

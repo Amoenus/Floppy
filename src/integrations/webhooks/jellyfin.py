@@ -2,6 +2,7 @@ import logging
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
+from django.core.cache import cache
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
@@ -30,6 +31,27 @@ JELLYFIN_COLLECTION_EVENTS = {"ItemAdded", "ItemDeleted"}
 JELLYFIN_COLLECTION_SOURCE = "jellyfin"
 JELLYFIN_RATING_EVENT = "UserDataSaved"
 JELLYFIN_RATING_MAX = 10
+# UserDataSaved fires for every progress save, playback end and our own
+# watched-state push; only this reason is the user clicking the checkmark.
+JELLYFIN_TOGGLE_PLAYED_REASON = "TogglePlayed"
+JELLYFIN_MANUAL_MARK_EVENTS = {"MarkPlayed", "MarkUnplayed"}
+# Set while UserDataSaved events arrive without SaveReason, i.e. from the
+# template before #1250; the Integrations page tells the user to re-copy it.
+JELLYFIN_TEMPLATE_OUTDATED_KEY = "jellyfin_template_outdated:{user_id}"
+JELLYFIN_TEMPLATE_OUTDATED_TTL = 30 * 24 * 60 * 60
+
+
+def jellyfin_template_outdated(user_id) -> bool:
+    """Return whether this user's Jellyfin webhook uses the old template."""
+    return bool(cache.get(JELLYFIN_TEMPLATE_OUTDATED_KEY.format(user_id=user_id)))
+
+
+def _note_template_version(payload, user_id):
+    key = JELLYFIN_TEMPLATE_OUTDATED_KEY.format(user_id=user_id)
+    if "SaveReason" in payload:
+        cache.delete(key)
+    else:
+        cache.set(key, True, JELLYFIN_TEMPLATE_OUTDATED_TTL)
 
 
 def _ticks_to_seconds(ticks) -> int | None:
@@ -81,8 +103,13 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             return
 
         if event_type == JELLYFIN_RATING_EVENT:
+            _note_template_version(payload, user.id)
             self._process_rating(payload, user, ids)
-            return
+            mark_event = self._manual_mark_event(payload, user)
+            if mark_event is None:
+                return
+            payload = {**payload, "Event": mark_event}
+            event_type = mark_event
 
         # Update live playback state (before media tracking)
         playback_media_type = self._get_live_playback_media_type(payload)
@@ -93,8 +120,12 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             playback_media_type,
         )
 
-        # Pause events only update the card — no media tracking
-        if event_type == "Pause":
+        position_seconds, _ = self._get_playback_progress(payload)
+        if not self._should_record(
+            "mark" if self._is_manual_mark(payload) else JELLYFIN_EVENT_MAP[event_type],
+            played=self._is_played(payload),
+            position_seconds=position_seconds,
+        ):
             return
 
         if not any(ids.values()):
@@ -156,6 +187,27 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
 
     def _is_unplayed(self, payload):
         return payload["Event"] == "MarkUnplayed"
+
+    def _is_manual_mark(self, payload):
+        return payload.get("Event") in JELLYFIN_MANUAL_MARK_EVENTS
+
+    def _manual_mark_event(self, payload, user):
+        """Map a UserDataSaved checkmark toggle to MarkPlayed/MarkUnplayed.
+
+        Returns None for every other save reason (progress, playback end,
+        ratings) and for templates that do not send SaveReason, so those
+        keep leaving watch state alone.
+        """
+        if payload.get("SaveReason") != JELLYFIN_TOGGLE_PLAYED_REASON:
+            return None
+        item = payload.get("Item") or {}
+        user_data = item.get("UserData") if isinstance(item, dict) else None
+        played = user_data.get("Played") if isinstance(user_data, dict) else None
+        if played is True and user.jellyfin_mark_played_enabled:
+            return "MarkPlayed"
+        if played is False and user.jellyfin_mark_unplayed_enabled:
+            return "MarkUnplayed"
+        return None
 
     def _get_played_at(self, payload):
         """Extract Jellyfin's completion timestamp when a play finished."""
@@ -622,7 +674,7 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             return None
 
     def _process_rating(self, payload, user, ids):
-        """Apply a Jellyfin UserDataSaved rating without changing watch state."""
+        """Apply a Jellyfin UserDataSaved rating; watch state is handled apart."""
         raw_rating, rating_source = self._extract_user_rating(payload)
         rating = self._normalize_user_rating(raw_rating)
         if rating is None:

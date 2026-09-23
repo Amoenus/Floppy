@@ -306,6 +306,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/agents/view_authentication.md`: guide for view authentication and declaring public route exemptions.
 - `docs/architecture/log-redaction.md`: the log boundary contract — where credentials are removed, what the rules match, and what they do not cover.
 - `docs/architecture/theming.md`: the theme resolution contract and the six theme states any colour change must hold.
+- `docs/architecture/webhook-write-rules.md`: when a media-server webhook may write tracking rows — the shared policy table every integration is listed in, its exceptions, and the test that catches a missing row.
 - `docs/architecture/api-scopes.md`: the integration-token scope contract — the vocabulary, the enforced view map, and what adding an endpoint requires.
 - `docs/architecture/outbound-fetch.md`: the outbound boundary for user-configured URLs — the SSRF controls, the residual DNS-rebinding gap, and why artwork uses a different path.
 - `docs/architecture/library-query.md`: the shared engine for list-shaped surfaces (media list, API, smart lists, Home shelves) — how a page stays bounded, and how to add a filter or sort.
