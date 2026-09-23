@@ -48,7 +48,7 @@ from django.db import DatabaseError, connections
 from django.db.migrations.executor import MigrationExecutor
 
 from app.log_safety import redact_secrets, safe_url
-from app.redis_diagnosis import explain_redis_error
+from app.redis_diagnosis import REDIS_SCHEMES, explain_redis_error
 from app.redis_tuning import parse_size
 from config.runtime_profile import sizing_report, web_concurrency_warning
 from config.sqlite_integrity import (
@@ -108,8 +108,6 @@ _NETWORK_TIMEOUT_SECONDS = 5
 # or renamed. Added keys keep the same version.
 REPORT_VERSION = 1
 
-# Celery can use a broker this check has no client for. Only these are ours.
-REDIS_SCHEMES = ("redis://", "rediss://", "unix://")
 
 
 @dataclass(frozen=True)

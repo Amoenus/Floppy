@@ -20,8 +20,6 @@ from urllib.parse import urlsplit
 
 import redis
 
-from app.log_safety import safe_url
-
 DNS = "dns"
 REFUSED = "refused"
 TIMEOUT = "timeout"
@@ -34,6 +32,10 @@ UNREACHABLE = frozenset({DNS, REFUSED, TIMEOUT})
 
 README_SECTION = "Floppy can't reach Redis"
 README_URL = "https://github.com/dannyvfilms/Floppy#floppy-cant-reach-redis"
+
+# Celery also accepts brokers such as RabbitMQ. A failure there is not a Redis
+# problem, so it keeps the caller's own wording.
+REDIS_SCHEMES = ("redis://", "rediss://", "unix://")
 
 # Kombu re-raises with only the message text, so the message has to be read too.
 # musl (Alpine, the Floppy image) and glibc word resolver failures differently,
@@ -99,14 +101,23 @@ def classify_redis_error(error: BaseException) -> str:
 
 
 def _endpoint(url: str | None) -> tuple[str, str]:
-    """Return (host:port, host) for a Redis URL, with credentials dropped."""
-    cleaned = safe_url(url)
-    parts = urlsplit(cleaned)
+    """Return (host:port, host) for a Redis URL, with credentials dropped.
+
+    Only the host and port are read, so userinfo never reaches the result. The
+    original URL is parsed rather than ``safe_url``'s output, which drops the
+    brackets around an IPv6 host and makes the port unparseable.
+    """
+    parts = urlsplit(str(url or ""))
     host = parts.hostname or ""
     if not host:
         # unix:// sockets have a path and no host.
-        return parts.path or cleaned, parts.path or cleaned
-    return (f"{host}:{parts.port}" if parts.port else host), host
+        return parts.path, parts.path
+    try:
+        port = parts.port
+    except ValueError:
+        port = None
+    shown = f"[{host}]" if ":" in host else host
+    return (f"{shown}:{port}" if port else shown), host
 
 
 def _in_container() -> bool:
@@ -159,6 +170,8 @@ def unreachable_detail(error: BaseException, url: str | None) -> str | None:
     None means the error is not a connection failure, and the caller should keep
     its generic message.
     """
+    if not str(url or "").startswith(REDIS_SCHEMES):
+        return None
     if classify_redis_error(error) not in UNREACHABLE:
         return None
     cause, _fix = explain_redis_error(error, url)

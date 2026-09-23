@@ -130,6 +130,24 @@ class ExplainRedisErrorTests(SimpleTestCase):
                 text += unreachable_detail(error, self.url) or ""
                 self.assertNotIn("secret-password", text)
 
+    def test_ipv6_hosts_keep_their_brackets(self):
+        """Found in review. safe_url drops the brackets, which broke the port."""
+        detail = unreachable_detail(
+            redis.ConnectionError("Connection refused"),
+            "redis://:secret@[::1]:6379/0",
+        )
+        self.assertIn("cannot reach Redis at [::1]:6379", detail)
+        self.assertNotIn("secret", detail)
+
+    def test_a_non_redis_broker_is_not_blamed_on_redis(self):
+        """Found in review. Celery also supports RabbitMQ."""
+        self.assertIsNone(
+            unreachable_detail(
+                ConnectionRefusedError(),
+                "amqp://guest:guest@rabbitmq:5672//",
+            )
+        )
+
     def test_unix_socket_urls_name_the_path(self):
         detail = unreachable_detail(
             redis.ConnectionError("Connection refused"),
