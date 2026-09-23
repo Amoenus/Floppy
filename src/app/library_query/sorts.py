@@ -27,13 +27,14 @@ from django.db.models import (
     Value,
     When,
 )
-from django.db.models.fields.json import KeyTextTransform
+from django.db.models.fields.json import KeyTextTransform, KeyTransform
 from django.db.models.functions import Coalesce, Lower, NullIf
-from django.db.models.lookups import Exact
+from django.db.models.lookups import Exact, IsNull
 
 from app.library_query.filters import (
     NEEDS_MAX_PROGRESS,
     NEEDS_MEDIA,
+    NEEDS_RUNTIME,
     TypeContext,
     latest_value,
 )
@@ -42,7 +43,6 @@ from app.models.choices import Status
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-NEEDS_NEXT_EPISODE = "next_episode"
 
 # A seeded multiplicative hash: a fixed permutation of ids per seed, computed
 # identically in SQL and Python, so a shuffled shelf pages without repeats or
@@ -174,7 +174,13 @@ def _status_rank(ctx: TypeContext, seed: int):
 
 
 def _platform(ctx: TypeContext, seed: int):
-    """Order by the collected copy's platform, else the item's first platform."""
+    """Order by the platform an item displays.
+
+    The platform the user collected it on; else the platform an active filter
+    asked for, when the item lists it; else the item's platform when it lists
+    exactly one. Items listing several, with none chosen, have no platform.
+    """
+    from app.library_query.filters import _json_array_q
     from app.models.discovery import CollectionEntry
 
     collected = (
@@ -184,8 +190,28 @@ def _platform(ctx: TypeContext, seed: int):
         .order_by("value")
         .values("value")[:1]
     )
-    listed = NullIf(Lower(KeyTextTransform("0", "platforms")), Value(""))
-    return Coalesce(Subquery(collected), listed, output_field=CharField())
+    values = [Subquery(collected)]
+    requested = ctx.filters.platforms if ctx.filters is not None else ()
+    if requested and ctx.filters.platform_mode != "not":
+        values.append(
+            Case(
+                When(_json_array_q("platforms", requested[0]), then=Value(requested[0].lower())),
+                output_field=CharField(),
+            ),
+        )
+    # An array index read as an expression compiles to ``->`` on Postgres and
+    # ``json_extract`` on SQLite; the ``__isnull`` lookup would test for a
+    # matching element instead of an index on Postgres.
+    sole = Case(
+        When(
+            Q(IsNull(KeyTransform("1", "platforms"), True))
+            & Q(IsNull(KeyTransform("0", "platforms"), False)),
+            then=NullIf(Lower(KeyTextTransform("0", "platforms")), Value("")),
+        ),
+        output_field=CharField(),
+    )
+    values.append(sole)
+    return Coalesce(*values, output_field=CharField())
 
 
 def random_rank(item_id: int, seed: int) -> int:
@@ -202,22 +228,40 @@ def _random_sql(ctx: TypeContext, seed: int):
     )
 
 
+# Measurements where zero means "not measured": such items sort last.
+MEASURED_SORT_KEYS = frozenset({"runtime", "time_watched", "time_to_beat"})
+
+
+def _next_episode_air_date(candidate):
+    from app.models import BasicMedia
+
+    if candidate.media is None:
+        return None
+    return BasicMedia.objects._next_episode_air_date_value(candidate.media)
+
+
 def _media_list_value(sort_key: str):
     """Reuse the media list's Python value for keys that live in Python."""
+    if sort_key == "next_episode_air_date":
+        return _next_episode_air_date
 
     def value(candidate):
         from app.media_list_filters import MediaListEntry, _sort_value
 
-        return _sort_value(
+        result = _sort_value(
             MediaListEntry(item=candidate.item, media=candidate.media),
             sort_key,
-            getattr(candidate, "next_episode", None),
+            None,
         )
+        if sort_key in MEASURED_SORT_KEYS and not result:
+            return None
+        return result
 
     return value
 
 
 _MEDIA = frozenset({NEEDS_MEDIA})
+_MEDIA_RUNTIME = frozenset({NEEDS_MEDIA, NEEDS_MAX_PROGRESS, NEEDS_RUNTIME})
 
 SORTS: tuple[SortDef, ...] = (
     SortDef(("title", ""), sql=lambda ctx, seed: Lower("title")),
@@ -237,16 +281,13 @@ SORTS: tuple[SortDef, ...] = (
     SortDef(("status",), sql=_status_rank, tracker=True),
     SortDef(("platform",), sql=_platform),
     # The rest are computed in Python from the hydrated candidate.
-    SortDef(("runtime",), needs=_MEDIA),
-    SortDef(("time_watched",), needs=_MEDIA),
+    SortDef(("runtime",), needs=_MEDIA_RUNTIME),
+    SortDef(("time_watched",), needs=_MEDIA_RUNTIME),
     SortDef(("time_to_beat",), needs=_MEDIA),
     SortDef(("author",), needs=_MEDIA),
     SortDef(("updated", "progressed_at"), needs=_MEDIA),
     SortDef(("time_left",), needs=frozenset({NEEDS_MEDIA, NEEDS_MAX_PROGRESS})),
-    SortDef(
-        ("next_episode_air_date",),
-        needs=frozenset({NEEDS_MEDIA, NEEDS_MAX_PROGRESS, NEEDS_NEXT_EPISODE}),
-    ),
+    SortDef(("next_episode_air_date",), needs=_MEDIA),
 )
 
 SORTS_BY_KEY = {key: definition for definition in SORTS for key in definition.keys}

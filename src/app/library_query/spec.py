@@ -73,6 +73,11 @@ class FilterValues:
     # Whether a collected copy's platform and format count, as the media list
     # does. Smart lists saved before the shared engine read the item only.
     collection_attributes: bool = True
+    # Whether a season's status filter also requires its episode history to
+    # agree (``filters.season_effective_status``). Home reads seasons this way;
+    # deriving it needs provider metadata per season, so the long lists read
+    # the stored status.
+    season_effective_status: bool = False
 
 
 @dataclass(frozen=True)

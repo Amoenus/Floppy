@@ -102,6 +102,7 @@ def filter_values_from_rules(
     *,
     default_status_match: str,
     collection_attributes: bool = True,
+    season_effective_status: bool = False,
 ) -> FilterValues:
     """Build filter values from normalized smart-rule JSON.
 
@@ -146,6 +147,7 @@ def filter_values_from_rules(
         tags=_values(rules.get("tag")),
         tag_mode=str(rules.get("tag_mode") or "or"),
         collection_attributes=collection_attributes,
+        season_effective_status=season_effective_status,
     )
 
 
@@ -205,6 +207,7 @@ def from_home_row_filters(
         filters=filter_values_from_rules(
             normalized_filters,
             default_status_match=STATUS_MATCH_LATEST,
+            season_effective_status=True,
         ),
         sort=SortSpec(
             key=sort_key or "title",

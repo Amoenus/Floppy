@@ -618,6 +618,10 @@ class MediaManager(models.Manager):
         item_queryset = Item.objects.filter(
             pk__in=queryset.values("item_id")
         ).order_by()
+        return self.item_values_for_menu(item_queryset, provider_region)
+
+    def item_values_for_menu(self, item_queryset, provider_region=None):
+        """Return the narrow ``Item`` rows a media-list filter menu reads."""
         fields = [
             "id",
             "media_id",

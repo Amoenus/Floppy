@@ -49,6 +49,7 @@ if TYPE_CHECKING:
 NEEDS_MEDIA = "media"
 NEEDS_MAX_PROGRESS = "max_progress"
 NEEDS_WATCH_PROVIDERS = "watch_providers"
+NEEDS_RUNTIME = "runtime"
 
 # Shows are "collected" when any of their episodes is, as well as directly.
 SHOW_COLLECTION_MEDIA_TYPES = frozenset(
@@ -70,6 +71,7 @@ class TypeContext:
     provider_region: str = ""
     pinned_providers: tuple[str, ...] = ()
     sort_list_id: int | None = None
+    filters: FilterValues | None = None
 
 
 @dataclass(frozen=True)
@@ -167,11 +169,13 @@ def _status_row(values: FilterValues, source: TrackerSource, ctx: TypeContext):
         # A statusless row (an imported rating with no tracking state) is
         # not part of any status view, including "All".
         return Q(**{f"{source.status_field}__isnull": False})
-    if statuses and not values.include_no_status and ctx.media_type != MediaTypes.SEASON.value:
+    if statuses and not values.include_no_status:
         # Implied by the latest-row check in ``_status_sql`` (the latest row
         # has one of these statuses, so some row does), and answered from the
         # (user, status) index - so the correlated check only runs on items
-        # that can pass it.
+        # that can pass it. Seasons must also be stored in a requested
+        # status; their episode history can only confirm it (see
+        # ``season_effective_status``), which is how Home has always read it.
         return Q(**{f"{source.status_field}__in": statuses})
     return None
 
@@ -216,6 +220,7 @@ def _prepare_season_status(candidates, values: FilterValues, ctx: TypeContext) -
 
 
 def _season_status_predicate(candidate, values: FilterValues, ctx: TypeContext) -> bool:
+    """Keep a season whose stored status matched only if it also reads that way."""
     statuses = {value for value in values.statuses if value and value != "all"}
     media = candidate.media
     status = season_effective_status(media) if media is not None else None
@@ -225,8 +230,14 @@ def _season_status_predicate(candidate, values: FilterValues, ctx: TypeContext) 
 
 
 def _season_status_active(values: FilterValues) -> bool:
-    statuses = [value for value in values.statuses if value and value != "all"]
-    return bool(statuses) and values.status_match == STATUS_MATCH_LATEST
+    # A season stored In Progress, Dropped or Paused always reads that way, so
+    # asking only for those needs no episode history - the query stays in SQL.
+    statuses = {value for value in values.statuses if value and value != "all"}
+    return (
+        values.season_effective_status
+        and bool(statuses - _SEASON_STORED_STATUSES)
+        and values.status_match == STATUS_MATCH_LATEST
+    )
 
 
 def _status_sql(values: FilterValues, ctx: TypeContext):
@@ -264,8 +275,6 @@ def _status_sql(values: FilterValues, ctx: TypeContext):
             ],
         )
         return with_status | ~has_any_status
-    if ctx.media_type == MediaTypes.SEASON.value and statuses:
-        return None  # Effective season status is checked in Python.
     latest = latest_value(ctx, "status")
     condition = Q(In(latest, statuses)) if statuses else Q(pk__in=[])
     if values.include_no_status:

@@ -48,7 +48,6 @@ class Candidate:
 
     item: Item
     media: object | None = None
-    next_episode: dict | None = None
 
 
 @dataclass
@@ -84,6 +83,7 @@ class LibraryQueryExecutor:
                 provider_region=self.query.provider_region,
                 pinned_providers=self.query.pinned_providers,
                 sort_list_id=self.query.sort_list_id,
+                filters=self.query.filters,
             )
             for media_type in self.query.media_types
         ]
@@ -536,9 +536,7 @@ def _attach_media(user, batch: list[Candidate], needs: set[str]) -> None:
                 tracked.append(candidate.media)
         if tracked and filter_registry.NEEDS_MAX_PROGRESS in needs:
             BasicMedia.objects.annotate_max_progress(tracked, media_type)
-        if sort_registry.NEEDS_NEXT_EPISODE in needs:
-            from app.media_list_filters import next_episode_for_media
+        if tracked and filter_registry.NEEDS_RUNTIME in needs:
+            from app.models import prefill_episode_runtime_index
 
-            for candidate in candidates:
-                if candidate.media is not None:
-                    candidate.next_episode = next_episode_for_media(candidate.media)
+            prefill_episode_runtime_index(tracked)

@@ -1134,7 +1134,6 @@ def media_list_entries_for_items(user, items) -> list[MediaListEntry]:
     item_ids_by_type: dict[str, list[int]] = {}
     for item in items:
         item_ids_by_type.setdefault(item.media_type, []).append(item.pk)
-    items_by_pk = {item.pk: item for item in items}
     media_by_item_id = {}
     for media_type, item_ids in item_ids_by_type.items():
         model = apps.get_model("app", media_type)
@@ -1148,9 +1147,17 @@ def media_list_entries_for_items(user, items) -> list[MediaListEntry]:
         if media_type != MediaTypes.EPISODE.value:
             BasicMedia.objects._aggregate_duplicate_data(rows, user, media_type)
         for media in sorted(rows, key=lambda row: (row.created_at, row.pk)):
-            media.item = items_by_pk[media.item_id]
             media_by_item_id[media.item_id] = media
-    return [MediaListEntry(item=item, media=media_by_item_id.get(item.pk)) for item in items]
+    # A tracked entry keeps its row's own item: the prefetches (events, tags)
+    # hang off that instance.
+    return [
+        MediaListEntry(
+            item=media.item if media is not None else item,
+            media=media,
+        )
+        for item in items
+        for media in [media_by_item_id.get(item.pk)]
+    ]
 
 
 def get_media_list_entries(user, media_type, filters: MediaListFilters, *, limit=None, offset=None):
