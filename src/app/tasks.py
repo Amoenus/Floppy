@@ -112,6 +112,7 @@ from app.tasks_anime_library_repair import (  # noqa: E402
     convert_anime_library_shape_task,
     repair_duplicated_anime_libraries_task,
 )
+from app.tasks_backdrops import warm_backdrops_task  # noqa: E402, F401
 from app.tasks_backfill_state import (  # noqa: E402
     EXTERNAL_IDS_BACKFILL_VERSION,
     GENRE_BACKFILL_VERSION,

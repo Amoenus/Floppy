@@ -59,6 +59,8 @@ services:
       - floppy_db:/floppy/db
     ports:
       - "8000:8000"
+    networks:
+      - floppy-net
 
   redis:
     image: redis:8-alpine
@@ -72,10 +74,16 @@ services:
       retries: 10
     volumes:
       - redis_data:/data
+    networks:
+      - floppy-net
 
 volumes:
   floppy_db:
   redis_data:
+
+networks:
+  floppy-net:
+    driver: bridge
 ```
 
 Open `http://localhost:8000`, create your account, then set `REGISTRATION=False` and redeploy so strangers can't sign up.
@@ -333,6 +341,8 @@ services:
       - DB_PORT=5432
     ports:
       - "8000:8000"
+    networks:
+      - floppy-net
 
   db:
     image: postgres:16-alpine
@@ -344,6 +354,8 @@ services:
       - POSTGRES_PASSWORD=change-this-password
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - floppy-net
 
   redis:
     image: redis:8-alpine
@@ -352,10 +364,16 @@ services:
     command: ["redis-server", "--appendonly", "yes", "--save", "", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-lru"]
     volumes:
       - redis_data:/data
+    networks:
+      - floppy-net
 
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  floppy-net:
+    driver: bridge
 ```
 
 > Already running Postgres with `DB_NAME=yamtrack`? Leave those values alone. Renaming the database, role, or password against an existing volume breaks the deployment.
@@ -413,6 +431,41 @@ Prefer **Stacks** over **Containers → Add container**. Stacks let you paste a 
 6. Create your account while `REGISTRATION=True`, then set it to `False` and redeploy
 
 If you use **Containers → Add container** anyway: always set `SECRET` and `REDIS_URL`; for SQLite mount persistent storage to `/floppy/db`; for PostgreSQL set the `DB_*` variables on the Floppy container and persist `/var/lib/postgresql/data` on the Postgres container; publish port `8000`; and leave `Command` and `Entrypoint` empty.
+
+### Floppy can't reach Redis
+
+**Symptoms:** imports say they could not be queued, or the logs show
+`Name does not resolve`, `Name or service not known`, or
+`Error -2 connecting to redis:6379`.
+
+**Cause:** Floppy finds Redis by its service name, `redis` in
+`REDIS_URL=redis://redis:6379`. Docker resolves service names only on a
+user-defined network. Some tools (ZimaOS, CasaOS, and some Portainer setups)
+place the containers on Docker's default `bridge` network instead, or add
+`network_mode: bridge`. On that network the name `redis` does not resolve.
+
+**Fix:** declare a shared network, as the compose files above do. Add this to
+every service in the stack (Floppy, Redis, and Postgres if you use it):
+
+```yaml
+    networks:
+      - floppy-net
+```
+
+Then add this once at the bottom of the file:
+
+```yaml
+networks:
+  floppy-net:
+    driver: bridge
+```
+
+Remove any `network_mode:` line, then redeploy the stack. Alternatively, set
+`REDIS_URL` to an address the Floppy container can reach, such as the host's
+IP and Redis's published port.
+
+**Check:** `docker exec floppy python manage.py floppy_preflight` names the
+problem and reports `redis: ok` once Floppy can reach Redis.
 
 ### Environment variables
 

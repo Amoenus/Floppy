@@ -250,6 +250,48 @@ queue fairness, responsiveness and recoverability, bought with throughput.
 `test_prefetch_is_built_per_chunk_not_once_for_the_range` pins that the trade
 actually happened, and chunk size is the dial between the two.
 
+## Highlight artwork
+
+The highlight cards (first play, last play, today in history) prefer a 16:9
+backdrop over the stored portrait poster. Backdrops are only ever held in
+Redis (`app/backdrops.py`), and fetching one is a TMDB or IGDB request.
+
+Statistics never makes that request itself (#1249). It used to do so in three
+places: on every page serve when Redis had no backdrop, for *every* item
+released on today's date before one was picked (once more per media type),
+and inside FINISH, on the concurrency-1 interactive lane.
+
+Now:
+
+- Builders store the portrait poster. Artwork is resolved once, only for the
+  entries that were actually chosen, by
+  `statistics_highlights.normalize_highlight_images`.
+- That function reads Redis only. A hit swaps the backdrop in and marks the
+  entry `image_is_backdrop`, so a published payload keeps its landscape art
+  after the 7-day backdrop key expires, with no further lookups. A miss keeps
+  the poster and hands the item to `backdrops.schedule_backdrop_warm`.
+- `schedule_backdrop_warm` sends one `Warm backdrops` task (default queue, not
+  the interactive lane) for all misses, guarded per item for ten minutes so
+  repeated page loads do not queue it again. The next serve picks the backdrop
+  up from Redis.
+- It runs on read (`get_statistics_data`), before FINISH publishes, and when a
+  range is derived from warmed day caches.
+
+The same rule covers the API. Media detail responses
+(`api.serializers.CompleteMediaSerializer`, `CompleteEpisodeSerializer`) read
+`backdrop` through `backdrops.cached_backdrop_or_warm`, so `backdrop: null`
+now means "none, or not cached yet". And because TMDB movie and TV detail
+responses already carry `backdrop_path`, `tmdb.movie()` and `tmdb.tv()` record
+it with `backdrops.remember_tmdb_backdrop`: any page that loads an item's
+metadata fills its backdrop with no extra request.
+
+The trade: with a cold backdrop cache the first load shows the poster and the
+next one the backdrop. This is also how the #211 "landscape art after Redis
+loss" recovery now works. Regressions:
+`app.tests.test_statistics_cache.NormalizeHistoryHighlightImagesTests`,
+`HighlightArtworkRequestPathTests`, `app.tests.test_backdrops.BackdropWarmTests`
+and `api.tests.test_fork_media.ForkBackdropFieldTests`.
+
 ## Structured logging
 
 Every stage emits a single-line structured record. None of them log payloads.

@@ -9,7 +9,7 @@ from django.core.cache import cache
 from django.utils import timezone
 from django.utils.html import strip_tags
 
-from app import helpers
+from app import backdrops, helpers
 from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources
 from app.providers import credentials, services
@@ -537,6 +537,10 @@ def movie(media_id, language=None):
                 collection_response = {}
         except requests.exceptions.HTTPError as error:
             handle_error(error)
+
+        backdrops.remember_tmdb_backdrop(
+            MediaTypes.MOVIE.value, media_id, response.get("backdrop_path")
+        )
 
         # Filter out collection items from recommendations, to avoid duplicates
         collection_items = get_collection(collection_response)
@@ -1131,6 +1135,9 @@ def tv(media_id, language=None):
         except requests.exceptions.HTTPError as error:
             handle_error(error)
 
+        backdrops.remember_tmdb_backdrop(
+            MediaTypes.TV.value, media_id, response.get("backdrop_path")
+        )
         data = process_tv(response, media_id=media_id)
         cache.set(cache_key, data)
     else:
