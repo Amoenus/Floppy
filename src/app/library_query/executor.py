@@ -238,6 +238,8 @@ class LibraryQueryExecutor:
         """Return the requested direction, or the key's default."""
         from app.models import BasicMedia
 
+        if self.sort.direction_in_value:
+            return "asc"
         return BasicMedia.objects.resolve_direction(
             self.query.sort.key,
             self.query.sort.direction,
@@ -246,8 +248,17 @@ class LibraryQueryExecutor:
     @cached_property
     def uses_sql(self) -> bool:
         """Return whether filters and sort all compile to SQL."""
-        return bool(self.contexts) and self._sort_expressions is not None and not (
-            self._needs_scan
+        sortable = self._sort_expressions is not None or self._sql_order_keys is not None
+        return bool(self.contexts) and sortable and not self._needs_scan
+
+    @cached_property
+    def _sql_order_keys(self) -> list | None:
+        if self.sort.sql_order is None or len(self.contexts) != 1:
+            return None
+        return self.sort.sql_order(
+            self.contexts[0],
+            self.query.sort.seed,
+            self.query.sort.direction,
         )
 
     @cached_property
@@ -266,6 +277,12 @@ class LibraryQueryExecutor:
         return Coalesce(*expressions)
 
     def _ordered(self, queryset):
+        if self._sql_order_keys is not None:
+            annotations, keys = self._sql_order_keys
+            return queryset.annotate(**annotations).order_by(
+                *keys,
+                *tie_breakers(descending=False),
+            )
         expression = self._sort_expression()
         descending = self.direction == DESC
         queryset = queryset.annotate(_library_sort=expression)
@@ -313,6 +330,12 @@ class LibraryQueryExecutor:
         if not self._needs_scan:
             return set(self.filtered.values_list("pk", flat=True))
         return {pk for *_rest, pk in self._scan(self.filtered, with_sort=False)}
+
+    def ranked_ids(self) -> list[int]:
+        """Return every matching item id in order (for caching an order)."""
+        if self.uses_sql:
+            return list(self._ordered(self.filtered).values_list("pk", flat=True))
+        return [row[-1] for row in self._scan_ranked]
 
     def matches(self):
         """Return the matches as a scope for another query's ``within``.
@@ -383,10 +406,12 @@ class LibraryQueryExecutor:
             queryset = queryset.defer("watch_providers")
         contexts_by_type = {ctx.media_type: ctx for ctx in self.contexts}
         python_key = None
-        if with_sort and not sql_sort:
+        batch_values = self.sort.batch_values if with_sort and not sql_sort else None
+        if with_sort and not sql_sort and batch_values is None:
             python_key = sort_registry.python_key(self.query.sort.key)
             # A tracker value computed in Python reads the aggregated row.
             needs.add(filter_registry.NEEDS_MEDIA)
+        requested_direction = self.query.sort.direction
 
         rows = []
         iterator = queryset.iterator(chunk_size=self.batch_size)
@@ -396,6 +421,15 @@ class LibraryQueryExecutor:
                 break
             if filter_registry.NEEDS_MEDIA in needs:
                 _attach_media(self.user, batch, needs)
+            for ctx in self.contexts:
+                for definition in self._predicates(ctx):
+                    if definition.prepare is not None:
+                        definition.prepare(
+                            [c for c in batch if _context_for(c.item, contexts_by_type) is ctx],
+                            self.query.filters,
+                            ctx,
+                        )
+            kept = []
             for candidate in batch:
                 if not getattr(candidate.item, "_in_union", False):
                     ctx = _context_for(candidate.item, contexts_by_type)
@@ -404,6 +438,12 @@ class LibraryQueryExecutor:
                         for definition in self._predicates(ctx)
                     ):
                         continue
+                kept.append(candidate)
+            if batch_values is not None:
+                values = batch_values(self.user, kept, requested_direction)
+                rows.extend(rank_row(value, c.item) for value, c in zip(values, kept, strict=True))
+                continue
+            for candidate in kept:
                 if not with_sort:
                     value = None
                 elif python_key is None:
@@ -480,6 +520,9 @@ def _attach_media(user, batch: list[Candidate], needs: set[str]) -> None:
             user=user,
             item_id__in=[candidate.item.pk for candidate in candidates],
         ).select_related("item")
+        # Progress and derived status read episodes and seasons; fetch them
+        # once for the batch instead of once per row.
+        rows = BasicMedia.objects._apply_prefetch_related(rows, media_type)
         aggregated = BasicMedia.objects._aggregate_duplicate_data(rows, user, media_type)
         latest = {}
         for media in aggregated:

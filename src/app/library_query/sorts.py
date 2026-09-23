@@ -67,6 +67,18 @@ class SortDef:
     # Tracker-derived values differ per media type; the executor coalesces
     # them when a query spans several types.
     tracker: bool = False
+    # Computes values for one batch of candidates, in order, for sorts whose
+    # values need per-batch annotation. Receives (user, candidates, direction).
+    batch_values: Callable[[object, list, str], list] | None = None
+    # A sort whose value already encodes the direction is always ordered
+    # ascending (for composite orders such as "upcoming, then recent").
+    direction_in_value: bool = False
+    # A composite order in SQL: returns ``(annotations, order_by keys)`` for
+    # one media type, given (ctx, seed, requested direction), or None when
+    # that type cannot express it. Keys refer to the annotations by name so an
+    # expensive subquery is computed once per row. It must order exactly like
+    # ``batch_values``, which still serves queries a Python filter scans.
+    sql_order: Callable[[TypeContext, int, str], tuple | None] | None = None
 
 
 def _field(name: str):
@@ -238,6 +250,16 @@ SORTS: tuple[SortDef, ...] = (
 )
 
 SORTS_BY_KEY = {key: definition for definition in SORTS for key in definition.keys}
+
+
+def register(definition: SortDef) -> None:
+    """Add a surface's own sort keys (for example Home's "upcoming")."""
+    for key in definition.keys:
+        existing = SORTS_BY_KEY.get(key)
+        if existing is not None and existing is not definition:
+            msg = f"Sort key {key!r} is already registered."
+            raise ValueError(msg)
+        SORTS_BY_KEY[key] = definition
 
 
 def sort_def(sort_key: str) -> SortDef:

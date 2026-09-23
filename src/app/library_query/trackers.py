@@ -39,8 +39,20 @@ class TrackerSource:
         return self.model.objects.filter(**{self.user_lookup: user})
 
     def item_rows(self, user, outer_ref: str = "pk"):
-        """Return the user's rows for the outer item (a correlated subquery)."""
-        return self.rows(user).filter(item_id=OuterRef(outer_ref))
+        """Return the user's rows for the outer item (a correlated subquery).
+
+        The owner is compared as ``owner + 0`` on purpose. Without table
+        statistics SQLite otherwise picks the (user, created_at) index to
+        satisfy a subquery's ORDER BY and walks every row the user owns, once
+        per item; an expression cannot use an index, so the lookup goes
+        through ``item_id`` and touches only the item's own rows.
+        """
+        user_id = getattr(user, "pk", user)
+        return (
+            self.model.objects.filter(item_id=OuterRef(outer_ref))
+            .alias(_owner=F(self.user_lookup) + 0)
+            .filter(_owner=user_id)
+        )
 
     def item_ids(self, user, row_q: Q | None = None):
         """Return the ids of items with a user's row matching ``row_q``.

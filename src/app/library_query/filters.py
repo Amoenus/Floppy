@@ -35,8 +35,8 @@ from django.db.models.lookups import (
     LessThanOrEqual,
 )
 
-from app.library_query.spec import STATUS_MATCH_ANY, FilterValues
-from app.models.choices import MediaTypes
+from app.library_query.spec import STATUS_MATCH_ANY, STATUS_MATCH_LATEST, FilterValues
+from app.models.choices import MediaTypes, Status
 from app.models.discovery import CollectionEntry, ItemTag
 from app.models.item import Item
 from app.models.manager import item_ids_with_json_array_value_ci
@@ -82,6 +82,9 @@ class FilterDef:
     sql: Callable[[FilterValues, TypeContext], Q | None] | None = None
     predicate: Callable[[object, FilterValues, TypeContext], bool] | None = None
     needs: frozenset[str] = field(default_factory=frozenset)
+    # Runs once per scan batch before ``predicate``, for bulk annotation that
+    # only some candidates need.
+    prepare: Callable[[list, FilterValues, TypeContext], None] | None = None
 
 
 def _norm(value) -> str:
@@ -164,7 +167,66 @@ def _status_row(values: FilterValues, source: TrackerSource, ctx: TypeContext):
         # A statusless row (an imported rating with no tracking state) is
         # not part of any status view, including "All".
         return Q(**{f"{source.status_field}__isnull": False})
+    if statuses and not values.include_no_status and ctx.media_type != MediaTypes.SEASON.value:
+        # Implied by the latest-row check in ``_status_sql`` (the latest row
+        # has one of these statuses, so some row does), and answered from the
+        # (user, status) index - so the correlated check only runs on items
+        # that can pass it.
+        return Q(**{f"{source.status_field}__in": statuses})
     return None
+
+
+def season_effective_status(media) -> str | None:
+    """Return the status a season reads as wherever it is displayed.
+
+    A season's status follows its episode history
+    (``derived_status_from_episode_progress``), except that a fully watched
+    season still stored as In Progress keeps reading In Progress until it is
+    promoted - Home's long-standing rule, now shared.
+    """
+    status = getattr(media, "status", None)
+    derive = getattr(media, "derived_status_from_episode_progress", None)
+    if derive is None or status in _SEASON_STORED_STATUSES:
+        return status
+    effective = derive(max_progress=getattr(media, "max_progress", None))
+    if effective == Status.COMPLETED.value and status == Status.IN_PROGRESS.value:
+        return status
+    return effective
+
+
+# A season stored with one of these reads as that status whatever its
+# episodes say; only the others need their episode history derived.
+_SEASON_STORED_STATUSES = frozenset(
+    {Status.IN_PROGRESS.value, Status.DROPPED.value, Status.PAUSED.value},
+)
+
+
+def _prepare_season_status(candidates, values: FilterValues, ctx: TypeContext) -> None:
+    from app.models import BasicMedia
+
+    derived = [
+        candidate.media
+        for candidate in candidates
+        if candidate.media is not None
+        and candidate.media.status not in _SEASON_STORED_STATUSES
+        and not hasattr(candidate.media, "max_progress")
+    ]
+    if derived:
+        BasicMedia.objects.annotate_max_progress(derived, MediaTypes.SEASON.value)
+
+
+def _season_status_predicate(candidate, values: FilterValues, ctx: TypeContext) -> bool:
+    statuses = {value for value in values.statuses if value and value != "all"}
+    media = candidate.media
+    status = season_effective_status(media) if media is not None else None
+    if status is None:
+        return values.include_no_status
+    return status in statuses
+
+
+def _season_status_active(values: FilterValues) -> bool:
+    statuses = [value for value in values.statuses if value and value != "all"]
+    return bool(statuses) and values.status_match == STATUS_MATCH_LATEST
 
 
 def _status_sql(values: FilterValues, ctx: TypeContext):
@@ -202,6 +264,8 @@ def _status_sql(values: FilterValues, ctx: TypeContext):
             ],
         )
         return with_status | ~has_any_status
+    if ctx.media_type == MediaTypes.SEASON.value and statuses:
+        return None  # Effective season status is checked in Python.
     latest = latest_value(ctx, "status")
     condition = Q(In(latest, statuses)) if statuses else Q(pk__in=[])
     if values.include_no_status:
@@ -466,6 +530,13 @@ def _text(key: str):
 FILTERS: tuple[FilterDef, ...] = (
     FilterDef("status", _status_active, row=_status_row, sql=_status_sql),
     FilterDef(
+        "season_status",
+        _season_status_active,
+        predicate=_season_status_predicate,
+        prepare=_prepare_season_status,
+        needs=frozenset({NEEDS_MEDIA}),
+    ),
+    FilterDef(
         "date_added",
         lambda v: bool(_date(v.date_added_from) or _date(v.date_added_to)),
         row=_date_added_row,
@@ -541,6 +612,8 @@ def active_filters(values: FilterValues, media_type: str) -> list[FilterDef]:
         # Progress is caught-up-ness against released episodes; other media
         # types have no such notion, so the filter does not narrow them.
         active = [definition for definition in active if definition.key != "progress"]
+    if media_type != MediaTypes.SEASON.value:
+        active = [definition for definition in active if definition.key != "season_status"]
     return active
 
 
