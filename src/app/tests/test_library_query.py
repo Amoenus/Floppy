@@ -164,7 +164,11 @@ class StatusSemanticsTests(LibraryQueryTestCase):
         )
         self.track(rated_only, status=None, score=7)
         self.assertNotIn(rated_only.pk, self.ids())
-        self.assertIn(rated_only.pk, self.ids(include_no_status=True))
+        self.assertEqual(self.ids(include_no_status=True), {rated_only.pk})
+        self.assertIn(
+            rated_only.pk,
+            self.ids(statuses=(Status.DROPPED.value,), include_no_status=True),
+        )
 
 
 class FilterSemanticsTests(LibraryQueryTestCase):
@@ -236,6 +240,16 @@ class FilterSemanticsTests(LibraryQueryTestCase):
         CollectionEntry.objects.create(user=self.user, item=untracked)
         self.assertEqual(
             self.ids(include_collection_only=True, filters=FilterValues(include_no_status=True)),
+            {untracked.pk},
+        )
+        self.assertEqual(
+            self.ids(
+                include_collection_only=True,
+                filters=FilterValues(
+                    statuses=(Status.COMPLETED.value,),
+                    include_no_status=True,
+                ),
+            ),
             {tracked.pk, untracked.pk},
         )
         self.assertEqual(

@@ -39,8 +39,20 @@ class TrackerSource:
         return self.model.objects.filter(**{self.user_lookup: user})
 
     def item_rows(self, user, outer_ref: str = "pk"):
-        """Return the user's rows for the outer item."""
+        """Return the user's rows for the outer item (a correlated subquery)."""
         return self.rows(user).filter(item_id=OuterRef(outer_ref))
+
+    def item_ids(self, user, row_q: Q | None = None):
+        """Return the ids of items with a user's row matching ``row_q``.
+
+        Uncorrelated on purpose: ``pk IN (this)`` is evaluated once from the
+        tracker table's user index, where ``EXISTS`` correlated to each item
+        would make the database walk every user's items.
+        """
+        rows = self.rows(user)
+        if row_q is not None:
+            rows = rows.filter(row_q)
+        return rows.values("item_id")
 
     def has_field(self, name: str) -> bool:
         """Return whether rows store ``name`` (TV derives dates from seasons)."""

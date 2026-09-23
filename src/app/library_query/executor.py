@@ -30,7 +30,7 @@ from django.utils import timezone
 
 from app.library_query import filters as filter_registry
 from app.library_query import sorts as sort_registry
-from app.library_query.spec import ROUTING_MODEL
+from app.library_query.spec import ROUTING_MODEL, STATUS_MATCH_LATEST
 from app.library_query.trackers import tracker_sources
 from app.models.choices import MediaTypes, Sources
 from app.models.item import Item
@@ -83,6 +83,7 @@ class LibraryQueryExecutor:
                 today=self.today,
                 provider_region=self.query.provider_region,
                 pinned_providers=self.query.pinned_providers,
+                sort_list_id=self.query.sort_list_id,
             )
             for media_type in self.query.media_types
         ]
@@ -94,24 +95,14 @@ class LibraryQueryExecutor:
         """Return the condition for an item being in this type's candidates."""
         values = self.query.filters
         active = self._active(ctx)
-        type_q = self._type_q(ctx)
-
-        if self.query.list_id is not None:
-            from lists.models import CustomListItem
-
-            in_list = Q(
-                Exists(
-                    CustomListItem.objects.filter(
-                        custom_list_id=self.query.list_id,
-                        item_id=OuterRef("pk"),
-                    ),
-                ),
-            )
-            row_filters = [d for d in active if d.row is not None and d.key != "status"]
-            tracked = in_list & type_q
-            if row_filters or values.statuses:
-                tracked &= self._tracked_q(ctx, active)
-            return tracked
+        scope_q = self._scope_q()
+        if scope_q is not None:
+            # A list or id scope keeps untracked items; tracker rows are only
+            # required when a row condition asks something of them.
+            membership = scope_q & self._type_q(ctx)
+            if self._row_conditions(ctx, active, scoped=True):
+                membership &= self._tracked_q(ctx, active, scoped=True)
+            return membership
 
         membership = self._tracked_q(ctx, active)
         if self.query.include_collection_only and filter_registry.collection_only_allowed(
@@ -126,50 +117,65 @@ class LibraryQueryExecutor:
             return Q(media_type=ctx.media_type)
         return Q(media_type=ctx.media_type) | Q(library_media_type=ctx.media_type)
 
-    def _tracked_q(self, ctx, active) -> Q:
-        """Return: a tracker row of this type satisfies every row condition."""
-        per_source = []
+    def _scope_q(self) -> Q | None:
+        """Return the candidate scope, or ``None`` for the user's library."""
+        if self.query.list_id is not None:
+            from lists.models import CustomListItem
+
+            return Q(
+                pk__in=CustomListItem.objects.filter(
+                    custom_list_id=self.query.list_id,
+                ).values("item_id"),
+            )
+        if self.query.within is not None:
+            return Q(pk__in=self.query.within)
+        return None
+
+    def _row_conditions(self, ctx, active, *, scoped: bool) -> dict:
+        """Return each tracker source's combined row condition, if any."""
+        conditions = {}
         for source in ctx.sources:
             row_q = Q()
             for definition in active:
                 if definition.row is None:
                     continue
+                if scoped and definition.key == "status" and (
+                    self.query.filters.status_match == STATUS_MATCH_LATEST
+                ):
+                    # "Has a status" defines library membership, not a list's.
+                    continue
                 condition = definition.row(self.query.filters, source, ctx)
                 if condition is not None:
                     row_q &= condition
-            per_source.append(
-                source.item_q & Q(Exists(source.item_rows(self.user).filter(row_q))),
-            )
-        return filter_registry.any_q(per_source)
+            if row_q:
+                conditions[source] = row_q
+        return conditions
+
+    def _tracked_q(self, ctx, active, *, scoped: bool = False) -> Q:
+        """Return: a tracker row of this type satisfies every row condition."""
+        conditions = self._row_conditions(ctx, active, scoped=scoped)
+        return filter_registry.any_q(
+            [
+                source.item_q
+                & Q(pk__in=source.item_ids(self.user, conditions.get(source)))
+                for source in ctx.sources
+            ],
+        )
 
     def _collection_only_q(self, ctx) -> Q:
         """Return collected items of this type that have no tracker row."""
         from app.models.discovery import CollectionEntry
 
-        type_q = self._type_q(ctx)
-        direct = Q(
-            Exists(
-                CollectionEntry.objects.filter(user=self.user, item_id=OuterRef("pk")),
-            ),
+        collected = Q(
+            pk__in=CollectionEntry.objects.filter(user=self.user).values("item_id"),
         ) & ~Q(media_type=MediaTypes.EPISODE.value)
-        collected = direct
         if ctx.media_type in (MediaTypes.TV.value, MediaTypes.ANIME.value):
             collected |= Q(
                 media_type__in=(MediaTypes.TV.value, MediaTypes.ANIME.value),
-            ) & Q(
-                Exists(
-                    CollectionEntry.objects.filter(
-                        user=self.user,
-                        item__media_type=MediaTypes.EPISODE.value,
-                        item__media_id=OuterRef("media_id"),
-                        item__source=OuterRef("source"),
-                    ),
-                ),
+                pk__in=filter_registry.shows_with_collected_episodes(self.user),
             )
-        untracked = ~filter_registry.any_q(
-            [Q(Exists(source.item_rows(self.user))) for source in ctx.sources],
-        )
-        return type_q & collected & untracked
+        untracked = ~filter_registry.any_row(ctx)
+        return self._type_q(ctx) & collected & untracked
 
     def _item_q(self, ctx) -> Q:
         """Return every SQL condition for this media type."""
@@ -196,16 +202,13 @@ class LibraryQueryExecutor:
     def _needs_scan(self) -> bool:
         return any(self._predicates_by_type.values())
 
-    def _union_exists(self):
-        """Return: the item belongs to a list the query always includes."""
+    def _union_ids(self):
+        """Return ids of items in the lists the query always includes."""
         from lists.models import CustomListItem
 
-        return Exists(
-            CustomListItem.objects.filter(
-                custom_list_id__in=self.query.union_list_ids,
-                item_id=OuterRef("pk"),
-            ),
-        )
+        return CustomListItem.objects.filter(
+            custom_list_id__in=self.query.union_list_ids,
+        ).values("item_id")
 
     @cached_property
     def filtered(self):
@@ -221,7 +224,7 @@ class LibraryQueryExecutor:
             queryset = queryset.exclude(pk__in=hidden_ids)
         if self.query.union_list_ids:
             queryset = Item.objects.filter(
-                Q(pk__in=queryset.values("pk")) | Q(self._union_exists()),
+                Q(pk__in=queryset.values("pk")) | Q(pk__in=self._union_ids()),
             )
         return queryset
 
@@ -269,8 +272,7 @@ class LibraryQueryExecutor:
         value = F("_library_sort")
         return queryset.order_by(
             value.desc(nulls_last=True) if descending else value.asc(nulls_last=True),
-            Lower("title").desc() if descending else Lower("title").asc(),
-            F("pk").desc() if descending else F("pk").asc(),
+            *tie_breakers(descending=descending),
         )
 
     # -- cross-provider aliases -----------------------------------------------
@@ -303,44 +305,86 @@ class LibraryQueryExecutor:
         """Return how many items match."""
         if not self._needs_scan:
             return self.filtered.count()
+        # A count is nearly always followed by ``page``; share its scan.
         return len(self._scan_ranked)
 
     def ids(self) -> set[int]:
         """Return every matching item id (for smart-list membership)."""
         if not self._needs_scan:
             return set(self.filtered.values_list("pk", flat=True))
-        return {item_id for *_rest, item_id in self._scan_ranked}
+        return {pk for *_rest, pk in self._scan(self.filtered, with_sort=False)}
 
-    def page(self, offset: int, limit: int) -> Page:
-        """Return ``limit`` items starting at ``offset``, and the total."""
+    def matches(self):
+        """Return the matches as a scope for another query's ``within``.
+
+        A ``pk`` subquery when every filter is SQL, so nothing is loaded;
+        the matching ids when a Python filter had to run.
+        """
+        if not self._needs_scan:
+            return self.filtered.values("pk")
+        return self.ids()
+
+    def contains(self, item_id: int) -> bool:
+        """Return whether one item matches, without evaluating the others."""
+        candidates = self.filtered.filter(pk=item_id)
+        if not self._needs_scan:
+            return candidates.exists()
+        return bool(self._scan(candidates, with_sort=False))
+
+    def page(
+        self,
+        offset: int,
+        limit: int,
+        *,
+        defer: tuple[str, ...] = (),
+        total: int | None = None,
+    ) -> Page:
+        """Return ``limit`` items starting at ``offset``, and the total.
+
+        ``defer`` names ``Item`` columns the caller will not read. Pass
+        ``total`` when the caller already counted, to skip a second count.
+        """
         offset = max(0, offset)
         if self.uses_sql:
             ordered = self._ordered(self.filtered)
-            total = ordered.count()
-            return Page(list(ordered[offset : offset + limit]), total, used_sql=True)
+            if total is None:
+                total = ordered.count()
+            items = list(ordered.defer(*defer)[offset : offset + limit])
+            return Page(items, total, used_sql=True)
 
         ranked = self._scan_ranked
-        selected_ids = [item_id for *_rest, item_id in ranked[offset : offset + limit]]
-        by_id = Item.objects.in_bulk(selected_ids)
+        selected_ids = [pk for *_rest, pk in ranked[offset : offset + limit]]
+        by_id = Item.objects.defer(*defer).in_bulk(selected_ids)
         return Page([by_id[i] for i in selected_ids if i in by_id], len(ranked), False)
 
     @cached_property
     def _scan_ranked(self) -> list[tuple]:
-        """Return ``(value, title, id)`` for every match, in order."""
-        queryset = self.filtered
-        sql_sort = bool(self.contexts) and self._sort_expressions is not None
+        """Return a ``rank_row`` for every match, in order."""
+        return order_rows(
+            self._scan(self.filtered, with_sort=True),
+            descending=self.direction == DESC,
+        )
+
+    def _scan(self, queryset, *, with_sort: bool) -> list[tuple]:
+        """Read candidates in batches; keep a compact ``rank_row`` per match."""
+        sql_sort = with_sort and bool(self.contexts) and self._sort_expressions is not None
         if sql_sort:
             queryset = queryset.annotate(_library_sort=self._sort_expression())
         if self.query.union_list_ids:
-            queryset = queryset.annotate(_in_union=self._union_exists())
+            queryset = queryset.annotate(
+                _in_union=Exists(self._union_ids().filter(item_id=OuterRef("pk"))),
+            )
 
-        needs = set(self.sort.needs)
+        needs = set(self.sort.needs) if with_sort else set()
         for ctx in self.contexts:
             for definition in self._predicates(ctx):
                 needs |= definition.needs
+        if filter_registry.NEEDS_WATCH_PROVIDERS not in needs:
+            queryset = queryset.defer("watch_providers")
         contexts_by_type = {ctx.media_type: ctx for ctx in self.contexts}
-        python_key = None if sql_sort else sort_registry.python_key(self.query.sort.key)
-        if python_key is not None:
+        python_key = None
+        if with_sort and not sql_sort:
+            python_key = sort_registry.python_key(self.query.sort.key)
             # A tracker value computed in Python reads the aggregated row.
             needs.add(filter_registry.NEEDS_MEDIA)
 
@@ -360,24 +404,53 @@ class LibraryQueryExecutor:
                         for definition in self._predicates(ctx)
                     ):
                         continue
-                if python_key is None:
+                if not with_sort:
+                    value = None
+                elif python_key is None:
                     value = candidate.item._library_sort
                 elif candidate.media is None and self.sort.tracker:
                     # No tracker row, so no tracker value (not zero progress).
                     value = None
                 else:
                     value = python_key(candidate)
-                rows.append((value, (candidate.item.title or "").lower(), candidate.item.pk))
+                rows.append(rank_row(value, candidate.item))
+        return rows
 
-        return order_rows(rows, descending=self.direction == DESC)
+
+def tie_breakers(*, descending: bool) -> list:
+    """Return the SQL ordering after the sort value: title, season, episode, id.
+
+    Seasons and episodes of one show share a title, so they fall back to
+    their numbers (a missing number first when ascending) before the id.
+    """
+    if descending:
+        return [
+            Lower("title").desc(),
+            F("season_number").desc(nulls_last=True),
+            F("episode_number").desc(nulls_last=True),
+            F("pk").desc(),
+        ]
+    return [
+        Lower("title").asc(),
+        F("season_number").asc(nulls_first=True),
+        F("episode_number").asc(nulls_first=True),
+        F("pk").asc(),
+    ]
+
+
+def rank_row(value, item) -> tuple:
+    """Return a scan row that orders like ``tie_breakers`` after ``value``."""
+    season = -1 if item.season_number is None else item.season_number
+    episode = -1 if item.episode_number is None else item.episode_number
+    return (value, (item.title or "").lower(), season, episode, item.pk)
 
 
 def order_rows(rows: list[tuple], *, descending: bool) -> list[tuple]:
-    """Order ``(value, title, id)`` rows like the SQL path: nulls last, then title, id."""
+    """Order ``rank_row`` rows like the SQL path: value (nulls last), then ties."""
     present = [row for row in rows if row[0] is not None]
     missing = [row for row in rows if row[0] is None]
     present.sort(reverse=descending)
-    missing.sort(key=lambda row: (row[1], row[2]), reverse=descending)
+    missing.sort(key=lambda row: row[1:], reverse=descending)
     return present + missing
 
 

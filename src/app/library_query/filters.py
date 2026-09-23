@@ -38,6 +38,7 @@ from django.db.models.lookups import (
 from app.library_query.spec import STATUS_MATCH_ANY, FilterValues
 from app.models.choices import MediaTypes
 from app.models.discovery import CollectionEntry, ItemTag
+from app.models.item import Item
 from app.models.manager import item_ids_with_json_array_value_ci
 
 if TYPE_CHECKING:
@@ -47,6 +48,7 @@ if TYPE_CHECKING:
 
 NEEDS_MEDIA = "media"
 NEEDS_MAX_PROGRESS = "max_progress"
+NEEDS_WATCH_PROVIDERS = "watch_providers"
 
 # Shows are "collected" when any of their episodes is, as well as directly.
 SHOW_COLLECTION_MEDIA_TYPES = frozenset(
@@ -67,6 +69,7 @@ class TypeContext:
     today: datetime.date
     provider_region: str = ""
     pinned_providers: tuple[str, ...] = ()
+    sort_list_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -139,10 +142,9 @@ def latest_value(ctx: TypeContext, value_field: str, row_q: Q | None = None):
     return Coalesce(*subqueries)
 
 
-def _any_row(ctx: TypeContext, row_q: Q) -> Q:
-    return any_q(
-        [Q(Exists(source.item_rows(ctx.user).filter(row_q))) for source in ctx.sources],
-    )
+def any_row(ctx: TypeContext, row_q: Q | None = None) -> Q:
+    """Return: the user has a row for the item matching ``row_q``."""
+    return any_q([Q(pk__in=source.item_ids(ctx.user, row_q)) for source in ctx.sources])
 
 
 # -- status -------------------------------------------------------------------
@@ -155,7 +157,7 @@ def _status_active(values: FilterValues) -> bool:
 def _status_row(values: FilterValues, source: TrackerSource, ctx: TypeContext):
     statuses = [value for value in values.statuses if value and value != "all"]
     if values.status_match == STATUS_MATCH_ANY:
-        if statuses:
+        if statuses and not values.include_no_status:
             return Q(**{f"{source.status_field}__in": statuses})
         return None
     if not statuses and not values.include_no_status:
@@ -166,11 +168,42 @@ def _status_row(values: FilterValues, source: TrackerSource, ctx: TypeContext):
 
 
 def _status_sql(values: FilterValues, ctx: TypeContext):
+    """Match the statuses asked for, and statusless items with "no status".
+
+    "No status" on its own means only statusless items: no tracker row, or
+    rows that carry no status (an imported rating).
+    """
     statuses = [value for value in values.statuses if value and value != "all"]
-    if values.status_match == STATUS_MATCH_ANY or not statuses:
+    if not statuses and not values.include_no_status:
         return None
+    if values.status_match == STATUS_MATCH_ANY:
+        if not values.include_no_status:
+            return None  # A row condition; see ``_status_row``.
+        with_status = any_q(
+            [
+                Q(
+                    pk__in=source.item_ids(
+                        ctx.user,
+                        Q(**{f"{source.status_field}__in": statuses}),
+                    ),
+                )
+                for source in ctx.sources
+            ],
+        ) if statuses else Q(pk__in=[])
+        has_any_status = any_q(
+            [
+                Q(
+                    pk__in=source.item_ids(
+                        ctx.user,
+                        Q(**{f"{source.status_field}__isnull": False}),
+                    ),
+                )
+                for source in ctx.sources
+            ],
+        )
+        return with_status | ~has_any_status
     latest = latest_value(ctx, "status")
-    condition = Q(In(latest, statuses))
+    condition = Q(In(latest, statuses)) if statuses else Q(pk__in=[])
     if values.include_no_status:
         condition |= Q(IsNull(latest, True))
     return condition
@@ -237,8 +270,8 @@ def _rating_sql(values: FilterValues, ctx: TypeContext):
         if rating_max is not None:
             scored &= Q(score__lte=rating_max)
         if values.rating == "not_rated":
-            return ~_any_row(ctx, Q(score__isnull=False))
-        return _any_row(ctx, scored)
+            return ~any_row(ctx, Q(score__isnull=False))
+        return any_row(ctx, scored)
 
     latest_score = latest_value(ctx, "score", Q(score__isnull=False))
     if values.rating == "not_rated":
@@ -256,22 +289,37 @@ def _rating_sql(values: FilterValues, ctx: TypeContext):
 
 def collected_q(ctx: TypeContext) -> Q:
     """Return the condition for an item the user has collected."""
-    direct = Q(
-        Exists(CollectionEntry.objects.filter(user=ctx.user, item_id=OuterRef("pk"))),
+    return Q(
+        pk__in=CollectionEntry.objects.filter(user=ctx.user).values("item_id"),
+    ) | Q(pk__in=shows_with_collected_episodes(ctx.user))
+
+
+def shows_with_collected_episodes(user):
+    """Return ids of show and season items with an episode the user collected.
+
+    Driven from the user's collection: the candidate shows are narrowed by
+    the collected episodes' ids before the exact (media id, source) pair is
+    checked, so no other user's items are visited.
+    """
+    collected_episodes = CollectionEntry.objects.filter(
+        user=user,
+        item__media_type=MediaTypes.EPISODE.value,
     )
-    via_episode = Q(
-        media_type__in=SHOW_COLLECTION_MEDIA_TYPES,
-    ) & Q(
-        Exists(
-            CollectionEntry.objects.filter(
-                user=ctx.user,
-                item__media_type=MediaTypes.EPISODE.value,
-                item__media_id=OuterRef("media_id"),
-                item__source=OuterRef("source"),
+    return (
+        Item.objects.filter(
+            media_type__in=SHOW_COLLECTION_MEDIA_TYPES,
+            media_id__in=collected_episodes.values("item__media_id"),
+        )
+        .filter(
+            Exists(
+                collected_episodes.filter(
+                    item__media_id=OuterRef("media_id"),
+                    item__source=OuterRef("source"),
+                ),
             ),
-        ),
+        )
+        .values("pk")
     )
-    return direct | via_episode
 
 
 def _collection_sql(values: FilterValues, ctx: TypeContext):
@@ -318,12 +366,9 @@ def _platform_q(ctx: TypeContext, platform: str, *, collected: bool) -> Q:
     """Match a platform, preferring the platform the user collected it on."""
     if not collected:
         return _json_array_q("platforms", platform)
-    explicit = CollectionEntry.objects.filter(
-        user=ctx.user,
-        item_id=OuterRef("pk"),
-    ).exclude(resolution="")
-    return Q(Exists(explicit.filter(resolution__iexact=platform))) | (
-        ~Q(Exists(explicit)) & _json_array_q("platforms", platform)
+    explicit = CollectionEntry.objects.filter(user=ctx.user).exclude(resolution="")
+    return Q(pk__in=explicit.filter(resolution__iexact=platform).values("item_id")) | (
+        ~Q(pk__in=explicit.values("item_id")) & _json_array_q("platforms", platform)
     )
 
 
@@ -344,25 +389,19 @@ def _format_sql(values: FilterValues, ctx: TypeContext):
     if not values.collection_attributes:
         return own_format
     return own_format | Q(
-        Exists(
-            CollectionEntry.objects.filter(
-                user=ctx.user,
-                item_id=OuterRef("pk"),
-                media_type__iexact=values.format.strip(),
-            ),
-        ),
+        pk__in=CollectionEntry.objects.filter(
+            user=ctx.user,
+            media_type__iexact=values.format.strip(),
+        ).values("item_id"),
     )
 
 
 def _tag_q(ctx: TypeContext, tag: str) -> Q:
     return Q(
-        Exists(
-            ItemTag.objects.filter(
-                tag__user=ctx.user,
-                tag__name__iexact=tag,
-                item_id=OuterRef("pk"),
-            ),
-        ),
+        pk__in=ItemTag.objects.filter(
+            tag__user=ctx.user,
+            tag__name__iexact=tag,
+        ).values("item_id"),
     )
 
 
@@ -399,11 +438,8 @@ def _provider_predicate(candidate, values: FilterValues, ctx: TypeContext) -> bo
     from app.providers import tmdb
 
     item = candidate.item
-    providers = set(
-        tmdb.item_watch_provider_names(item, ctx.provider_region)
-        if ctx.provider_region
-        else [],
-    )
+    # No configured region means no providers to match, not "any provider".
+    providers = set(tmdb.item_watch_provider_names(item, ctx.provider_region) or [])
     if ctx.pinned_providers:
         providers |= {
             match["provider_name"]
@@ -481,7 +517,12 @@ FILTERS: tuple[FilterDef, ...] = (
     FilterDef("format", _text("format"), sql=_format_sql),
     FilterDef("tags", lambda v: bool(v.tags), sql=_tags_sql),
     FilterDef("author", _text("author"), predicate=_author_predicate),
-    FilterDef("provider", _text("provider"), predicate=_provider_predicate),
+    FilterDef(
+        "provider",
+        _text("provider"),
+        predicate=_provider_predicate,
+        needs=frozenset({NEEDS_WATCH_PROVIDERS}),
+    ),
     FilterDef(
         "progress",
         lambda v: v.progress in ("caught_up", "not_caught_up"),
@@ -504,12 +545,13 @@ def active_filters(values: FilterValues, media_type: str) -> list[FilterDef]:
 
 
 # Collection-only items have no tracker row, so row conditions, statuses and
-# ratings cannot describe them. They are offered only when none are asked for.
+# ratings cannot describe them. They are offered when no status is asked for,
+# or when "no status" is, and never with a rating.
 def collection_only_allowed(values: FilterValues) -> bool:
     """Return whether untracked collected items can satisfy these filters."""
     statuses = [value for value in values.statuses if value and value != "all"]
     return (
-        not statuses
+        (not statuses or values.include_no_status)
         and values.collection != "not_collected"
         and not _rating_active(values)
     )

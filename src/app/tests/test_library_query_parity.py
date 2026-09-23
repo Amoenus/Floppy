@@ -22,6 +22,7 @@ from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from django.test import TestCase
 from django.utils import timezone
 
@@ -31,6 +32,7 @@ from app.library_query.adapters import (
     from_media_list_filters,
     from_smart_rules,
 )
+from app.library_query.spec import STATUS_MATCH_ANY
 from app.media_list_filters import MediaListFilters, get_media_list_entries
 from app.models import (
     TV,
@@ -159,6 +161,11 @@ class LibraryQueryParityTests(TestCase):
         )
         cls.anime_on_tv_ids = set(
             Item.objects.filter(library_media_type=ANIME).values_list("pk", flat=True),
+        )
+        cls.platform_sensitive_ids = set(
+            Item.objects.filter(
+                Q(media_id__regex=r"-6$") | Q(platforms=[]) | Q(platforms__isnull=True),
+            ).values_list("pk", flat=True),
         )
         cls.collected_attribute_ids = set(
             Item.objects.filter(
@@ -392,11 +399,11 @@ class LibraryQueryParityTests(TestCase):
             direction = home_engine_direction(sort_key, direction)
         query = LibraryQuery(
             media_types=(media_type,),
-            filters=FilterValues(include_no_status=True),
+            filters=FilterValues(status_match=STATUS_MATCH_ANY),
             sort=SortSpec(sort_key, direction),
             include_collection_only=True,
         )
-        values = {pk: value for value, _title, pk in LibraryQueryExecutor(
+        values = {row[-1]: row[0] for row in LibraryQueryExecutor(
             self.user, query,
         )._scan_ranked}
         return [values.get(pk) for pk in ids]
@@ -429,6 +436,16 @@ class LibraryQueryParityTests(TestCase):
                 and key[1] == "order"
                 and key[2] == MOVIE
                 and key[3].split(":")[0] in {"plays", "progress"},
+            ),
+            (
+                "platform sort uses the collected copy",
+                "Platform sorts by the platform the user collected an item on, "
+                "else its first listed platform, and items with no platform "
+                'sort last - the media list sorted a missing one as "".',
+                lambda key, old, new: key[0] == "media_list"
+                and key[3].startswith("platform:")
+                and [pk for pk in old if pk not in self.platform_sensitive_ids]
+                == [pk for pk in new if pk not in self.platform_sensitive_ids],
             ),
             (
                 "home platform sort",

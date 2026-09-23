@@ -3,8 +3,9 @@
 A ``SortDef`` has a SQL expression, or is computed in Python from the
 hydrated candidate (reusing the media list's value function). Every surface
 orders the same way: the value with nulls last, then the lower-cased title,
-then the item id, all following the requested direction. Equal values
-therefore cannot move between pages.
+season and episode numbers, then the item id, all following the requested
+direction (``executor.tie_breakers``). Equal values therefore cannot move
+between pages.
 """
 
 from __future__ import annotations
@@ -14,14 +15,21 @@ from typing import TYPE_CHECKING
 
 from django.db.models import (
     BigIntegerField,
+    Case,
+    CharField,
     ExpressionWrapper,
     F,
+    IntegerField,
     Max,
+    OuterRef,
     Q,
     Subquery,
     Value,
+    When,
 )
-from django.db.models.functions import Coalesce, Lower
+from django.db.models.fields.json import KeyTextTransform
+from django.db.models.functions import Coalesce, Lower, NullIf
+from django.db.models.lookups import Exact
 
 from app.library_query.filters import (
     NEEDS_MAX_PROGRESS,
@@ -29,6 +37,7 @@ from app.library_query.filters import (
     TypeContext,
     latest_value,
 )
+from app.models.choices import Status
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -117,6 +126,56 @@ def _latest_created(ctx: TypeContext, seed: int):
     return subqueries[0] if len(subqueries) == 1 else Coalesce(*subqueries)
 
 
+def _list_added(ctx: TypeContext, seed: int):
+    """Order by when the item joined ``sort_list_id``."""
+    from lists.models import CustomListItem
+
+    if ctx.sort_list_id is None:
+        return None
+    return Subquery(
+        CustomListItem.objects.filter(
+            custom_list_id=ctx.sort_list_id,
+            item_id=OuterRef("pk"),
+        )
+        .order_by("-date_added")
+        .values("date_added")[:1],
+    )
+
+
+# Workflow order: what is planned, then under way, then done or set aside.
+STATUS_RANK = (
+    Status.PLANNING.value,
+    Status.IN_PROGRESS.value,
+    Status.COMPLETED.value,
+    Status.PAUSED.value,
+    Status.DROPPED.value,
+)
+
+
+def _status_rank(ctx: TypeContext, seed: int):
+    latest = latest_value(ctx, "status")
+    return Case(
+        *[When(Exact(latest, status), then=Value(rank)) for rank, status in enumerate(STATUS_RANK)],
+        default=Value(None),
+        output_field=IntegerField(),
+    )
+
+
+def _platform(ctx: TypeContext, seed: int):
+    """Order by the collected copy's platform, else the item's first platform."""
+    from app.models.discovery import CollectionEntry
+
+    collected = (
+        CollectionEntry.objects.filter(user=ctx.user, item_id=OuterRef("pk"))
+        .exclude(resolution="")
+        .annotate(value=Lower("resolution"))
+        .order_by("value")
+        .values("value")[:1]
+    )
+    listed = NullIf(Lower(KeyTextTransform("0", "platforms")), Value(""))
+    return Coalesce(Subquery(collected), listed, output_field=CharField())
+
+
 def random_rank(item_id: int, seed: int) -> int:
     """Return an item's position key in the ``seed`` shuffle."""
     mixed = (item_id * RANDOM_MULTIPLIER + seed % RANDOM_MODULUS) % RANDOM_MODULUS
@@ -162,11 +221,13 @@ SORTS: tuple[SortDef, ...] = (
     SortDef(("score",), sql=_latest_score, tracker=True),
     SortDef(("progress", "plays"), sql=_tracker_aggregate("progress"), tracker=True),
     SortDef(("random",), sql=_random_sql),
+    SortDef(("list_added",), sql=_list_added),
+    SortDef(("status",), sql=_status_rank, tracker=True),
+    SortDef(("platform",), sql=_platform),
     # The rest are computed in Python from the hydrated candidate.
     SortDef(("runtime",), needs=_MEDIA),
     SortDef(("time_watched",), needs=_MEDIA),
     SortDef(("time_to_beat",), needs=_MEDIA),
-    SortDef(("platform",), needs=_MEDIA),
     SortDef(("author",), needs=_MEDIA),
     SortDef(("updated", "progressed_at"), needs=_MEDIA),
     SortDef(("time_left",), needs=frozenset({NEEDS_MEDIA, NEEDS_MAX_PROGRESS})),

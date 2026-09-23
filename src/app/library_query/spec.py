@@ -88,16 +88,26 @@ class SortSpec:
 class LibraryQuery:
     """Items of ``media_types`` that the user tracks, filtered and ordered.
 
-    ``list_id`` restricts candidates to one custom list's membership instead of
-    the user's library, keeping the same filters and sorts.
+    Candidates come from one scope:
+
+    - the user's library (the default): items with a tracker row, plus
+      collected-but-untracked items when ``include_collection_only``;
+    - ``list_id``: one custom list's members, tracked or not;
+    - ``within``: the given item ids (a queryset of ``pk`` or an iterable),
+      tracked or not - for example a smart list's live matches for its owner,
+      shown with another user's tracking data.
+
     ``union_list_ids`` adds those lists' members regardless of the filters,
-    the smart-list ``list`` rule.
+    the smart-list ``list`` rule. ``sort_list_id`` is the list whose
+    membership dates the ``list_added`` sort reads.
     """
 
     media_types: tuple[str, ...]
     filters: FilterValues = field(default_factory=FilterValues)
     sort: SortSpec = field(default_factory=SortSpec)
     list_id: int | None = None
+    within: object | None = None
+    sort_list_id: int | None = None
     union_list_ids: tuple[int, ...] = ()
     include_collection_only: bool = False
     dedupe_cross_provider: bool = True
