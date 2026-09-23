@@ -1076,9 +1076,24 @@ class BaseWebhookProcessor:
         Returns:
             tuple: (media_id, season_number, episode_number)
         """
-        # Prefer episode-level matches from any external ID before accepting a
-        # show-level fallback; TVDB episode IDs can be misreported as tv_results.
-        show_level_result = None
+        ids = dict(ids)
+        if ids.get("tvmaze_id") and not (
+            ids.get("tvdb_id") or ids.get("imdb_id") or ids.get("tmdb_id")
+        ):
+            try:
+                resolved = tvmaze.external_ids(ids["tvmaze_id"])
+            except Exception as exc:  # pragma: no cover - defensive network guard
+                resolved = None
+                logger.warning(
+                    "TVMaze resolution failed for %s: %s",
+                    ids["tvmaze_id"],
+                    exception_summary(exc),
+                )
+            if resolved:
+                ids["tvdb_id"] = resolved.get("tvdb_id")
+                ids["imdb_id"] = resolved.get("imdb_id")
+
+        # Prioritize TVDB/IMDB — TMDB find API resolves episode-level IDs to show IDs
         for ext_id, ext_type in [
             (ids["tvdb_id"], "tvdb_id"),
             (ids["imdb_id"], "imdb_id"),
@@ -1094,11 +1109,7 @@ class BaseWebhookProcessor:
                     )
                 if response.get("tv_results"):
                     result = response["tv_results"][0]
-                    if show_level_result is None:
-                        show_level_result = result.get("id")
-
-        if show_level_result:
-            return show_level_result, None, None
+                    return result.get("id"), None, None
 
         # Jellyfin and other media servers can send a TVDB episode ID here.
         # TMDB's find endpoint does not resolve every TVDB episode, but TVDB

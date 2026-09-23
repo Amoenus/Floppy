@@ -1464,32 +1464,6 @@ class PlexHistoryImporter:
                     exception_summary(exc),
                 )
 
-        # Plex can send an episode-level TMDB GUID, which is a separate ID
-        # namespace from show-level /tv/{id}: _find_tv_media_id's raw tmdb_id
-        # fallback is unsafe here since it never validates the ID is show-level.
-        # Discard it and force resolution via the show's own Plex metadata
-        # (grandparentRatingKey) instead of trusting the episode-level ID.
-        unsafe_raw_tmdb_fallback = (
-            media_id
-            and str(media_id) == str(ids.get("tmdb_id") or "")
-            and not ids.get("tvdb_id")
-            and not ids.get("imdb_id")
-            and found_season is None
-            and found_episode is None
-        )
-        if unsafe_raw_tmdb_fallback:
-            logger.info(
-                "Discarding unvalidated raw TMDB ID fallback for episode row; "
-                "resolving show via grandparentRatingKey instead. "
-                "tmdb_id=%s context=%s",
-                media_id,
-                self._episode_debug_context(metadata),
-            )
-            media_id = None
-            # Strip the episode-level tmdb_id so later fallbacks (title search)
-            # don't just re-trigger the same unsafe direct-ID branch.
-            ids = {**ids, "tmdb_id": None}
-
         # Episode-level Guids often lack show IDs; resolve via the show's own
         # Plex metadata before falling back to ambiguous title search.
         show_ids: dict = {}
@@ -1501,7 +1475,7 @@ class PlexHistoryImporter:
             if show_tmdb_id:
                 media_id = str(show_tmdb_id)
                 if media_id:
-                    logger.info(
+                    logger.debug(
                         "Plex import resolved episode via show-level TMDB metadata. "
                         "resolved_tmdb_id=%s show_ids=%s context=%s",
                         media_id,
@@ -1515,7 +1489,7 @@ class PlexHistoryImporter:
                         series_search_title,
                     )
                     if media_id:
-                        logger.info(
+                        logger.debug(
                             "Plex import resolved episode via show-level metadata lookup. "
                             "resolved_tmdb_id=%s show_ids=%s context=%s",
                             media_id,
@@ -1535,7 +1509,7 @@ class PlexHistoryImporter:
                 show_year,
             )
             if media_id:
-                logger.warning(
+                logger.debug(
                     "Plex import resolved episode via title search fallback; verify this row. "
                     "resolved_tmdb_id=%s series_title=%s show_year=%s context=%s",
                     media_id,
