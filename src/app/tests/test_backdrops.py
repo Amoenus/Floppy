@@ -199,3 +199,25 @@ class BackdropWarmTests(TestCase):
         warm_backdrops_task([backdrops.warm_identity(_tv_item())])
 
         mock_backdrop.assert_called_once_with(MediaTypes.TV.value, "1396")
+
+    def test_remember_tmdb_backdrop_serves_later_reads_from_cache(self):
+        backdrops.remember_tmdb_backdrop(MediaTypes.TV.value, "1396", "/bb.jpg")
+        backdrops.remember_tmdb_backdrop(MediaTypes.TV.value, "1399", None)
+
+        self.assertEqual(
+            backdrops.cached_backdrop(_tv_item()),
+            "https://image.tmdb.org/t/p/w1280/bb.jpg",
+        )
+        self.assertIsNone(cache.get("tmdb_backdrop_tv_1399"))
+
+    @patch("app.tasks.warm_backdrops_task.apply_async")
+    def test_known_absence_is_not_warmed_again(self, mock_apply):
+        cache.set("tmdb_backdrop_tv_1396", settings.IMG_NONE, 60)
+
+        self.assertIsNone(backdrops.cached_backdrop_or_warm(_tv_item()))
+        mock_apply.assert_not_called()
+
+    @patch("app.tasks.warm_backdrops_task.apply_async")
+    def test_cached_backdrop_or_warm_queues_a_cold_item(self, mock_apply):
+        self.assertIsNone(backdrops.cached_backdrop_or_warm(_tv_item()))
+        mock_apply.assert_called_once()

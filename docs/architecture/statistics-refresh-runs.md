@@ -277,11 +277,20 @@ Now:
 - It runs on read (`get_statistics_data`), before FINISH publishes, and when a
   range is derived from warmed day caches.
 
+The same rule covers the API. Media detail responses
+(`api.serializers.CompleteMediaSerializer`, `CompleteEpisodeSerializer`) read
+`backdrop` through `backdrops.cached_backdrop_or_warm`, so `backdrop: null`
+now means "none, or not cached yet". And because TMDB movie and TV detail
+responses already carry `backdrop_path`, `tmdb.movie()` and `tmdb.tv()` record
+it with `backdrops.remember_tmdb_backdrop`: any page that loads an item's
+metadata fills its backdrop with no extra request.
+
 The trade: with a cold backdrop cache the first load shows the poster and the
 next one the backdrop. This is also how the #211 "landscape art after Redis
 loss" recovery now works. Regressions:
 `app.tests.test_statistics_cache.NormalizeHistoryHighlightImagesTests`,
-`HighlightArtworkRequestPathTests` and `app.tests.test_backdrops.BackdropWarmTests`.
+`HighlightArtworkRequestPathTests`, `app.tests.test_backdrops.BackdropWarmTests`
+and `api.tests.test_fork_media.ForkBackdropFieldTests`.
 
 ## Structured logging
 
