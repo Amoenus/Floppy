@@ -188,6 +188,17 @@
         <h3 class="text-base font-medium">{% translate "Jellyfin Integration (Official Repo)" %}</h3>
       </div>
       <p class="text-[var(--color-text-muted)] mb-4 text-sm">{% translate "Connect Jellyfin to automatically track your watching progress. Use this method if your server has access to the official Jellyfin plugin repository." %}</p>
+      {% if jellyfin_template_outdated %}
+        <div class="flex items-start gap-2 mb-4" data-testid="jellyfin-template-outdated">
+          {% include "app/icons/warning.svg" with classes="w-4 h-4 mt-0.5 text-[var(--color-warning-text)] shrink-0" %}
+          <div class="text-sm text-[var(--color-text-secondary)]">
+            <p class="font-medium text-[var(--color-warning-text)]">{% translate "Webhook template needs updating" %}</p>
+            <p class="text-[var(--color-text-muted)] mt-1">
+              {% translate "Floppy is receiving updates from an older Jellyfin webhook template. Re-copy the template below into the Webhook plugin so the watched checkmark you set in Jellyfin can sync." %}
+            </p>
+          </div>
+        </div>
+      {% endif %}
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
         <h4 class="text-sm font-medium mb-3">{% translate "Setup Instructions" %}</h4>
         {% url 'jellyfin_webhook' request.user.token as jellyfin_webhook_path %}

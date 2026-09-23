@@ -2,6 +2,7 @@ import logging
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
+from django.core.cache import cache
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
@@ -34,6 +35,23 @@ JELLYFIN_RATING_MAX = 10
 # watched-state push; only this reason is the user clicking the checkmark.
 JELLYFIN_TOGGLE_PLAYED_REASON = "TogglePlayed"
 JELLYFIN_MANUAL_MARK_EVENTS = {"MarkPlayed", "MarkUnplayed"}
+# Set while UserDataSaved events arrive without SaveReason, i.e. from the
+# template before #1250; the Integrations page tells the user to re-copy it.
+JELLYFIN_TEMPLATE_OUTDATED_KEY = "jellyfin_template_outdated:{user_id}"
+JELLYFIN_TEMPLATE_OUTDATED_TTL = 30 * 24 * 60 * 60
+
+
+def jellyfin_template_outdated(user_id) -> bool:
+    """Return whether this user's Jellyfin webhook uses the old template."""
+    return bool(cache.get(JELLYFIN_TEMPLATE_OUTDATED_KEY.format(user_id=user_id)))
+
+
+def _note_template_version(payload, user_id):
+    key = JELLYFIN_TEMPLATE_OUTDATED_KEY.format(user_id=user_id)
+    if "SaveReason" in payload:
+        cache.delete(key)
+    else:
+        cache.set(key, True, JELLYFIN_TEMPLATE_OUTDATED_TTL)
 
 
 def _ticks_to_seconds(ticks) -> int | None:
@@ -85,6 +103,7 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             return
 
         if event_type == JELLYFIN_RATING_EVENT:
+            _note_template_version(payload, user.id)
             self._process_rating(payload, user, ids)
             mark_event = self._manual_mark_event(payload, user)
             if mark_event is None:
