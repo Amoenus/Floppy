@@ -629,6 +629,21 @@ def build_statistics_days_task(user_id: int, start_token: str, end_token: str):
     )
 
 
+@shared_task(name="Warm backdrops", ignore_result=True)
+def warm_backdrops_task(identities: list[dict]):
+    """Fetch missing horizontal backdrops into Redis.
+
+    Scheduled by ``backdrops.schedule_backdrop_warm`` from read paths that
+    must not call providers themselves; the next read picks the result up
+    from the cache.
+    """
+    from app import backdrops
+
+    for identity in identities or ():
+        # resolve_backdrop is best-effort and caches both hits and misses.
+        backdrops.resolve_backdrop(identity, allow_network=True)
+
+
 @shared_task(name="Refresh item game lengths")
 def refresh_item_game_lengths(
     item_id: int, force: bool = False, fetch_hltb: bool = True

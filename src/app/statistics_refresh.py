@@ -46,7 +46,7 @@ from app.statistics_day_cache import (
     _normalize_day_value,
     _set_history_version,
 )
-from app.statistics_highlights import _normalize_history_highlight_images
+from app.statistics_highlights import normalize_highlight_images
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +113,7 @@ def _build_predefined_range_from_day_caches(
         build_missing=False,
     )
     _normalize_hours_per_media_type(data.get("hours_per_media_type"))
-    _normalize_history_highlight_images(data.get("history_highlights"))
+    normalize_highlight_images(data)
     cache_statistics_data(user.id, range_name, data, history_version=history_version)
     logger.debug(
         "Derived statistics cache for user %s, range %s from warmed day caches",

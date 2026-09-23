@@ -69,6 +69,7 @@ from app.statistics_day_cache import (
     _get_history_version,
     _normalize_day_value,
 )
+from app.statistics_highlights import normalize_highlight_images
 
 logger = logging.getLogger(__name__)
 
@@ -610,6 +611,9 @@ def finish_run(user_id: int, range_name: str, run: dict, user=None):
         request_rerun(user_id, range_name, reason="history_version_changed")
         return None
 
+    # Cache-only: backdrops Redis lacks are fetched on the background worker,
+    # never here on the interactive lane.
+    normalize_highlight_images(stats_data)
     cache_statistics_data(
         user_id, range_name, stats_data, history_version=current_version
     )

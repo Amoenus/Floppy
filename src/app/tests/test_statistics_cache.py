@@ -958,19 +958,36 @@ class GetHorizontalHistoryImageTests(TestCase):
 
 
 # ---------------------------------------------------------------------------
-# _normalize_history_highlight_images  (the serve-time fix — issue #211)
+# normalize_highlight_images  (issue #211, made cache-only by issue #1249)
 # ---------------------------------------------------------------------------
+
+
+def _fill_tmdb_backdrop_cache(media_type, media_id):
+    """Stand-in for CustomList._get_tmdb_backdrop that caches like the real one."""
+    cache.set(f"tmdb_backdrop_{media_type}_{media_id}", BACKDROP_URL, 60)
+    return BACKDROP_URL
+
+
+def _portrait_highlights():
+    return {
+        "first_play": _highlight_entry(_tv_item_dict(), image=PORTRAIT_POSTER),
+        "last_play": _highlight_entry(_movie_item_dict(), image=PORTRAIT_POSTER),
+        "today_card": {
+            "entry": _highlight_entry(_episode_item_dict(), image=PORTRAIT_POSTER),
+        },
+        "today_month": 5,
+        "today_day": 20,
+    }
 
 
 class NormalizeHistoryHighlightImagesTests(TestCase):
     """
-    Tests for statistics_cache._normalize_history_highlight_images.
+    Tests for statistics_cache.normalize_highlight_images.
 
-    This function runs on every stats page serve. Pre-fix it used
-    allow_network=False, meaning a cold Redis cache always produced portrait
-    posters even when the stats cache was built correctly. Post-fix it uses
-    allow_network=True so the first page load after the fix immediately
-    upgrades portrait posters to backdrops.
+    It runs on every stats page serve and before a rebuilt payload is
+    published on the interactive worker, so it must never call a provider
+    (#1249). A cold backdrop cache is repaired by a background warm, and the
+    next serve picks the landscape artwork up from Redis (#211).
     """
 
     def setUp(self):
@@ -979,116 +996,198 @@ class NormalizeHistoryHighlightImagesTests(TestCase):
     def tearDown(self):
         cache.clear()
 
+    @patch("app.tasks.warm_backdrops_task.apply_async")
     @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
-    def test_portrait_poster_upgraded_to_backdrop_on_serve(self, mock_backdrop):
-        """
-        Core regression test for issue #211.
+    def test_serve_never_calls_the_provider(self, mock_backdrop, mock_warm):
+        """Core regression test for issue #1249: a cold cache means no network."""
+        data = {"history_highlights": _portrait_highlights()}
 
-        Scenario: stats cache was built with the old code and stores a portrait
-        poster in highlights[*].image. Redis has no cached backdrop. On the next
-        serve, _normalize_history_highlight_images must call TMDB and swap in
-        the backdrop.
-        """
-        highlights = {
-            "first_play": _highlight_entry(_tv_item_dict(), image=PORTRAIT_POSTER),
-            "last_play": _highlight_entry(_movie_item_dict(), image=PORTRAIT_POSTER),
-            "today_card": {
-                "entry": _highlight_entry(_episode_item_dict(), image=PORTRAIT_POSTER),
-            },
-            "today_month": 5,
-            "today_day": 20,
-        }
+        statistics_cache.normalize_highlight_images(data)
 
-        statistics_cache._normalize_history_highlight_images(highlights)
-
-        for key in ("first_play", "last_play"):
-            self.assertEqual(
-                highlights[key]["image"],
-                BACKDROP_URL,
-                msg=f"{key} still has portrait poster after normalization",
-            )
+        mock_backdrop.assert_not_called()
+        highlights = data["history_highlights"]
+        self.assertEqual(highlights["first_play"]["image"], PORTRAIT_POSTER)
+        self.assertEqual(highlights["today_card"]["entry"]["image"], PORTRAIT_POSTER)
+        # One background task carries every missing backdrop.
+        mock_warm.assert_called_once()
+        identities = mock_warm.call_args.kwargs["args"][0]
         self.assertEqual(
-            highlights["today_card"]["entry"]["image"],
-            BACKDROP_URL,
-            msg="today_card entry still has portrait poster after normalization",
+            sorted((i["media_type"], i["media_id"]) for i in identities),
+            [
+                (MediaTypes.EPISODE.value, "1399"),
+                (MediaTypes.MOVIE.value, "1865"),
+                (MediaTypes.TV.value, "1396"),
+            ],
         )
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
-    def test_all_highlight_slots_normalized(self, mock_backdrop):
-        """All named highlight slots are processed independently."""
-        entries = {
-            "first_play": _highlight_entry(_tv_item_dict(media_id="1396")),
-            "last_play": _highlight_entry(_movie_item_dict(media_id="1865")),
-            "today_card": {
-                "entry": _highlight_entry(_episode_item_dict(media_id="1399")),
-            },
+    @patch(
+        "lists.models.CustomList._get_tmdb_backdrop",
+        side_effect=_fill_tmdb_backdrop_cache,
+    )
+    def test_portrait_poster_recovers_on_next_serve(self, mock_backdrop):
+        """
+        Issue #211 recovery, now off the request path.
+
+        The stats cache stores portrait posters and Redis has no backdrops. The
+        first serve queues the warm (run inline by eager Celery here); the next
+        serve swaps in the backdrop from Redis without calling the provider.
+        """
+        statistics_cache.normalize_highlight_images(
+            {"history_highlights": _portrait_highlights()}
+        )
+        self.assertEqual(mock_backdrop.call_count, 3)  # the background warm
+
+        mock_backdrop.reset_mock()
+        data = {"history_highlights": _portrait_highlights()}
+        statistics_cache.normalize_highlight_images(data)
+
+        mock_backdrop.assert_not_called()
+        highlights = data["history_highlights"]
+        for entry in (
+            highlights["first_play"],
+            highlights["last_play"],
+            highlights["today_card"]["entry"],
+        ):
+            self.assertEqual(entry["image"], BACKDROP_URL)
+            self.assertTrue(entry["image_is_backdrop"])
+
+    @patch("app.tasks.warm_backdrops_task.apply_async")
+    def test_repeat_serves_queue_the_warm_once(self, mock_warm):
+        for _ in range(3):
+            statistics_cache.normalize_highlight_images(
+                {"history_highlights": _portrait_highlights()}
+            )
+
+        mock_warm.assert_called_once()
+
+    @patch("app.tasks.warm_backdrops_task.apply_async")
+    @patch("app.backdrops.cached_backdrop")
+    def test_marked_backdrop_is_served_without_any_lookup(
+        self, mock_cached, mock_warm
+    ):
+        """A payload built after #1249 keeps its backdrop after Redis expiry."""
+        entry = _highlight_entry(_tv_item_dict(), image=BACKDROP_URL)
+        entry["image_is_backdrop"] = True
+        data = {"history_highlights": {"first_play": entry}}
+
+        statistics_cache.normalize_highlight_images(data)
+
+        self.assertEqual(entry["image"], BACKDROP_URL)
+        mock_cached.assert_not_called()
+        mock_warm.assert_not_called()
+
+    @patch("app.tasks.warm_backdrops_task.apply_async")
+    def test_per_type_highlights_are_upgraded(self, mock_warm):
+        cache.set("tmdb_backdrop_tv_1396", BACKDROP_URL, 60)
+        entry = _highlight_entry(_tv_item_dict(media_id="1396"))
+        data = {"history_highlights_by_type": {"tv": {"first_play": entry}}}
+
+        statistics_cache.normalize_highlight_images(data)
+
+        self.assertEqual(entry["image"], BACKDROP_URL)
+        self.assertTrue(entry["image_is_backdrop"])
+        mock_warm.assert_not_called()
+
+    @patch("app.tasks.warm_backdrops_task.apply_async")
+    def test_items_without_backdrops_queue_nothing(self, mock_warm):
+        podcast = {
+            "media_type": MediaTypes.PODCAST.value,
+            "media_id": "p1",
+            "source": Sources.GPODDER.value,
         }
-        highlights = {**entries, "today_month": 5, "today_day": 20}
-
-        statistics_cache._normalize_history_highlight_images(highlights)
-
-        # TMDB should have been consulted for each distinct item
-        self.assertEqual(mock_backdrop.call_count, 3)
-
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
-    def test_none_entries_are_skipped_without_error(self, mock_backdrop):
-        """Partial highlights (some slots empty) must not raise."""
-        highlights = {
-            "first_play": _highlight_entry(_tv_item_dict()),
-            "last_play": None,
-            "today_in_history": None,
-            "today_in_user_history": None,
+        data = {
+            "history_highlights": {
+                "first_play": _highlight_entry(podcast),
+                "last_play": {"item": None, "image": PORTRAIT_POSTER},
+            }
         }
 
-        statistics_cache._normalize_history_highlight_images(
-            highlights
-        )  # must not raise
+        statistics_cache.normalize_highlight_images(data)
 
-        self.assertEqual(highlights["first_play"]["image"], BACKDROP_URL)
+        mock_warm.assert_not_called()
+        self.assertEqual(
+            data["history_highlights"]["last_play"]["image"], PORTRAIT_POSTER
+        )
 
     def test_non_dict_highlights_returns_without_error(self):
         """Passing None or non-dict must be a no-op."""
-        statistics_cache._normalize_history_highlight_images(None)
-        statistics_cache._normalize_history_highlight_images("not-a-dict")
-        statistics_cache._normalize_history_highlight_images([])
-
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
-    def test_entry_with_none_item_uses_existing_image(self, mock_backdrop):
-        """
-        If the serialised item is missing (e.g. old cache format), the function
-        should return whatever image is already stored rather than crashing.
-        """
-        highlights = {
-            "first_play": {"item": None, "image": PORTRAIT_POSTER, "title": "Unknown"},
-            "last_play": None,
-            "today_in_history": None,
-            "today_in_user_history": None,
-        }
-
-        statistics_cache._normalize_history_highlight_images(highlights)
-
-        # item is None so no TMDB call; existing image is preserved
-        self.assertEqual(highlights["first_play"]["image"], PORTRAIT_POSTER)
-        mock_backdrop.assert_not_called()
+        for value in (None, "not-a-dict", []):
+            statistics_cache.normalize_highlight_images(value)
+            statistics_cache._normalize_history_highlight_images(value)
+            statistics_cache._normalize_history_highlights_by_type(value)
 
     @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_backdrop_already_stored_in_cache_is_reused(self, mock_backdrop):
-        """
-        If the TMDB Redis cache was already populated (e.g. Lists Hub visit),
-        _normalize must use the cached value and make no extra network calls.
-        """
+        """A warm Redis backdrop (e.g. from a Lists Hub visit) is used directly."""
         cache.set("tmdb_backdrop_tv_1396", BACKDROP_URL, 60)
-        highlights = {
-            "first_play": _highlight_entry(_tv_item_dict(media_id="1396")),
-            "last_play": None,
-            "today_in_history": None,
-            "today_in_user_history": None,
-        }
+        highlights = {"first_play": _highlight_entry(_tv_item_dict(media_id="1396"))}
 
         statistics_cache._normalize_history_highlight_images(highlights)
 
         self.assertEqual(highlights["first_play"]["image"], BACKDROP_URL)
         mock_backdrop.assert_not_called()
+
+
+class HighlightArtworkRequestPathTests(TestCase):
+    """End-to-end: building and serving highlights never calls a provider."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(
+            username="stats-highlight-artwork",
+            password="secret123",
+        )
+
+    def tearDown(self):
+        cache.clear()
+
+    @patch("app.tasks.warm_backdrops_task.apply_async")
+    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    def test_warm_statistics_cache_serve_makes_no_provider_call(
+        self, mock_backdrop, mock_warm
+    ):
+        data = statistics_cache._get_empty_statistics_data()
+        data["history_highlights"] = _portrait_highlights()
+        statistics_cache.cache_statistics_data(self.user.id, "Last 30 Days", data)
+
+        start, end = statistics_refresh._get_predefined_range_dates("Last 30 Days")
+        served = statistics_cache.get_statistics_data(
+            self.user, start, end, range_name="Last 30 Days"
+        )
+
+        mock_backdrop.assert_not_called()
+        mock_warm.assert_called_once()
+        self.assertEqual(
+            served["history_highlights"]["first_play"]["image"], PORTRAIT_POSTER
+        )
+
+    @patch("app.tasks.warm_backdrops_task.apply_async")
+    def test_release_candidates_are_not_resolved_before_selection(self, _mock_warm):
+        """Only the chosen "Today in history" card is ever given a backdrop."""
+        release = timezone.now().replace(year=2001)
+        for index in range(3):
+            item = Item.objects.create(
+                media_id=f"98{index}",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title=f"Released today {index}",
+                image=PORTRAIT_POSTER,
+                release_datetime=release,
+            )
+            Movie.objects.create(
+                user=self.user, item=item, status=Status.COMPLETED.value
+            )
+
+        with (
+            patch("app.backdrops.cached_backdrop") as mock_cached,
+            patch("app.backdrops.resolve_backdrop") as mock_resolve,
+        ):
+            entry, year = statistics_cache._get_today_release_entry(self.user)
+
+        self.assertEqual(year, 2001)
+        self.assertEqual(entry["image"], PORTRAIT_POSTER)
+        mock_cached.assert_not_called()
+        mock_resolve.assert_not_called()
 
 
 class RequestPathDayBuildTests(TestCase):
