@@ -1108,14 +1108,84 @@ def _get_media_entries(user, media_type, filters, tag_ids=(None, None), *, limit
     return entries, None
 
 
-def get_media_list_entries(user, media_type, filters: MediaListFilters, *, limit=None, offset=None):
-    """Return (entries, total) with web-compatible filtering and sorting.
+def media_list_media_types(filters: MediaListFilters, media_type) -> tuple[str, ...]:
+    """Return the libraries a media-list request covers.
 
-    `total` is None unless the request qualified for the SQL fast path
-    (app.media_list_pagination.can_paginate_in_sql, #1004), in which case
-    `entries` is already the requested page and `total` is a real SQL COUNT
-    — the caller should pass both straight to paginate_data(..., total=...,
-    already_sliced=True) instead of re-slicing.
+    The root endpoint spans every list type except seasons and episodes (they
+    belong to their shows) and any the client excluded.
+    """
+    if media_type is not None:
+        return (media_type,)
+    return tuple(
+        current_type
+        for current_type in MEDIA_LIST_MEDIA_TYPES
+        if current_type not in {MediaTypes.SEASON.value, MediaTypes.EPISODE.value}
+        and current_type not in filters.exclude
+    )
+
+
+def media_list_entries_for_items(user, items) -> list[MediaListEntry]:
+    """Attach each item's tracker row for a page of items.
+
+    The row shown is the item's newest, with duplicate rows (repeat viewings)
+    aggregated onto it and the list prefetches applied - for this page only.
+    Items without a row (collected but untracked) have no media.
+    """
+    item_ids_by_type: dict[str, list[int]] = {}
+    for item in items:
+        item_ids_by_type.setdefault(item.media_type, []).append(item.pk)
+    items_by_pk = {item.pk: item for item in items}
+    media_by_item_id = {}
+    for media_type, item_ids in item_ids_by_type.items():
+        model = apps.get_model("app", media_type)
+        owner = (
+            {"related_season__user": user}
+            if media_type == MediaTypes.EPISODE.value
+            else {"user": user}
+        )
+        rows = model.objects.filter(item_id__in=item_ids, **owner).select_related("item")
+        rows = list(BasicMedia.objects._apply_prefetch_related(rows, media_type, list_mode=True))
+        if media_type != MediaTypes.EPISODE.value:
+            BasicMedia.objects._aggregate_duplicate_data(rows, user, media_type)
+        for media in sorted(rows, key=lambda row: (row.created_at, row.pk)):
+            media.item = items_by_pk[media.item_id]
+            media_by_item_id[media.item_id] = media
+    return [MediaListEntry(item=item, media=media_by_item_id.get(item.pk)) for item in items]
+
+
+def get_media_list_entries(user, media_type, filters: MediaListFilters, *, limit=None, offset=None):
+    """Return ``(entries, total)`` for one page of a media list.
+
+    Evaluated by the shared library-query engine: SQL-capable filters and
+    sorts page in the database, anything else in bounded batches; only the
+    returned page is hydrated. ``limit=None`` returns every match.
+    """
+    from app.library_query import LibraryQueryExecutor
+    from app.library_query.adapters import from_media_list_filters
+
+    if media_type is not None and media_type not in MEDIA_LIST_MEDIA_TYPES:
+        parameter = "media_type"
+        message = "Unsupported media type"
+        raise MediaListFilterError(parameter, message)
+    filters = replace(filters, media_type=media_type)
+    query = from_media_list_filters(filters, media_list_media_types(filters, media_type))
+    executor = LibraryQueryExecutor(user, query)
+    offset = offset or 0
+    if limit is None:
+        total = executor.count()
+        page = executor.page(offset, max(total - offset, 0), total=total)
+    else:
+        page = executor.page(offset, limit)
+    return media_list_entries_for_items(user, page.items), page.total
+
+
+def _legacy_media_list_entries(
+    user, media_type, filters: MediaListFilters, *, limit=None, offset=None,
+):
+    """Return (entries, total) through the pre-engine media-list path.
+
+    Kept only as the parity harness's reference until the web media list
+    moves onto the engine; nothing else calls it.
     """
     if media_type is not None and media_type not in MEDIA_LIST_MEDIA_TYPES:
         parameter = "media_type"

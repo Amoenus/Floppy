@@ -33,7 +33,10 @@ from app.library_query.adapters import (
     from_smart_rules,
 )
 from app.library_query.spec import STATUS_MATCH_ANY
-from app.media_list_filters import MediaListFilters, get_media_list_entries
+from app.media_list_filters import (
+    MediaListFilters,
+    _legacy_media_list_entries,
+)
 from app.models import (
     TV,
     Anime,
@@ -310,7 +313,7 @@ class LibraryQueryParityTests(TestCase):
             media_type=media_type,
         )
         # Paginated, as the API asks: the SQL fast path runs where it applies.
-        entries, _total = get_media_list_entries(
+        entries, _total = _legacy_media_list_entries(
             self.user, media_type, filters, limit=500, offset=0,
         )
         old = [entry.item.pk for entry in entries]
