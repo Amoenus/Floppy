@@ -1448,9 +1448,44 @@ class PlexHistoryImporter:
             if target.media_type == MediaTypes.EPISODE.value:
                 found_season = target.season_number
                 found_episode = target.episode_number
+        corrected = (
+            media_id is not None
+            and reference.review_status
+            == external_references.ExternalReferenceReviewStatus.CORRECTED
+        )
+        # A modern tmdb:// episode GUID is an episode ID, never a /tv/{id}. Only
+        # the legacy agent form (themoviedb://<show>/<season>/<episode>) names
+        # the show.
         lookup_ids = dict(ids)
-        if metadata.get("type") == "episode":
+        if metadata.get("type") == "episode" and not any(
+            "themoviedb://" in guid["id"]
+            and "/" in guid["id"].split("://", 1)[1].split("?", 1)[0]
+            for guid in self._normalize_guid_list(
+                metadata.get("Guid") or metadata.get("guid"),
+            )
+        ):
             lookup_ids["tmdb_id"] = None
+
+        # The show's own Plex metadata is the authoritative show identity.
+        # Episode-level IDs are not: an episode TMDB ID is a different namespace
+        # from /tv/{id}, and a TVDB episode ID can equal an unrelated TVDB
+        # series ID, which TMDB's find then returns as a show (#876).
+        show_ids: dict = {}
+        show_year = None
+        if not corrected or self._current_section_anime_hint:
+            show_ids, show_year = self._resolve_show_level_ids(metadata)
+        show_tmdb_id = str(show_ids["tmdb_id"]) if show_ids.get("tmdb_id") else None
+        if (
+            media_id is not None
+            and not corrected
+            and show_tmdb_id
+            and show_tmdb_id != media_id
+        ):
+            # An automatic match only caches an earlier resolution. When it
+            # contradicts the show's own TMDB ID, resolve again so wrong
+            # matches from older imports heal.
+            media_id, found_season, found_episode = None, None, None
+
         if media_id is None:
             try:
                 media_id, found_season, found_episode = self.processor._find_tv_media_id(
@@ -1463,60 +1498,37 @@ class PlexHistoryImporter:
                     "TV ID resolution failed during Plex import: %s",
                     exception_summary(exc),
                 )
-
-        # Episode-level Guids often lack show IDs; resolve via the show's own
-        # Plex metadata before falling back to ambiguous title search.
-        show_ids: dict = {}
-        show_year = None
-        if not media_id or self._current_section_anime_hint:
-            show_ids, show_year = self._resolve_show_level_ids(metadata)
-        if not media_id and self._has_external_ids(show_ids):
-            show_tmdb_id = show_ids.get("tmdb_id")
-            if show_tmdb_id:
-                media_id = str(show_tmdb_id)
+            # An episode-level hit (show plus numbering) is trusted, since TMDB
+            # can split one Plex show across several. A bare show hit from an
+            # episode ID is not: it is the TVDB ID collision above.
+            if show_tmdb_id and found_season is None and str(media_id) != show_tmdb_id:
                 if media_id:
                     logger.debug(
-                        "Plex import resolved episode via show-level TMDB metadata. "
-                        "resolved_tmdb_id=%s show_ids=%s context=%s",
+                        "Plex episode IDs resolved to TMDB show %s; using the "
+                        "show-level TMDB ID %s instead",
                         media_id,
-                        presence_map(show_ids, ("tmdb_id", "imdb_id", "tvdb_id")),
-                        self._episode_debug_context(metadata),
+                        show_tmdb_id,
                     )
-            else:
-                try:
-                    media_id, _, _ = self.processor._find_tv_media_id(
-                        show_ids,
-                        series_search_title,
-                    )
-                    if media_id:
-                        logger.debug(
-                            "Plex import resolved episode via show-level metadata lookup. "
-                            "resolved_tmdb_id=%s show_ids=%s context=%s",
-                            media_id,
-                            presence_map(show_ids, ("tmdb_id", "imdb_id", "tvdb_id")),
-                            self._episode_debug_context(metadata),
-                        )
-                except Exception as exc:
-                    logger.warning(
-                        "Show-level TV ID resolution failed during Plex import: %s",
-                        exception_summary(exc),
-                    )
+                media_id, found_season, found_episode = show_tmdb_id, None, None
+
+        if not media_id and self._has_external_ids(show_ids):
+            try:
+                media_id, _, _ = self.processor._find_tv_media_id(
+                    show_ids,
+                    series_search_title,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Show-level TV ID resolution failed during Plex import: %s",
+                    exception_summary(exc),
+                )
 
         if not media_id:
             media_id = self._resolve_tv_via_title_search(
-                ids,
+                lookup_ids,
                 series_search_title,
                 show_year,
             )
-            if media_id:
-                logger.debug(
-                    "Plex import resolved episode via title search fallback; verify this row. "
-                    "resolved_tmdb_id=%s series_title=%s show_year=%s context=%s",
-                    media_id,
-                    series_search_title,
-                    show_year,
-                    self._episode_debug_context(metadata),
-                )
 
         if not media_id:
             logger.debug(
