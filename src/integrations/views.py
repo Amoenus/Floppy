@@ -41,6 +41,7 @@ from app.db_retry import run_retryable_db_operation
 from app.log_safety import exception_summary
 from app.models import TV, Item, MediaTypes, Movie, Sources
 from app.providers import credentials, services
+from app.redis_diagnosis import queue_failure_message
 from integrations import (
     audiobookshelf_cover as abs_cover_proxy,
 )
@@ -186,12 +187,9 @@ def _queue_staged_task_or_message(
             staged_paths=staged_paths,
             **kwargs,
         )
-    except Exception:
+    except Exception as error:
         logger.exception("Could not queue background import task")
-        messages.error(
-            request,
-            "The import could not be queued. Check the worker and try again.",
-        )
+        messages.error(request, _import_queue_failure_message(error))
         return False
 
 
@@ -199,13 +197,20 @@ def _queue_task_or_message(request, task, *args, **kwargs):
     """Queue a task and turn broker failures into a user message instead of a 500."""
     try:
         return task.delay(*args, **kwargs)
-    except Exception:
+    except Exception as error:
         logger.exception("Could not queue background import task")
-        messages.error(
-            request,
-            "The import could not be queued. Check the worker and try again.",
-        )
+        messages.error(request, _import_queue_failure_message(error))
         return False
+
+
+def _import_queue_failure_message(error):
+    """Name an unreachable Redis broker instead of blaming the worker (#1263)."""
+    return queue_failure_message(
+        error,
+        "The import could not be queued.",
+        "Check the worker and try again.",
+        settings.CELERY_BROKER_URL,
+    )
 
 
 def _queue_task_quietly(task, *args, **kwargs):
