@@ -7,6 +7,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
+from app import image_cache
 from app.media_list_filters import MediaListFilters
 from app.models import (
     TV,
@@ -331,6 +332,9 @@ class MediaListQueryBudgetTests(FloppyApiTestCase):
 
     def test_query_count_does_not_scale_with_library_size(self):
         self._seed_extra_games(5)
+        # Warm the lazily cached image-caching toggle (5-minute TTL, shared
+        # across tests) so neither count depends on which test ran before.
+        image_cache.is_enabled()
         with CaptureQueriesContext(connection) as small_ctx:
             response = self.client.get(
                 "/api/v1/media/game/",
@@ -341,6 +345,9 @@ class MediaListQueryBudgetTests(FloppyApiTestCase):
         small_queries = len(small_ctx.captured_queries)
 
         self._seed_extra_games(120, start=5)
+        # Warm the lazily cached image-caching toggle (5-minute TTL, shared
+        # across tests) so neither count depends on which test ran before.
+        image_cache.is_enabled()
         with CaptureQueriesContext(connection) as big_ctx:
             response = self.client.get(
                 "/api/v1/media/game/",
@@ -563,6 +570,9 @@ class MediaListSqlPushdownTests(FloppyApiTestCase):
     def test_fast_path_query_count_does_not_scale_with_library_size(self):
         """Same scaling proof as MediaListQueryBudgetTests, for an aggregated sort key."""
         self._seed_games(5)
+        # Warm the lazily cached image-caching toggle (5-minute TTL, shared
+        # across tests) so neither count depends on which test ran before.
+        image_cache.is_enabled()
         with CaptureQueriesContext(connection) as small_ctx:
             response = self.client.get(
                 "/api/v1/media/game/",
@@ -573,6 +583,9 @@ class MediaListSqlPushdownTests(FloppyApiTestCase):
         small_queries = len(small_ctx.captured_queries)
 
         self._seed_games(200, start=5)
+        # Warm the lazily cached image-caching toggle (5-minute TTL, shared
+        # across tests) so neither count depends on which test ran before.
+        image_cache.is_enabled()
         with CaptureQueriesContext(connection) as big_ctx:
             response = self.client.get(
                 "/api/v1/media/game/",
