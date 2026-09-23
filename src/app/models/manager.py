@@ -175,6 +175,18 @@ def _filter_queryset_by_item_json_array_ci(
     """
     if not normalized_target:
         return queryset
+    return queryset.filter(
+        item_id__in=item_ids_with_json_array_value_ci(item_json_field, normalized_target),
+    )
+
+
+def item_ids_with_json_array_value_ci(item_json_field: str, normalized_target: str):
+    """Return an ``Item`` id subquery for a case-insensitive JSON-array match.
+
+    ``normalized_target`` must already be lower-cased. Only the column of the
+    ``Item`` table itself is referenced, so the subquery stays valid wherever
+    Django nests it (see ``_filter_queryset_by_item_json_array_ci``).
+    """
     col = Item._meta.get_field(item_json_field).column
     cc = connection.ops.quote_name(col)
     if connection.vendor == "postgresql":
@@ -194,13 +206,12 @@ def _filter_queryset_by_item_json_array_ci(
             )
         """
     else:
-        kw = {f"item__{item_json_field}__contains": [normalized_target]}
-        return queryset.filter(**kw)
-    matching_item_ids = Item.objects.extra(
+        kw = {f"{item_json_field}__contains": [normalized_target]}
+        return Item.objects.filter(**kw).values("id")
+    return Item.objects.extra(
         where=[where_sql],
         params=[normalized_target],
     ).values("id")
-    return queryset.filter(item_id__in=matching_item_ids)
 
 
 class MediaManager(models.Manager):
@@ -750,18 +761,22 @@ class MediaManager(models.Manager):
         queryset = self._apply_prefetch_related(queryset, media_type, list_mode=True)
         return self._aggregate_duplicate_data(queryset, user, media_type, {}), total
 
-    def _aggregated_sort_subquery(self, model, user, media_type, sort_key):
+    def _aggregated_sort_subquery(
+        self, model, user, media_type, sort_key, outer_ref="item_id",
+    ):
         """Return a Subquery matching _aggregate_item_data's per-item semantics.
 
         Correlated by item_id + user only (not status) — an item tracked as
         IN_PROGRESS can have an older DROPPED entry with an earlier
         start_date that should still win, exactly like the Python aggregation
         this replaces. Returns None for raw-column sort keys, which the
-        caller orders on directly instead.
+        caller orders on directly instead. ``outer_ref`` names the outer
+        column holding the item id: ``item_id`` on a tracker queryset,
+        ``pk`` on an ``Item`` queryset.
         """
         if sort_key not in SQL_SORTABLE_AGGREGATED_KEYS:
             return None
-        base = model.objects.filter(item_id=OuterRef("item_id"), user=user.id)
+        base = model.objects.filter(item_id=OuterRef(outer_ref), user=user.id)
 
         if sort_key in ("start_date", "started"):
             inner = base.order_by().values("item_id").annotate(agg=Min("start_date"))

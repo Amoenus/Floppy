@@ -1,0 +1,171 @@
+"""Translate each surface's stored or requested filters into a ``LibraryQuery``.
+
+Three shapes exist and none of them change on disk:
+
+- media-list parameters (``MediaListFilters``, parsed from the URL or API);
+- smart-list rules (the normalized JSON saved on a ``CustomList``);
+- Home row filters (smart-rule shaped, normalized by the Home screen).
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from app.library_query.spec import (
+    STATUS_MATCH_ANY,
+    STATUS_MATCH_CHOICES,
+    STATUS_MATCH_LATEST,
+    FilterValues,
+    LibraryQuery,
+    SortSpec,
+)
+
+if TYPE_CHECKING:
+    from app.media_list_filters import MediaListFilters
+
+
+def _values(raw) -> tuple[str, ...]:
+    if raw in (None, ""):
+        return ()
+    if isinstance(raw, (list, tuple, set, frozenset)):
+        return tuple(str(value).strip() for value in raw if str(value or "").strip())
+    return (str(raw).strip(),)
+
+
+def from_media_list_filters(
+    filters: MediaListFilters,
+    media_types: tuple[str, ...],
+    *,
+    seed: int = 0,
+) -> LibraryQuery:
+    """Build the query for a media-list or API request."""
+    return LibraryQuery(
+        media_types=media_types,
+        filters=FilterValues(
+            statuses=tuple(filters.statuses),
+            include_no_status=filters.include_no_status,
+            status_match=STATUS_MATCH_LATEST,
+            search=filters.search,
+            rating=filters.rating,
+            collection=filters.collection,
+            progress=filters.progress,
+            genre=filters.genre,
+            implied_genre=filters.implied_genre,
+            year=filters.year,
+            completed_date_from=filters.completed_date_from,
+            completed_date_to=filters.completed_date_to,
+            release=filters.release,
+            source=filters.source,
+            media_status=filters.media_status,
+            language=filters.language,
+            country=filters.country,
+            origin=filters.origin,
+            platforms=tuple(filters.platforms),
+            platform_mode=filters.platform_mode,
+            format=filters.format,
+            author=filters.author,
+            provider=filters.provider,
+            tags=tuple(filters.tags),
+            tag_mode=filters.tag_mode,
+        ),
+        sort=SortSpec(key=filters.sort or "title", direction=filters.direction, seed=seed),
+        include_collection_only=filters.include_no_status,
+        provider_region=filters.provider_region,
+        pinned_providers=tuple(filters.pinned_providers),
+    )
+
+
+def filter_values_from_rules(rules: dict, *, default_status_match: str) -> FilterValues:
+    """Build filter values from normalized smart-rule JSON.
+
+    Relative date windows ("in the last N days") are resolved here, at
+    evaluation time, so a saved rule keeps its meaning as time passes.
+    """
+    from lists.smart_rules import resolve_relative_date_windows
+
+    rules = resolve_relative_date_windows(rules)
+    status_match = rules.get("status_match") or default_status_match
+    if status_match not in STATUS_MATCH_CHOICES:
+        status_match = default_status_match
+    platforms = _values(rules.get("platforms")) or _values(rules.get("platform"))
+    return FilterValues(
+        statuses=_values(rules.get("status")),
+        status_match=status_match,
+        search=str(rules.get("search") or ""),
+        rating=str(rules.get("rating") or "all"),
+        rating_min=str(rules.get("rating_min") or ""),
+        rating_max=str(rules.get("rating_max") or ""),
+        collection=str(rules.get("collection") or "all"),
+        progress=str(rules.get("progress") or "all"),
+        genre=str(rules.get("genre") or ""),
+        implied_genre=str(rules.get("implied_genre") or ""),
+        year=str(rules.get("year") or ""),
+        completed_date_from=str(rules.get("completed_date_from") or ""),
+        completed_date_to=str(rules.get("completed_date_to") or ""),
+        date_added_from=str(rules.get("date_added_from") or ""),
+        date_added_to=str(rules.get("date_added_to") or ""),
+        release=str(rules.get("release") or "all"),
+        release_date_from=str(rules.get("release_date_from") or ""),
+        release_date_to=str(rules.get("release_date_to") or ""),
+        source=str(rules.get("source") or ""),
+        language=str(rules.get("language") or ""),
+        country=str(rules.get("country") or ""),
+        origin=str(rules.get("origin") or ""),
+        platforms=platforms,
+        platform_mode=str(rules.get("platform_mode") or "or"),
+        format=str(rules.get("format") or ""),
+        author=str(rules.get("author") or ""),
+        provider=str(rules.get("provider") or ""),
+        tags=_values(rules.get("tag")),
+        tag_mode=str(rules.get("tag_mode") or "or"),
+    )
+
+
+def from_smart_rules(
+    owner,
+    rules: dict,
+    media_types: tuple[str, ...],
+    *,
+    sort_key: str = "title",
+    direction: str = "",
+) -> LibraryQuery:
+    """Build the query a smart list evaluates.
+
+    Rules saved before ``status_match`` existed keep "any row" status
+    semantics, so an existing list's membership does not change.
+    """
+    list_ids = tuple(int(value) for value in (rules.get("list") or []) if value)
+    return LibraryQuery(
+        media_types=media_types,
+        filters=filter_values_from_rules(rules, default_status_match=STATUS_MATCH_ANY),
+        sort=SortSpec(key=sort_key or "title", direction=direction),
+        union_list_ids=list_ids,
+        provider_region=str(getattr(owner, "watch_provider_region", "") or ""),
+    )
+
+
+def from_home_row_filters(
+    owner,
+    normalized_filters: dict,
+    media_type: str,
+    *,
+    sort_key: str,
+    direction: str,
+    seed: int = 0,
+) -> LibraryQuery:
+    """Build the query a Home library shelf shows.
+
+    Home rows show an item's current status, the same as the media list their
+    title links to, so status compares against the latest row.
+    """
+    return LibraryQuery(
+        media_types=(media_type,),
+        filters=filter_values_from_rules(
+            normalized_filters,
+            default_status_match=STATUS_MATCH_LATEST,
+        ),
+        sort=SortSpec(key=sort_key or "title", direction=direction, seed=seed),
+        include_collection_only=True,
+        provider_region=str(getattr(owner, "watch_provider_region", "") or ""),
+        pinned_providers=tuple(getattr(owner, "pinned_watch_providers", None) or ()),
+    )

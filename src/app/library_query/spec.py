@@ -1,0 +1,99 @@
+"""The query a library surface asks for: which items, filtered how, in what order.
+
+One ``LibraryQuery`` describes every list-shaped surface - the media list, the
+API, a smart list, a Home shelf. Surfaces differ only in how they build it
+(see ``adapters``) and in how they decorate the page the executor returns.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field, replace
+
+STATUS_MATCH_LATEST = "latest"
+STATUS_MATCH_ANY = "any"
+STATUS_MATCH_CHOICES = frozenset({STATUS_MATCH_LATEST, STATUS_MATCH_ANY})
+
+SET_MODES = frozenset({"and", "or", "not"})
+
+
+@dataclass(frozen=True)
+class FilterValues:
+    """The canonical filter vocabulary shared by every library surface.
+
+    Empty strings, empty tuples and ``"all"`` mean "not filtering". Values are
+    stored as the user supplied them; each filter definition normalises the
+    value it reads.
+
+    ``status_match`` decides what a status filter compares against:
+
+    - ``latest``: the item's most recent tracker row by activity. This is what
+      the media list shows as the item's status.
+    - ``any``: any tracker row. Smart lists created before the shared engine
+      use this, so that their membership does not change.
+    """
+
+    statuses: tuple[str, ...] = ()
+    include_no_status: bool = False
+    status_match: str = STATUS_MATCH_LATEST
+    search: str = ""
+    rating: str = "all"
+    rating_min: str = ""
+    rating_max: str = ""
+    collection: str = "all"
+    progress: str = "all"
+    genre: str = ""
+    implied_genre: str = ""
+    year: str = ""
+    completed_date_from: str = ""
+    completed_date_to: str = ""
+    date_added_from: str = ""
+    date_added_to: str = ""
+    release: str = "all"
+    release_date_from: str = ""
+    release_date_to: str = ""
+    source: str = ""
+    media_status: str = ""
+    language: str = ""
+    country: str = ""
+    origin: str = ""
+    platforms: tuple[str, ...] = ()
+    platform_mode: str = "or"
+    format: str = ""
+    author: str = ""
+    provider: str = ""
+    tags: tuple[str, ...] = ()
+    tag_mode: str = "or"
+
+
+@dataclass(frozen=True)
+class SortSpec:
+    """A sort key and direction. ``seed`` fixes the order of ``random``."""
+
+    key: str = "title"
+    direction: str = "asc"
+    seed: int = 0
+
+
+@dataclass(frozen=True)
+class LibraryQuery:
+    """Items of ``media_types`` that the user tracks, filtered and ordered.
+
+    ``list_id`` restricts candidates to one custom list's membership instead of
+    the user's library, keeping the same filters and sorts.
+    ``union_list_ids`` adds those lists' members regardless of the filters,
+    the smart-list ``list`` rule.
+    """
+
+    media_types: tuple[str, ...]
+    filters: FilterValues = field(default_factory=FilterValues)
+    sort: SortSpec = field(default_factory=SortSpec)
+    list_id: int | None = None
+    union_list_ids: tuple[int, ...] = ()
+    include_collection_only: bool = False
+    dedupe_cross_provider: bool = True
+    provider_region: str = ""
+    pinned_providers: tuple[str, ...] = ()
+
+    def with_sort(self, key: str, direction: str, seed: int = 0) -> LibraryQuery:
+        """Return a copy ordered by a different key."""
+        return replace(self, sort=SortSpec(key=key, direction=direction, seed=seed))
