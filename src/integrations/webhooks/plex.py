@@ -213,6 +213,8 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             playback_media_type,
         )
 
+        # Plex omits viewOffset at position 0, so a missing offset is a known
+        # zero (a skim), not an unknown position.
         view_offset_ms = (payload.get("Metadata") or {}).get("viewOffset") or 0
         if not self._should_record(
             event_type,

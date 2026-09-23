@@ -234,6 +234,19 @@ class ProcessorWiringTests(TestCase):
                 payload = getattr(self, build)(stop, MIN_STOP_POSITION_SECONDS)
                 self.assertTrue(self._writes(cls, payload), DOC_HINT)
 
+    def test_emby_zero_position_is_a_known_short_stop(self, _image):
+        """A zero position is real, not missing, whichever field carries it."""
+        payload = self._emby("playback.stop", 0)
+        del payload["PlaybackInfo"]["PositionTicks"]
+        payload["PlaybackPositionTicks"] = 0
+        self.assertFalse(self._writes(EmbyWebhookProcessor, payload), DOC_HINT)
+
+    def test_plex_stop_without_view_offset_is_a_short_stop(self, _image):
+        """Plex omits viewOffset at position 0, so absent means zero."""
+        payload = self._plex("media.stop", 0)
+        del payload["Metadata"]["viewOffset"]
+        self.assertFalse(self._writes(PlexWebhookProcessor, payload), DOC_HINT)
+
     def test_stremio_start_still_writes(self, _image):
         """Stremio's documented START_ONLY exception."""
         payload = {"id": "tt0133093", "type": "movie"}

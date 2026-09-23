@@ -80,11 +80,13 @@ class EmbyWebhookProcessor(BaseWebhookProcessor):
     def _get_position_seconds(self, payload):
         """Return the playback position in seconds, or None when not sent."""
         item = payload.get("Item") or {}
-        return _ticks_to_seconds(
-            payload.get("PlaybackPositionTicks")
-            or item.get("PlaybackPositionTicks")
-            or (payload.get("PlaybackInfo") or {}).get("PositionTicks"),
+        candidates = (
+            payload.get("PlaybackPositionTicks"),
+            item.get("PlaybackPositionTicks"),
+            (payload.get("PlaybackInfo") or {}).get("PositionTicks"),
         )
+        # First field present, so a real zero is not mistaken for missing.
+        return _ticks_to_seconds(next((t for t in candidates if t is not None), None))
 
     def _get_media_type(self, payload):
         return self.MEDIA_TYPE_MAPPING.get(payload["Item"].get("Type"))
