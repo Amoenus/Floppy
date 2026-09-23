@@ -69,6 +69,15 @@ class BaseWebhookProcessor:
         """Check if media is marked as unplayed."""
         return False
 
+    def _is_manual_mark(self, _payload):
+        """Check if the event is a user toggling watched state, not a playback.
+
+        A manual mark for something already watched is agreement, not a
+        rewatch. It is also what our own watched-state push echoes back as,
+        stamped with the push time, so the play-time dedupe cannot catch it.
+        """
+        return False
+
     def _extract_external_ids(self, payload):
         """Extract external IDs from payload."""
         raise NotImplementedError
@@ -1344,11 +1353,19 @@ class BaseWebhookProcessor:
             # A second row here is a rewatch, but the same play may already have
             # been recorded by a repeated webhook or by a Trakt/Plex history
             # import, so measure it against the plays already stored (#642).
-            duplicate = movie_played and play_dedupe.existing_movie_play_times(
-                user,
-                media_ids=[movie_item.media_id],
-                source=movie_item.source,
-            ).is_duplicate(movie_item.media_id, now)
+            already_watched = (
+                self._is_manual_mark(payload)
+                and current_instance is not None
+                and current_instance.status == Status.COMPLETED.value
+            )
+            duplicate = movie_played and (
+                already_watched
+                or play_dedupe.existing_movie_play_times(
+                    user,
+                    media_ids=[movie_item.media_id],
+                    source=movie_item.source,
+                ).is_duplicate(movie_item.media_id, now)
+            )
 
             if duplicate:
                 logger.debug(
@@ -2180,7 +2197,9 @@ class BaseWebhookProcessor:
                 media_ids=[episode_item.media_id],
                 source=episode_item.source,
             )
-            should_create = not existing_plays.is_duplicate(play_key, now)
+            should_create = not existing_plays.is_duplicate(play_key, now) and not (
+                self._is_manual_mark(payload) and existing_plays.times_for(play_key)
+            )
             if not should_create:
                 logger.debug(
                     "Skipping duplicate episode record near %s: %s S%02dE%02d",

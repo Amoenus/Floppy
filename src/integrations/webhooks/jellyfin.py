@@ -30,6 +30,13 @@ JELLYFIN_COLLECTION_EVENTS = {"ItemAdded", "ItemDeleted"}
 JELLYFIN_COLLECTION_SOURCE = "jellyfin"
 JELLYFIN_RATING_EVENT = "UserDataSaved"
 JELLYFIN_RATING_MAX = 10
+# UserDataSaved fires for every progress save, playback end and our own
+# watched-state push; only this reason is the user clicking the checkmark.
+JELLYFIN_TOGGLE_PLAYED_REASON = "TogglePlayed"
+JELLYFIN_MANUAL_MARK_EVENTS = {"MarkPlayed", "MarkUnplayed"}
+# Ignore unfinished Stop events reported before this much playback (seconds),
+# matching Plex's MIN_STOP_VIEW_OFFSET_MS.
+MIN_STOP_POSITION_SECONDS = 60
 
 
 def _ticks_to_seconds(ticks) -> int | None:
@@ -82,7 +89,11 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
 
         if event_type == JELLYFIN_RATING_EVENT:
             self._process_rating(payload, user, ids)
-            return
+            mark_event = self._manual_mark_event(payload, user)
+            if mark_event is None:
+                return
+            payload = {**payload, "Event": mark_event}
+            event_type = mark_event
 
         # Update live playback state (before media tracking)
         playback_media_type = self._get_live_playback_media_type(payload)
@@ -93,8 +104,15 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             playback_media_type,
         )
 
-        # Pause events only update the card — no media tracking
-        if event_type == "Pause":
+        # Play and Pause only update the card. Only Stop and manual marks
+        # write tracking rows, so a client that never sends Stop (e.g. a
+        # pseudo-live-TV app like Bunny Ears TV) cannot leave items stuck
+        # In Progress. Same rule as Plex.
+        if event_type in ("Play", "Pause"):
+            return
+
+        if event_type == "Stop" and self._is_short_unfinished_stop(payload):
+            logger.debug("Ignoring short unfinished Jellyfin Stop event")
             return
 
         if not any(ids.values()):
@@ -156,6 +174,34 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
 
     def _is_unplayed(self, payload):
         return payload["Event"] == "MarkUnplayed"
+
+    def _is_manual_mark(self, payload):
+        return payload.get("Event") in JELLYFIN_MANUAL_MARK_EVENTS
+
+    def _manual_mark_event(self, payload, user):
+        """Map a UserDataSaved checkmark toggle to MarkPlayed/MarkUnplayed.
+
+        Returns None for every other save reason (progress, playback end,
+        ratings) and for templates that do not send SaveReason, so those
+        keep leaving watch state alone.
+        """
+        if payload.get("SaveReason") != JELLYFIN_TOGGLE_PLAYED_REASON:
+            return None
+        item = payload.get("Item") or {}
+        user_data = item.get("UserData") if isinstance(item, dict) else None
+        played = user_data.get("Played") if isinstance(user_data, dict) else None
+        if played is True and user.jellyfin_mark_played_enabled:
+            return "MarkPlayed"
+        if played is False and user.jellyfin_mark_unplayed_enabled:
+            return "MarkUnplayed"
+        return None
+
+    def _is_short_unfinished_stop(self, payload):
+        """Check if a Stop ended too early to count as started."""
+        if self._is_played(payload):
+            return False
+        position_seconds, _ = self._get_playback_progress(payload)
+        return position_seconds is None or position_seconds < MIN_STOP_POSITION_SECONDS
 
     def _get_played_at(self, payload):
         """Extract Jellyfin's completion timestamp when a play finished."""
@@ -622,7 +668,7 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             return None
 
     def _process_rating(self, payload, user, ids):
-        """Apply a Jellyfin UserDataSaved rating without changing watch state."""
+        """Apply a Jellyfin UserDataSaved rating; watch state is handled apart."""
         raw_rating, rating_source = self._extract_user_rating(payload)
         rating = self._normalize_user_rating(raw_rating)
         if rating is None:
