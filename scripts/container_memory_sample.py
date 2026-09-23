@@ -291,9 +291,20 @@ def _read_cgroup():
                 for line in (root / "memory.events").read_text().splitlines()
             )
         }
+        cpu_stat_path = root / "cpu.stat"
+        cpu_stat = (
+            dict(line.split() for line in cpu_stat_path.read_text().splitlines())
+            if cpu_stat_path.exists()
+            else {}
+        )
         return {
             "current_bytes": int(pre_sampler_current or observed_current),
             "current_observed_bytes": observed_current,
+            # Cumulative CPU time; the delta between two samples is the CPU
+            # the container spent in between (idle cost, #1158).
+            "cpu_usage_usec": (
+                int(cpu_stat["usage_usec"]) if "usage_usec" in cpu_stat else None
+            ),
             "peak_bytes": int(peak_path.read_text()) if peak_path.exists() else None,
             "oom": events["oom"],
             "oom_kill": events["oom_kill"],
@@ -317,6 +328,7 @@ def _read_cgroup():
         return {
             "current_bytes": None,
             "current_observed_bytes": None,
+            "cpu_usage_usec": None,
             "peak_bytes": None,
             "oom": None,
             "oom_kill": None,
@@ -327,6 +339,7 @@ def _read_cgroup():
     return {
         "current_bytes": int(pre_sampler_current or observed_current),
         "current_observed_bytes": observed_current,
+        "cpu_usage_usec": None,
         "peak_bytes": int((root / "memory.max_usage_in_bytes").read_text()),
         # v1 failcnt counts failed charges, not OOM kills. Do not mislabel it.
         "oom": None,

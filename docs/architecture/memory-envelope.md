@@ -374,6 +374,50 @@ minute. An abort of that kind now waits a short settling window that coalesces
 further aborts. See [statistics-refresh-runs.md](statistics-refresh-runs.md)
 for the state machine itself.
 
+### History day-cache repair — 13.6 h of CPU in 16.7 h (#1158)
+
+A production log from a 1-CPU, `minimal`-tier instance spent 49,120 s of task
+time in `Repair History Day Cache Coverage` over 16.7 hours; every other task
+together spent about 400 s. The repair never converged: its `remaining` count
+climbed back to the full day count every fifteen minutes.
+
+Two faults multiplied each other.
+
+**An empty poll wiped the whole cache.** `Import from GPodder (Recurring)` runs
+every fifteen minutes and usually imports nothing, yet the importer ended with
+an unconditional `invalidate_history_cache(user, force=True)` and a full
+statistics refresh. `import_media` already does both, guarded by
+`has_imported_media`, so the importer's copy only ever added the empty-poll
+case. The log labelled it `reason=album_score_change`, a hardcoded string in
+`invalidate_history_cache`; it now reads `full_invalidate`. The same poll also
+downloaded every subscribed feed twice before learning the action delta was
+empty; it now reads each feed once, and only on a full resync or when there is
+listening activity to match.
+
+**A repeats day cost the whole game library.** `build_history_day`'s repeats
+branch loaded every `Game` and `BoardGame` row the user had, with full `Item`
+columns, and date-filtered them in Python — per day. On the maintainer's
+library (1,601 games, 10,308 repeats days) that was 334 ms a day against
+33 ms for sessions: about 57 CPU-minutes for one full pass. A SQL prefilter
+(`_span_may_touch_day`), a strict superset of the unchanged Python check, cuts
+it to 26 ms a day; peak RSS for a 1,000-day pass fell from 265 to 171 MiB, and
+the payloads of 1,000 sampled days per style were byte-identical before and
+after. Movie play counts are likewise scoped to the day's titles.
+
+Measured in Docker against a copy of that database — `cpus: 1.0`, 1 GiB,
+`FLOPPY_RESOURCE_TIER=minimal`, cold Redis, an empty GPodder poll every fifteen
+minutes, 49 minutes each, cgroup `cpu.stat` (`container_memory_sample.py` now
+reports `cpu_usage_usec`):
+
+| | CPU average | CPU time | repair at end |
+|---|---|---|---|
+| before | 75 % (pinned at ~100 % after warm-up) | 2,220 s | reset to full by the empty poll; never converges |
+| after | 28 % | 823 s | `remaining=0` for both styles at ~40 min, then 0–1 % CPU; empty poll resets nothing |
+
+Still open: a poll that *does* import a play still clears every day. After this
+change that costs minutes rather than an hour; scoping it to the imported days
+is the next step if it still shows on the minimal tier.
+
 ## Still unverified, and still unfixed
 
 **What memory limit the snapshot requires.** That the excursion is page cache
@@ -401,20 +445,15 @@ touched: #1200's own design document already names FINISH as the unbounded
 remainder, and reshaping it without a profile would be guessing. **Profile it
 first**, with the per-phase timings the aggregator does not currently emit.
 
-**The next two largest targets.** With the Trakt reconcile bounded, the
-largest known *unfixed* process-anonymous source is Statistics FINISH (below),
-and the largest *uninvestigated* one is History day-cache warming. Both need a
-profile before a design.
+**The next largest target.** With the Trakt reconcile bounded and the history
+day-cache repair loop fixed (above), the largest known *unfixed*
+process-anonymous source is Statistics FINISH. It needs a profile before a
+design.
 
-**History day-cache warming.** Production repeatedly spends ~18–22 s rebuilding
-120 session-style days and ~48–50 s rebuilding 120 repeats-style days against
-histories with several thousand days of coverage. Not investigated this
-session. The questions to answer before changing anything: why thousands of
-historical days are eagerly warmed at all; which user-visible paths actually
-require full coverage rather than recent coverage; whether repairs are
-duplicated across schedulers and could be coalesced; whether 120 is the right
-fixed batch; and whether repair should back off while a major background job
-is running.
+**History day-cache warming, remaining questions.** Whether thousands of
+historical days need eager warming at all (the reader builds missing days on
+demand), and whether 120 is the right fixed batch, are open but no longer
+urgent: a full pass now costs minutes, and it converges.
 
 **Interactive worker first-webhook growth — measured, and it is not imports.**
 The first real Plex webhook took the interactive child from ~99 MiB to
