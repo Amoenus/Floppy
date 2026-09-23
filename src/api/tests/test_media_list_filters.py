@@ -8,7 +8,6 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from app.media_list_filters import MediaListFilters
-from app.media_list_pagination import can_paginate_in_sql
 from app.models import (
     TV,
     CollectionEntry,
@@ -648,12 +647,6 @@ class MediaListSqlPushdownTests(FloppyApiTestCase):
             "direction": "asc",
         }
         fast_path_order = self._ordering_for(params)
-        with mock.patch(
-            "app.media_list_filters.can_paginate_in_sql", return_value=False,
-        ):
-            fallback_order = self._ordering_for(params)
-
-        self.assertEqual(fast_path_order, fallback_order)
         self.assertEqual(
             [item_a.media_id, item_b.media_id],
             fast_path_order,
@@ -692,19 +685,13 @@ class MediaListSqlPushdownTests(FloppyApiTestCase):
 
         params = {"status": "1", "limit": 10, "sort": "score", "direction": "desc"}
         fast_path_order = self._ordering_for(params)
-        with mock.patch(
-            "app.media_list_filters.can_paginate_in_sql", return_value=False,
-        ):
-            fallback_order = self._ordering_for(params)
-
-        self.assertEqual(fast_path_order, fallback_order)
         # Item A's aggregated score falls back to its dropped play's score
         # (3.0) since its visible in_progress row has no score of its own —
         # still below Item B's 8.0.
         self.assertEqual([item_b.media_id, item_a.media_id], fast_path_order)
 
-    def test_fallback_path_still_used_for_python_only_filters(self):
-        """Rating/collection/author/tags-with-format filters keep routing to fallback."""
+    def test_python_only_filters_answer_normally(self):
+        """Rating, collection and author requests page like any other."""
         self._seed_games(3)
         for params in (
             {"status": "1", "rating": "rated"},
@@ -716,66 +703,3 @@ class MediaListSqlPushdownTests(FloppyApiTestCase):
             )
             self.assertEqual(response.status_code, HTTP.OK, params)
 
-    def test_can_paginate_in_sql_eligibility(self):
-        """Direct coverage of the routing decision itself (app.media_list_pagination)."""
-        base = MediaListFilters()
-        self.assertTrue(can_paginate_in_sql(base, MediaTypes.GAME.value, "start_date"))
-        self.assertTrue(can_paginate_in_sql(base, MediaTypes.GAME.value, ""))
-        self.assertTrue(can_paginate_in_sql(base, MediaTypes.GAME.value, "title"))
-
-        self.assertFalse(can_paginate_in_sql(base, None, "title"))
-        self.assertFalse(can_paginate_in_sql(base, MediaTypes.TV.value, "title"))
-        self.assertFalse(can_paginate_in_sql(base, MediaTypes.ANIME.value, "title"))
-        self.assertFalse(can_paginate_in_sql(base, MediaTypes.EPISODE.value, "title"))
-        self.assertFalse(can_paginate_in_sql(base, MediaTypes.GAME.value, "author"))
-        self.assertFalse(can_paginate_in_sql(base, MediaTypes.GAME.value, "runtime"))
-
-        self.assertFalse(
-            can_paginate_in_sql(
-                replace(base, include_no_status=True), MediaTypes.GAME.value, "title",
-            ),
-        )
-        self.assertFalse(
-            can_paginate_in_sql(
-                replace(base, rating="rated"), MediaTypes.GAME.value, "title",
-            ),
-        )
-        self.assertFalse(
-            can_paginate_in_sql(
-                replace(base, collection="collected"), MediaTypes.GAME.value, "title",
-            ),
-        )
-        self.assertFalse(
-            can_paginate_in_sql(
-                replace(base, format="digital"), MediaTypes.GAME.value, "title",
-            ),
-        )
-        # Game platforms are SQL-filterable; other types' aren't.
-        self.assertTrue(
-            can_paginate_in_sql(
-                replace(base, platforms=("PC",)), MediaTypes.GAME.value, "title",
-            ),
-        )
-        self.assertFalse(
-            can_paginate_in_sql(
-                replace(base, platforms=("PC",)), MediaTypes.MOVIE.value, "title",
-            ),
-        )
-        # Tags are SQL-safe unconditionally now (#1004) — do not force fallback.
-        self.assertTrue(
-            can_paginate_in_sql(
-                replace(base, tags=("favorite",)), MediaTypes.GAME.value, "title",
-            ),
-        )
-        # Season rows derive end_date/progressed_at from episodes, so the SQL
-        # latest-status subquery is only unsafe when a status filter is active.
-        self.assertTrue(
-            can_paginate_in_sql(base, MediaTypes.SEASON.value, "title"),
-        )
-        self.assertFalse(
-            can_paginate_in_sql(
-                replace(base, statuses=("In progress",)),
-                MediaTypes.SEASON.value,
-                "title",
-            ),
-        )

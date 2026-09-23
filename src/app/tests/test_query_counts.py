@@ -484,7 +484,7 @@ class QueryCountTests(TestCase):
 
         `GET /api/v1/media/game/?status=1&limit=10&sort=start_date&direction=asc`
         took 778ms/75 queries in production against ~2,500 games in one
-        status — the SQL fast path (app.media_list_pagination) must keep
+        status — the library-query engine (app.library_query) must keep
         this flat regardless of library size, not scan every matching row
         to serve a 10-item page.
         """
