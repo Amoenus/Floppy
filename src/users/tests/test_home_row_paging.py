@@ -22,8 +22,8 @@ from users.models import (
 PAGE = 14
 
 
-class HomeRowPagingTests(TestCase):
-    """A shelf loads the requested window; its cost does not grow with the library."""
+class ShelfFixtures:
+    """Movies and shelves for the paging tests."""
 
     def setUp(self):
         """Create a user with one movie shelf."""
@@ -67,6 +67,11 @@ class HomeRowPagingTests(TestCase):
             direction=direction,
             filters={"status": [Status.COMPLETED.value]},
         )
+
+
+
+class HomeRowPagingTests(ShelfFixtures, TestCase):
+    """A shelf loads the requested window; its cost does not grow with the library."""
 
     def queries_for(self, row, offset):
         """Return (query count, section) for one window, checking it is cut in SQL."""
@@ -192,3 +197,68 @@ class HomeRowPagingTests(TestCase):
                 ranked = executor.ranked_ids()
                 self.assertEqual(len(ranked), 12)
                 self.assertEqual(ranked, [row[-1] for row in executor._scan_ranked])
+
+
+class HomeListShelfTests(ShelfFixtures, TestCase):
+    """List shelves page saved membership; smart ones never re-run their rules."""
+
+    def list_row(self, *, smart):
+        """Create a list shelf over every movie."""
+        from lists.models import CustomList, CustomListItem
+
+        custom_list = CustomList.objects.create(
+            name="Shelf",
+            owner=self.user,
+            is_smart=smart,
+            smart_media_types=[MediaTypes.MOVIE.value] if smart else [],
+        )
+        CustomListItem.objects.bulk_create(
+            [
+                CustomListItem(custom_list=custom_list, item=item, added_by=self.user)
+                for item in Item.objects.filter(media_type=MediaTypes.MOVIE.value)
+            ],
+        )
+        return HomeScreenRow.objects.create(
+            user=self.user,
+            media_type=MediaTypes.MOVIE.value,
+            row_type=HomeScreenRowTypeChoices.CUSTOM_LIST,
+            custom_list=custom_list,
+            sort_by=MediaSortChoices.TITLE,
+            direction=DirectionChoices.ASC,
+        )
+
+    def test_smart_shelf_reads_saved_membership(self):
+        """Rules are evaluated by the background sync, never by the Home render."""
+        self.add_movies(30)
+        row = self.list_row(smart=True)
+        with (
+            mock.patch("lists.tasks.sync_smart_list_task.delay"),
+            mock.patch(
+                "lists.smart_rules.collect_matching_item_ids",
+                side_effect=AssertionError("Home re-ran the smart-list rules"),
+            ),
+        ):
+            section = home_screen._build_row_section(
+                self.user, row, row.media_type, PAGE,
+            )
+        self.assertEqual(section["total"], 30)
+        self.assertEqual(section["items"][0].item.title, "Movie 0000")
+
+    def test_list_shelf_decorates_only_the_window(self):
+        """A long list's shelf loads one page of cards."""
+        self.add_movies(60)
+        row = self.list_row(smart=False)
+        seen = []
+        original = home_screen._media_lookup_for_items
+
+        def spy(user, items, **kwargs):
+            seen.append(len(items))
+            return original(user, items, **kwargs)
+
+        with mock.patch.object(home_screen, "_media_lookup_for_items", spy):
+            section = home_screen._build_row_section(
+                self.user, row, row.media_type, PAGE, batch_start=PAGE,
+            )
+        self.assertEqual(seen, [PAGE])
+        self.assertEqual(section["total"], 60)
+        self.assertEqual(section["items"][0].item.title, "Movie 0014")

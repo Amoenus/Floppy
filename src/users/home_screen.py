@@ -21,11 +21,12 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext
 
-from app.library_query import LibraryQueryExecutor
+from app.library_query import FilterValues, LibraryQuery, LibraryQueryExecutor, SortSpec
 from app.library_query.adapters import from_home_row_filters, home_engine_direction
 from app.library_query.filters import NEEDS_MAX_PROGRESS, NEEDS_MEDIA
 from app.library_query.sorts import RANDOM_MODULUS, SortDef
 from app.library_query.sorts import register as register_sort
+from app.library_query.spec import STATUS_MATCH_ANY
 from app.models import (
     BasicMedia,
     Episode,
@@ -2442,8 +2443,8 @@ def _library_row_executor(user, row, normalized_filters, *, seed: int):
     return LibraryQueryExecutor(user, query)
 
 
-def _library_row_items(user, row, normalized_filters, offset, limit, *, seed):
-    """Return (items, total) for one window of a library shelf.
+def _row_items(user, row, executor, offset, limit, *, seed):
+    """Return (items, total) for one window of a shelf's query.
 
     A Python-ordered shelf ranks every candidate once; the compact id order is
     cached for the row-cache lifetime so load-more requests fetch one page.
@@ -2452,7 +2453,6 @@ def _library_row_items(user, row, normalized_filters, offset, limit, *, seed):
 
     from app import cache_utils
 
-    executor = _library_row_executor(user, row, normalized_filters, seed=seed)
     if executor.uses_sql:
         page = executor.page(offset, limit, defer=HOME_CARD_UNREAD_ITEM_FIELDS)
         return page.items, page.total
@@ -2469,9 +2469,8 @@ def _library_row_items(user, row, normalized_filters, offset, limit, *, seed):
     return [by_id[item_id] for item_id in window if item_id in by_id], len(ranked_ids)
 
 
-def _library_row_entries(user, row, items, normalized_filters) -> list[HomeRowEntry]:
-    """Decorate one window of a library shelf as Home cards."""
-    status_filter = normalized_filters.get("status") or []
+def _row_entries(user, items, *, planning_subtitle: bool = False) -> list[HomeRowEntry]:
+    """Decorate one window of a shelf as Home cards."""
     media_lookup = _media_lookup_for_items(user, items)
     return [
         HomeRowEntry(
@@ -2482,12 +2481,51 @@ def _library_row_entries(user, row, items, normalized_filters) -> list[HomeRowEn
             ),
             podcast_show=getattr(media_lookup.get(item.id), "show", None),
             show_progress_controls=media_lookup.get(item.id) is not None,
-            subtitle_override=_entry_release_date(item)
-            if status_filter == [Status.PLANNING.value]
-            else None,
+            subtitle_override=_entry_release_date(item) if planning_subtitle else None,
         )
         for item in items
     ]
+
+
+def _custom_list_row_executor(user, row, *, seed: int):
+    """Query a list shelf: the list's saved members, ordered by the row's sort.
+
+    Smart lists read their materialized membership, which the background sync
+    keeps current, instead of re-evaluating their rules on every Home load.
+    """
+    sort_key = HOME_ENGINE_SORT_KEYS.get(row.sort_by, row.sort_by)
+    query = LibraryQuery(
+        media_types=(row.media_type,),
+        filters=FilterValues(status_match=STATUS_MATCH_ANY),
+        sort=SortSpec(
+            key=sort_key or "title",
+            direction=home_engine_direction(
+                row.sort_by,
+                resolve_home_row_direction(row.sort_by, row.direction),
+            ),
+            seed=seed,
+        ),
+        list_id=row.custom_list_id,
+        sort_list_id=row.custom_list_id,
+        dedupe_cross_provider=False,
+    )
+    return LibraryQueryExecutor(user, query)
+
+
+def _custom_list_row_window(user, row, offset, limit, *, seed):
+    """Return (entries, total) for one window of a custom- or smart-list shelf."""
+    custom_list = row.custom_list
+    if not custom_list:
+        return [], 0
+    if custom_list.is_smart:
+        # Render current membership now; refresh it in the background so the
+        # write-heavy sync never runs inside a GET request.
+        from lists.tasks import schedule_smart_list_sync
+
+        schedule_smart_list_sync(custom_list)
+    executor = _custom_list_row_executor(user, row, seed=seed)
+    items, total = _row_items(user, row, executor, offset, limit, seed=seed)
+    return _row_entries(user, items), total
 
 
 def _library_row_window(user, row, offset, limit, *, seed):
@@ -2505,49 +2543,10 @@ def _library_row_window(user, row, offset, limit, *, seed):
                 user, normalized, row.sort_by, row.direction,
             )
             return entries[offset : offset + limit], len(entries)
-    items, total = _library_row_items(user, row, normalized, offset, limit, seed=seed)
-    return _library_row_entries(user, row, items, normalized), total
-
-
-def _custom_list_entries(user, row: HomeScreenRow) -> list[HomeRowEntry]:
-    custom_list = row.custom_list
-    if not custom_list:
-        return []
-    if custom_list.is_smart:
-        # Render current membership now; refresh it in the background so the
-        # write-heavy sync never runs inside a GET request.
-        from lists.tasks import schedule_smart_list_sync
-
-        schedule_smart_list_sync(custom_list)
-        items = list(custom_list.get_smart_items_queryset())
-    else:
-        items = list(
-            Item.objects.filter(customlistitem__custom_list=custom_list)
-            .distinct()
-            .defer(*HOME_CARD_UNREAD_ITEM_FIELDS)
-            .order_by("customlistitem__date_added", "id"),
-        )
-
-    items = [
-        item for item in items if _item_matches_home_media_type(item, row.media_type)
-    ]
-    if not items:
-        return []
-
-    media_lookup = _media_lookup_for_items(user, items)
-    entries = [
-        HomeRowEntry(
-            item=item,
-            media=media_lookup.get(item.id),
-            use_podcast_show=bool(
-                getattr(media_lookup.get(item.id), "use_podcast_show", False)
-            ),
-            podcast_show=getattr(media_lookup.get(item.id), "show", None),
-            show_progress_controls=media_lookup.get(item.id) is not None,
-        )
-        for item in items
-    ]
-    return sort_home_entries(entries, row.sort_by, row.direction)
+    executor = _library_row_executor(user, row, normalized, seed=seed)
+    items, total = _row_items(user, row, executor, offset, limit, seed=seed)
+    planning = (normalized.get("status") or []) == [Status.PLANNING.value]
+    return _row_entries(user, items, planning_subtitle=planning), total
 
 
 def _recently_unrated_episode_entries(user, media_type: str) -> list[HomeRowEntry]:
@@ -2690,17 +2689,15 @@ def _build_row_section(
     """
     if seed is None:
         seed = home_row_seed(row)
-    if row.row_type in (
-        HomeScreenRowTypeChoices.CUSTOM_LIST,
-        HomeScreenRowTypeChoices.RECENTLY_UNRATED,
-    ):
-        entries = (
-            _custom_list_entries(user, row)
-            if row.row_type == HomeScreenRowTypeChoices.CUSTOM_LIST
-            else _recently_unrated_entries(user, row)
-        )
+    if row.row_type == HomeScreenRowTypeChoices.RECENTLY_UNRATED:
+        # Bounded by its time window, so it is built whole and sliced.
+        entries = _recently_unrated_entries(user, row)
         total = len(entries)
         section_entries = entries[batch_start : batch_start + items_limit]
+    elif row.row_type == HomeScreenRowTypeChoices.CUSTOM_LIST:
+        section_entries, total = _custom_list_row_window(
+            user, row, batch_start, items_limit, seed=seed,
+        )
     else:
         section_entries, total = _library_row_window(
             user, row, batch_start, items_limit, seed=seed,
