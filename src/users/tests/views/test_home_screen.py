@@ -98,6 +98,16 @@ class HomeScreenViewTests(TestCase):
         self.assertNotContains(response, "Add Recently Played Row")
         self.assertNotContains(response, "Enabled")
 
+    def test_home_dropdowns_expose_open_state_and_escape_controls(self):
+        response = self.client.get(reverse("home_screen"))
+
+        self.assertContains(response, ":aria-expanded=\"openMenu === 'filter'\"")
+        self.assertContains(response, ":aria-expanded=\"openMenu === 'status'\"")
+        self.assertContains(response, ":aria-expanded=\"openMenu === 'sort'\"")
+        self.assertContains(response, ':aria-expanded="section.addRowMenuOpen"')
+        self.assertContains(response, '@keydown.escape="if (openMenu !== null)')
+        self.assertContains(response, '@keydown.escape="if (section.addRowMenuOpen)')
+
     def test_home_rows_progress_filter_ignores_dropped_tv_seasons(self):
         """Home not-caught-up rows should ignore dropped TV seasons."""
         self._set_enabled_media_types(MediaTypes.TV.value)
@@ -656,7 +666,10 @@ class HomeScreenViewTests(TestCase):
         )
 
         first = home_screen._cached_row_section(
-            self.user, row, MediaTypes.MOVIE.value, items_limit=10,
+            self.user,
+            row,
+            MediaTypes.MOVIE.value,
+            items_limit=10,
         )
         self.assertIsNone(first)
 
@@ -666,7 +679,10 @@ class HomeScreenViewTests(TestCase):
             side_effect=AssertionError("row builder should not run on a warm hit"),
         ):
             second = home_screen._cached_row_section(
-                self.user, row, MediaTypes.MOVIE.value, items_limit=10,
+                self.user,
+                row,
+                MediaTypes.MOVIE.value,
+                items_limit=10,
             )
 
         self.assertIsNone(second)
@@ -2131,8 +2147,12 @@ class CrossProviderDedupTests(TestCase):
             source=Sources.TVDB.value,
             image="",
         )
-        TV.objects.create(item=tmdb_item, user=self.user, status=Status.IN_PROGRESS.value)
-        TV.objects.create(item=tvdb_item, user=self.user, status=Status.IN_PROGRESS.value)
+        TV.objects.create(
+            item=tmdb_item, user=self.user, status=Status.IN_PROGRESS.value
+        )
+        TV.objects.create(
+            item=tvdb_item, user=self.user, status=Status.IN_PROGRESS.value
+        )
         return tmdb_item, tvdb_item
 
     def test_prefers_tvdb_item_for_tvdb_preferring_user(self):
