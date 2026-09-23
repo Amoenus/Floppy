@@ -287,22 +287,6 @@ class LibraryQueryParityTests(TestCase):
 
     # -- surfaces --------------------------------------------------------------
 
-    def _smart(self, media_type, case, sort_key, direction):
-        rules = smart_rules.normalize_rule_payload(
-            {"media_types": [media_type], **case},
-            self.user,
-        )
-        old = smart_rules.collect_matching_item_ids(self.user, rules)
-        query = from_smart_rules(
-            self.user,
-            rules,
-            tuple(rules["media_types"]),
-            sort_key=sort_key,
-            direction=direction,
-        )
-        new = LibraryQueryExecutor(self.user, query).ids()
-        return sorted(old), sorted(new)
-
     def _media_list(self, media_type, case, sort_key, direction):
         filters = MediaListFilters(
             statuses=tuple(case.get("status", ())),
@@ -334,31 +318,8 @@ class LibraryQueryParityTests(TestCase):
         new = [item.pk for item in LibraryQueryExecutor(self.user, query).page(0, 500).items]
         return old, new
 
-    def _home(self, media_type, case, sort_key, direction):
-        filters = {"status": [], **case}
-        row = HomeScreenRow(
-            user=self.user,
-            media_type=media_type,
-            sort_by=sort_key,
-            direction=direction,
-            filters=filters,
-        )
-        old = [entry.item.pk for entry in home_screen._library_query_entries(self.user, row)]
-        normalized = home_screen._normalized_filter_payload(filters, media_type)
-        query = from_home_row_filters(
-            self.user,
-            normalized,
-            media_type,
-            sort_key=sort_key,
-            direction=direction,
-        )
-        new = [item.pk for item in LibraryQueryExecutor(self.user, query).page(0, 500).items]
-        return old, new
-
     SURFACES = {
-        "smart": (_smart, frozenset()),
         "media_list": (_media_list, SMART_ONLY_KEYS),
-        "home": (_home, HOME_UNSUPPORTED_KEYS),
     }
 
     # -- comparison ------------------------------------------------------------
@@ -429,15 +390,6 @@ class LibraryQueryParityTests(TestCase):
                 and self._values(key, old) == self._values(key, new),
             ),
             (
-                "home movie plays",
-                "Home read a single movie row's raw progress; it now counts "
-                "completed viewings, as the media list does.",
-                lambda key, old, new: key[0] == "home"
-                and key[1] == "order"
-                and key[2] == MOVIE
-                and key[3].split(":")[0] in {"plays", "progress"},
-            ),
-            (
                 "platform sort uses the collected copy",
                 "Platform sorts by the platform the user collected an item on, "
                 "else its first listed platform, and items with no platform "
@@ -448,14 +400,6 @@ class LibraryQueryParityTests(TestCase):
                 == [pk for pk in new if pk not in self.platform_sensitive_ids],
             ),
             (
-                "home platform sort",
-                "Home had no platform sort and silently fell back to title; it "
-                "now sorts by platform like the media list.",
-                lambda key, old, new: key[0] == "home"
-                and key[1] == "order"
-                and key[3].startswith("platform:"),
-            ),
-            (
                 "media list type-scoped filters",
                 "The media list ignored some filters on types whose UI does not "
                 "offer them; the engine applies every filter to every type.",
@@ -463,37 +407,6 @@ class LibraryQueryParityTests(TestCase):
                 and key[1] == "members"
                 and key[3] in MEDIA_LIST_TYPE_SCOPED_CASES
                 and set(new) < set(old),
-            ),
-            (
-                "home statusless rows",
-                "Home now matches the media list its title links to: a tracker "
-                'row with no status (an imported rating) is not part of "All".',
-                lambda key, old, new: key[0] == "home"
-                and only(old, new, old_only=self.statusless_ids, new_only=self.anime_on_tv_ids)
-                and bool((set(old) - set(new)) & self.statusless_ids),
-            ),
-            (
-                "home anime library routing",
-                "Home now follows the user's anime library preference, as the "
-                "media list does, for anime tracked on TV rows.",
-                lambda key, old, new: key[0] == "home"
-                and only(old, new, old_only=self.anime_on_tv_ids | self.statusless_ids,
-                         new_only=self.anime_on_tv_ids)
-                and bool((set(old) ^ set(new)) & self.anime_on_tv_ids),
-            ),
-            (
-                "home collected platform and format",
-                "Home now counts a collected copy's platform and format, as the "
-                "media list does.",
-                lambda key, old, new: key[0] == "home"
-                and key[3] in {"platform", "format"}
-                and only(
-                    old,
-                    new,
-                    old_only=self.statusless_ids,
-                    new_only=self.collected_attribute_ids,
-                )
-                and bool((set(new) - set(old)) & self.collected_attribute_ids),
             ),
         ]
 

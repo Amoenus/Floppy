@@ -159,8 +159,9 @@
        data-stick-to-end="false"
        data-home-row-prefetch-distance="1152"
        data-total-count="{{ row.total }}"
+       data-seed="{{ row.seed|default:0 }}"
        hx-get="{% if hx_url %}{{ hx_url }}{% else %}{% url 'home' %}?load_row={{ row.row_id }}{% endif %}"
-       hx-vals='js:{offset: Number(event.target.dataset.loadedCount || 0)}'
+       hx-vals='js:{offset: Number(event.target.dataset.loadedCount || 0), seed: event.target.dataset.seed || ""}'
        hx-trigger="home-row-load-more"
        hx-target="this"
        hx-swap="beforeend">

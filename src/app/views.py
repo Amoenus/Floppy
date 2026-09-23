@@ -425,6 +425,12 @@ def home(request):
             load_row_offset = max(int(request.GET.get("offset", "0")), 0)
         except (TypeError, ValueError):
             load_row_offset = 0
+        try:
+            # A random shelf's shuffle, carried by its load-more requests so
+            # later pages continue the same order.
+            load_row_seed = int(request.GET.get("seed", ""))
+        except (TypeError, ValueError):
+            load_row_seed = None
 
         # First paint renders only the first group; the rest hydrates via
         # home_rest_fragment. Row-append requests build only their target shelf.
@@ -434,6 +440,7 @@ def home(request):
             items_limit,
             load_row_id=load_row_id,
             load_row_offset=load_row_offset,
+            load_row_seed=load_row_seed,
             append_only=bool(request.headers.get("HX-Request") and load_row_id),
             only_row_id=load_row_id if request.headers.get("HX-Request") else None,
             first_group_only=defer_remaining_groups,
@@ -467,6 +474,7 @@ def home(request):
             # response to keep it in sync.
             response["X-Home-Row-Total"] = str(target_row["total"])
             response["X-Home-Row-Loaded"] = str(target_row["loaded_count"])
+            response["X-Home-Row-Seed"] = str(target_row.get("seed", 0))
             return response
 
         context = {

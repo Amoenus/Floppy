@@ -808,7 +808,7 @@ class HomeScreenViewTests(TestCase):
             },
         )
 
-        entries = home_screen._library_query_entries(self.user, row)
+        entries = home_screen._library_row_window(self.user, row, 0, 1000, seed=0)[0]
 
         self.assertEqual(
             [entry.item.title for entry in entries], ["Home Action Comedy"]
@@ -850,7 +850,7 @@ class HomeScreenViewTests(TestCase):
             filters={"subview": "tracks", "status": [Status.COMPLETED.value]},
         )
 
-        entries = home_screen._library_query_entries(self.user, row)
+        entries = home_screen._library_row_window(self.user, row, 0, 1000, seed=0)[0]
 
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0].media.card_image_override, album_image)
@@ -2196,6 +2196,6 @@ class CrossProviderDedupTests(TestCase):
             filters={"status": [Status.IN_PROGRESS.value]},
         )
 
-        entries = home_screen._library_query_entries(self.user, row)
+        entries = home_screen._library_row_window(self.user, row, 0, 1000, seed=0)[0]
 
         self.assertEqual([entry.item.pk for entry in entries], [tvdb_item.pk])

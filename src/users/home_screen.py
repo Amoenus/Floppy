@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+import secrets
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -14,11 +15,17 @@ from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Case, F, IntegerField, Q, Subquery, Value, When
+from django.db.models.functions import Coalesce
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext
 
-from app.helpers import is_caught_up_media
+from app.library_query import LibraryQueryExecutor
+from app.library_query.adapters import from_home_row_filters, home_engine_direction
+from app.library_query.filters import NEEDS_MAX_PROGRESS, NEEDS_MEDIA
+from app.library_query.sorts import RANDOM_MODULUS, SortDef
+from app.library_query.sorts import register as register_sort
 from app.models import (
     BasicMedia,
     Episode,
@@ -30,7 +37,6 @@ from app.models import (
     prefill_episode_runtime_index,
 )
 from app.release_years import prefill_display_release_years
-from app.services.item_merge import dedupe_cross_provider_items
 from app.templatetags import app_tags
 from lists import smart_rules
 from lists.models import CustomList
@@ -2013,39 +2019,6 @@ def _entry_next_episode_air_date_timestamp(entry: HomeRowEntry):
     return dt_value.timestamp() if dt_value else None
 
 
-def _is_caught_up_media(media) -> bool:
-    return is_caught_up_media(media)
-
-
-def _apply_progress_filter(
-    entries: list[HomeRowEntry], media_type: str, progress_filter: str
-) -> list[HomeRowEntry]:
-    normalized_progress = _canonical_progress_filter(progress_filter, "all")
-    if normalized_progress == "all" or media_type not in HOME_PROGRESS_MEDIA_TYPES:
-        return entries
-
-    # media entries here always come from _media_lookup_for_items, which
-    # already calls annotate_max_progress on every group it builds - a media
-    # object's max_progress is None at this point because it genuinely has
-    # no progress data, not because annotation hasn't run yet. Re-annotating
-    # "just in case" was re-issuing the same events/episode bulk queries a
-    # second time for every progress-filtered row.
-
-    if normalized_progress == "caught_up":
-        return [
-            entry
-            for entry in entries
-            if entry.media and _is_caught_up_media(entry.media)
-        ]
-    if normalized_progress == "not_caught_up":
-        return [
-            entry
-            for entry in entries
-            if entry.media and not _is_caught_up_media(entry.media)
-        ]
-    return entries
-
-
 def _sort_numeric(
     entries: list[HomeRowEntry], value_fn, direction: str
 ) -> list[HomeRowEntry]:
@@ -2283,52 +2256,224 @@ def sort_home_entries(
     )
 
 
-def _library_query_entries(
-    user, row: HomeScreenRow, collection_context_cache: dict | None = None,
-) -> list[HomeRowEntry]:
-    normalized_filters = _normalized_filter_payload(row.filters or {}, row.media_type)
-    if row.media_type == MediaTypes.MUSIC.value:
-        subview = _canonical_music_subview(normalized_filters.get("subview"))
-        if subview == MUSIC_SUBVIEW_ALBUMS:
-            return _build_album_home_entries(
-                user,
-                normalized_filters,
-                row.sort_by,
-                row.direction,
-            )
-        if subview == MUSIC_SUBVIEW_ARTISTS:
-            return _build_artist_home_entries(
-                user,
-                normalized_filters,
-                row.sort_by,
-                row.direction,
-            )
-        # MUSIC_SUBVIEW_TRACKS falls through to the standard Music/Item query below.
-    status_filter = normalized_filters.get("status") or []
-    rule_payload = {
-        "media_types": [row.media_type],
-        **normalized_filters,
-    }
-    item_ids = smart_rules.collect_matching_item_ids(
-        user,
-        smart_rules.normalize_rule_payload(rule_payload, user),
-        include_collection_only_untracked=True,
-        collection_context_cache=collection_context_cache,
-    )
-    if not item_ids:
-        return []
+# -- Library shelves on the shared library-query engine ------------------------
+#
+# A shelf is a single-media-type library query: the engine filters, orders
+# and pages it, and only the visible window is decorated as Home cards.
 
-    items = list(Item.objects.filter(id__in=item_ids))
-    items = dedupe_cross_provider_items(
-        items,
-        getattr(user, "tv_metadata_source_default", Sources.TMDB.value),
+
+def _batch_entries(user, candidates) -> list[HomeRowEntry]:
+    """Wrap a scan batch as Home entries around the engine's tracker rows."""
+    return [HomeRowEntry(item=c.item, media=c.media) for c in candidates]
+
+
+def _upcoming_values(user, candidates, direction):
+    entries = _batch_entries(user, candidates)
+    media_entries = [entry.media for entry in entries if entry.media]
+    if media_entries:
+        BasicMedia.objects._annotate_next_event(media_entries)
+    descending = direction == DirectionChoices.DESC
+    values = []
+    for entry in entries:
+        event = _entry_next_event_timestamp(entry)
+        recent = _entry_recent_timestamp(entry)
+        recent_key = (recent is None, 0 if recent is None else -recent)
+        if event is None:
+            values.append((1, *recent_key))
+        else:
+            values.append((0, -event if descending else event, recent_key[1], 0))
+    return values
+
+
+def _release_rank(item, now):
+    """Return (group, key) ordering unstarted items: released, upcoming, undated."""
+    release_dt = _coerce_datetime(_entry_release_date(item))
+    if release_dt is None:
+        return (2, 0)
+    if release_dt <= now:
+        return (0, -release_dt.timestamp())
+    return (1, release_dt.timestamp())
+
+
+def _recent_values(user, candidates, direction):
+    """Order by recent activity, then by release: newest released, soonest upcoming."""
+    entries = _batch_entries(user, candidates)
+    descending = direction == DirectionChoices.DESC
+    now = timezone.now()
+    values = []
+    for entry in entries:
+        recent = _entry_recent_timestamp(entry)
+        recent_key = (1, 0) if recent is None else (0, -recent if descending else recent)
+        values.append((recent_key, _release_rank(entry.item, now)))
+    return values
+
+
+def _recent_sql_order(ctx, seed, direction):
+    """Order like ``_recent_values`` in SQL, from each item's newest row."""
+    if len(ctx.sources) != 1:
+        return None
+    source = ctx.sources[0]
+    if not (source.has_field("progressed_at") and source.has_field("progress")):
+        return None  # Recent activity is derived in Python (TV reads seasons).
+    now = timezone.now()
+    newest = source.item_rows(ctx.user).order_by("-created_at", "-id")
+    recent = Subquery(
+        newest.annotate(
+            value=Coalesce(
+                F("progressed_at"),
+                Case(When(progress__gt=0, then=F("created_at"))),
+            ),
+        ).values("value")[:1],
     )
-    media_lookup = _media_lookup_for_items(
+    released = Q(release_datetime__lte=now)
+    upcoming = Q(release_datetime__gt=now)
+    descending = direction == DirectionChoices.DESC
+    recent_key = F("_home_recent")
+    return (
+        {"_home_recent": recent},
+        [
+            recent_key.desc(nulls_last=True) if descending else recent_key.asc(nulls_last=True),
+            Case(
+                When(released, then=Value(0)),
+                When(upcoming, then=Value(1)),
+                default=Value(2),
+                output_field=IntegerField(),
+            ).asc(),
+            Case(When(released, then=F("release_datetime"))).desc(nulls_last=True),
+            Case(When(upcoming, then=F("release_datetime"))).asc(nulls_last=True),
+        ],
+    )
+
+
+def _entry_value_sort(value_fn, *, needs_runtime: bool = False):
+    """Order by a Home entry value, nulls last, in the requested direction."""
+
+    def values(user, candidates, direction):
+        entries = _batch_entries(user, candidates)
+        if needs_runtime:
+            prefill_episode_runtime_index([e.media for e in entries if e.media is not None])
+        return [value_fn(entry) for entry in entries]
+
+    return values
+
+
+def _completion_value(entry):
+    media = _entry_media(entry)
+    progress = _entry_progress(entry)
+    max_progress = getattr(media, "max_progress", None) if media else None
+    if progress is None or not max_progress:
+        return None
+    return (progress / max_progress) * 100
+
+
+def _episodes_left_value(entry):
+    media = _entry_media(entry)
+    if not media:
+        return None
+    max_progress = getattr(media, "max_progress", None)
+    progress = _entry_progress(entry)
+    if max_progress is None or progress is None:
+        return None
+    return max_progress - progress
+
+
+_MEDIA = frozenset({NEEDS_MEDIA})
+_MEDIA_AND_MAX = frozenset({NEEDS_MEDIA, NEEDS_MAX_PROGRESS})
+for _definition in (
+    SortDef(
+        ("home_upcoming",),
+        batch_values=_upcoming_values,
+        direction_in_value=True,
+        needs=_MEDIA,
+    ),
+    SortDef(
+        ("home_recent",),
+        batch_values=_recent_values,
+        sql_order=_recent_sql_order,
+        direction_in_value=True,
+        needs=_MEDIA,
+    ),
+    SortDef(
+        ("home_completion",),
+        batch_values=_entry_value_sort(_completion_value),
+        needs=_MEDIA_AND_MAX,
+    ),
+    SortDef(
+        ("home_episodes_left",),
+        batch_values=_entry_value_sort(_episodes_left_value),
+        needs=_MEDIA_AND_MAX,
+    ),
+    SortDef(
+        ("home_next_episode_air_date",),
+        batch_values=_entry_value_sort(_entry_next_episode_air_date_timestamp),
+        needs=_MEDIA,
+    ),
+):
+    register_sort(_definition)
+
+HOME_ENGINE_SORT_KEYS = {
+    HomeSortChoices.UPCOMING: "home_upcoming",
+    HomeSortChoices.RECENT: "home_recent",
+    HomeSortChoices.COMPLETION: "home_completion",
+    HomeSortChoices.EPISODES_LEFT: "home_episodes_left",
+    MediaSortChoices.NEXT_EPISODE_AIR_DATE: "home_next_episode_air_date",
+}
+
+
+def home_row_seed(row) -> int:
+    """Return a fresh shuffle seed for a random shelf, else 0."""
+    if row.sort_by == HomeSortChoices.RANDOM:
+        return secrets.randbelow(RANDOM_MODULUS)
+    return 0
+
+
+def _library_row_executor(user, row, normalized_filters, *, seed: int):
+    sort_key = HOME_ENGINE_SORT_KEYS.get(row.sort_by, row.sort_by)
+    if row.sort_by == HomeSortChoices.UPCOMING and row.media_type == MediaTypes.SEASON.value:
+        sort_key = "home_next_episode_air_date"
+    query = from_home_row_filters(
         user,
-        items,
-        status_filter=status_filter,
+        normalized_filters,
+        row.media_type,
+        sort_key=sort_key,
+        direction=resolve_home_row_direction(row.sort_by, row.direction),
+        seed=seed,
     )
-    entries = [
+    return LibraryQueryExecutor(user, query)
+
+
+def _library_row_items(user, row, normalized_filters, offset, limit, *, seed):
+    """Return (items, total) for one window of a library shelf.
+
+    A Python-ordered shelf ranks every candidate once; the compact id order is
+    cached for the row-cache lifetime so load-more requests fetch one page.
+    """
+    from django.core.cache import cache
+
+    from app import cache_utils
+
+    executor = _library_row_executor(user, row, normalized_filters, seed=seed)
+    if executor.uses_sql:
+        page = executor.page(offset, limit, defer=HOME_CARD_UNREAD_ITEM_FIELDS)
+        return page.items, page.total
+
+    updated = int(row.updated_at.timestamp()) if row.updated_at else 0
+    order_key = f"{cache_utils.HOME_ROW_CACHE_PREFIX}_order_{user.id}_{row.id}_{updated}_{seed}"
+    ranked_ids = cache.get(order_key)
+    if ranked_ids is None:
+        ranked_ids = executor.ranked_ids()
+        cache.set(order_key, ranked_ids, cache_utils.HOME_ROW_CACHE_TTL)
+        cache_utils.register_home_row_cache_key(user.id, order_key)
+    window = ranked_ids[offset : offset + limit]
+    by_id = Item.objects.defer(*HOME_CARD_UNREAD_ITEM_FIELDS).in_bulk(window)
+    return [by_id[item_id] for item_id in window if item_id in by_id], len(ranked_ids)
+
+
+def _library_row_entries(user, row, items, normalized_filters) -> list[HomeRowEntry]:
+    """Decorate one window of a library shelf as Home cards."""
+    status_filter = normalized_filters.get("status") or []
+    media_lookup = _media_lookup_for_items(user, items)
+    return [
         HomeRowEntry(
             item=item,
             media=media_lookup.get(item.id),
@@ -2342,14 +2487,26 @@ def _library_query_entries(
             else None,
         )
         for item in items
-        if _item_matches_home_media_type(item, row.media_type)
     ]
-    if status_filter:
-        entries = [entry for entry in entries if entry.media is not None]
-    entries = _apply_progress_filter(
-        entries, row.media_type, normalized_filters.get("progress", "all")
-    )
-    return sort_home_entries(entries, row.sort_by, row.direction)
+
+
+def _library_row_window(user, row, offset, limit, *, seed):
+    """Return (entries, total) for one window of a library-query shelf."""
+    normalized = _normalized_filter_payload(row.filters or {}, row.media_type)
+    if row.media_type == MediaTypes.MUSIC.value:
+        subview = _canonical_music_subview(normalized.get("subview"))
+        if subview == MUSIC_SUBVIEW_ALBUMS:
+            entries = _build_album_home_entries(
+                user, normalized, row.sort_by, row.direction,
+            )
+            return entries[offset : offset + limit], len(entries)
+        if subview == MUSIC_SUBVIEW_ARTISTS:
+            entries = _build_artist_home_entries(
+                user, normalized, row.sort_by, row.direction,
+            )
+            return entries[offset : offset + limit], len(entries)
+    items, total = _library_row_items(user, row, normalized, offset, limit, seed=seed)
+    return _library_row_entries(user, row, items, normalized), total
 
 
 def _custom_list_entries(user, row: HomeScreenRow) -> list[HomeRowEntry]:
@@ -2476,10 +2633,12 @@ def home_row_destination_url(row: HomeScreenRow, user) -> str:
             return f"{base}?{query}"
         return base
 
-    # Library-query / recently-unrated rows open the media list.
+    # Library-query / recently-unrated rows open the media list, ordered the
+    # way the row is (Home's "descending popularity" is the list's ascending
+    # rank).
     query_pairs = [
         ("sort", row.sort_by),
-        ("direction", row.direction),
+        ("direction", home_engine_direction(row.sort_by, row.direction)),
         ("layout", getattr(user, f"{row.media_type}_layout", None) or "grid"),
     ]
 
@@ -2522,25 +2681,36 @@ def _build_row_section(
     media_type: str,
     items_limit: int,
     batch_start: int = 0,
-    collection_context_cache: dict | None = None,
+    seed: int | None = None,
 ) -> dict | None:
-    """Build a single home-row section dict, or None when the row is empty."""
-    if row.row_type == HomeScreenRowTypeChoices.CUSTOM_LIST:
-        entries = _custom_list_entries(user, row)
-    elif row.row_type == HomeScreenRowTypeChoices.RECENTLY_UNRATED:
-        entries = _recently_unrated_entries(user, row)
+    """Build a single home-row section dict, or None when the row is empty.
+
+    Library shelves load only the requested window; ``seed`` keeps a random
+    shelf's order fixed across its load-more requests.
+    """
+    if seed is None:
+        seed = home_row_seed(row)
+    if row.row_type in (
+        HomeScreenRowTypeChoices.CUSTOM_LIST,
+        HomeScreenRowTypeChoices.RECENTLY_UNRATED,
+    ):
+        entries = (
+            _custom_list_entries(user, row)
+            if row.row_type == HomeScreenRowTypeChoices.CUSTOM_LIST
+            else _recently_unrated_entries(user, row)
+        )
+        total = len(entries)
+        section_entries = entries[batch_start : batch_start + items_limit]
     else:
-        entries = _library_query_entries(
-            user, row, collection_context_cache=collection_context_cache,
+        section_entries, total = _library_row_window(
+            user, row, batch_start, items_limit, seed=seed,
         )
 
-    if not entries:
+    if not total:
         return None
 
-    batch_end = batch_start + items_limit
-    section_entries = entries[batch_start:batch_end]
     prefill_display_release_years(section_entries)
-    loaded_count = min(len(entries), batch_start + len(section_entries))
+    loaded_count = min(total, batch_start + len(section_entries))
     title_main, title_detail = home_row_header_title_parts(row, user)
 
     def _entry_missing_cover(entry):
@@ -2565,7 +2735,8 @@ def _build_row_section(
         "summary_inline": home_row_inline_summary(row, user),
         "direction": row.direction,
         "items": section_entries,
-        "total": len(entries),
+        "total": total,
+        "seed": seed,
         "loaded_count": loaded_count,
         "show_played_chip": row.row_type == HomeScreenRowTypeChoices.RECENTLY_UNRATED,
         "card_width_class": "w-44",
@@ -2583,7 +2754,6 @@ def _cached_row_section(
     items_limit: int,
     *,
     refresh: bool = False,
-    collection_context_cache: dict | None = None,
 ) -> dict | None:
     """Return a row section from cache, building and caching on miss.
 
@@ -2597,13 +2767,7 @@ def _cached_row_section(
     cache_key = cache_utils.build_home_row_cache_key(user.id, row.id, items_limit)
     cached = None if refresh else cache.get(cache_key)
     if cached is None:
-        section = _build_row_section(
-            user,
-            row,
-            media_type,
-            items_limit,
-            collection_context_cache=collection_context_cache,
-        )
+        section = _build_row_section(user, row, media_type, items_limit)
         cache.set(
             cache_key,
             section if section is not None else _HOME_ROW_EMPTY_SENTINEL,
@@ -2622,6 +2786,7 @@ def build_home_page_groups(
     load_row_id: int | None = None,
     load_row_offset: int = 0,
     *,
+    load_row_seed: int | None = None,
     append_only: bool = False,
     only_row_id: int | None = None,
     only_row_ids: set[int] | None = None,
@@ -2638,11 +2803,6 @@ def build_home_page_groups(
         if row.enabled and (only_row_ids is None or row.id in only_row_ids):
             rows_by_media_type[row.media_type].append(row)
 
-    # Shared across every row built in this call so the (potentially
-    # unscoped) CollectionEntry scan behind collection/collection-only-
-    # untracked filtering runs at most once per request instead of once per
-    # row/media type.
-    collection_context_cache: dict = {}
     groups = []
     for media_type in enabled_media_types:
         row_sections = []
@@ -2655,7 +2815,7 @@ def build_home_page_groups(
                     media_type,
                     items_limit,
                     batch_start=load_row_offset,
-                    collection_context_cache=collection_context_cache,
+                    seed=load_row_seed,
                 )
             else:
                 section = _cached_row_section(
@@ -2664,7 +2824,6 @@ def build_home_page_groups(
                     media_type,
                     items_limit,
                     refresh=refresh_row_cache,
-                    collection_context_cache=collection_context_cache,
                 )
             if section is None:
                 continue
