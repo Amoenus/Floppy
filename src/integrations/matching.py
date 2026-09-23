@@ -61,9 +61,15 @@ def unique_title_match(results, title, *, year=None):
     provider ids remain ambiguous even when their display titles are identical;
     callers must queue those rows for review instead of guessing.
     """
+    candidates = title_matches(results, title, year=year)
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def title_matches(results, title, *, year=None):
+    """Return every exact normalized-title result, one per provider id."""
     normalized_title = normalize_title(title)
     if not normalized_title:
-        return None
+        return []
 
     expected_year = str(year) if year not in (None, "") else None
     candidates = []
@@ -92,4 +98,4 @@ def unique_title_match(results, title, *, year=None):
         seen_ids.add(result_id)
         candidates.append(result)
 
-    return candidates[0] if len(candidates) == 1 else None
+    return candidates

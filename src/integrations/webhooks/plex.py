@@ -131,7 +131,6 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             payload=payload,
         )
         self._active_match_reference = reference
-        self._unresolved_series_title = None
         if reference and reference.review_status == external_references.ExternalReferenceReviewStatus.IGNORED.value:
             return None
         target = external_references.reference_target(reference)
@@ -236,6 +235,9 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             logger.warning("Ignoring Plex webhook call because no ID was found.")
             return None
 
+        # Only a title search made while processing this event can queue it
+        # for review; earlier ID pre-resolution may legitimately miss.
+        self._unresolved_series_title = None
         processed_item = self._process_media(payload, user, ids)
         # A title search that could not pick one show is the last guess
         # before the event is dropped; queue it for review rather than lose
@@ -341,6 +343,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                             alt_ids,
                             series_title=series_title,
                             allow_title_fallback=True,
+                            season_number=season_number,
                         )
                         if resolved_media_id:
                             media_id = str(resolved_media_id)

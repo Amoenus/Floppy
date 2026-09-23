@@ -2,6 +2,7 @@ import json
 from datetime import timedelta
 from unittest.mock import patch
 
+import requests
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
@@ -22,6 +23,7 @@ from app.models import (
     Status,
 )
 from app.providers import tmdb
+from app.providers.services import ProviderAPIError
 from integrations.models import (
     ExternalReference,
     ExternalReferenceReviewStatus,
@@ -1604,6 +1606,56 @@ class PlexWebhookTests(TestCase):
             "108255",
         )
 
+    GAME_CHANGER_RESULTS = {
+        "results": [
+            {"media_id": 129412, "title": "Game Changer", "year": "2019"},
+            {"media_id": 116823, "title": "Game Changer", "year": "2021"},
+            {"media_id": 322147, "title": "Game Changer", "year": "2026"},
+        ],
+    }
+    GAME_CHANGER_PAYLOAD = {
+        "event": "media.scrobble",
+        "Account": {"title": "testuser"},
+        "Metadata": {
+            "librarySectionType": "show",
+            "type": "episode",
+            "ratingKey": "5010",
+            "grandparentRatingKey": "5000",
+            "grandparentTitle": "Game Changer",
+            "parentIndex": 8,
+            "index": 10,
+            "year": 2026,
+            "originallyAvailableAt": "2026-09-21",
+            "Guid": [{"id": "tmdb://7171350"}, {"id": "tvdb://11850032"}],
+        },
+    }
+
+    @staticmethod
+    def _game_changer_metadata(_media_id, _season_numbers):
+        return {
+            "title": "Game Changer",
+            "image": "",
+            "season/8": {
+                "image": "",
+                "episodes": [{"episode_number": 10, "runtime": 30}],
+            },
+            "related": {"seasons": [{"season_number": 8}]},
+        }
+
+    @staticmethod
+    def _shows_with_seasons(season_counts):
+        def fake_tv(media_id, language=None):
+            count = season_counts[str(media_id)]
+            return {
+                "title": "Game Changer",
+                "related": {
+                    "seasons": [{"season_number": n} for n in range(1, count + 1)],
+                },
+            }
+
+        return fake_tv
+
+    @patch("app.providers.tmdb.tv")
     @patch("app.providers.tvdb.series_tmdb_id", return_value="129412")
     @patch(
         "app.providers.tvdb.episode_by_id",
@@ -1621,61 +1673,35 @@ class PlexWebhookTests(TestCase):
         mock_tv_with_seasons,
         mock_find,
         mock_tmdb_search,
-        *_tvdb_mocks,
+        _mock_tvdb_enabled,
+        _mock_episode_by_id,
+        _mock_series_tmdb_id,
+        mock_tv,
     ):
-        """An ambiguous title must go to review, not to the show that
-        premiered the year the episode aired (issue #1279).
+        """A tie the title cannot break goes to review, never to the show
+        that premiered the year the episode aired (issue #1279).
         """
-        mock_tmdb_search.return_value = {
-            "results": [
-                {"media_id": 129412, "title": "Game Changer", "year": "2019"},
-                {"media_id": 116823, "title": "Game Changer", "year": "2021"},
-                {"media_id": 322147, "title": "Game Changer", "year": "2026"},
-            ],
-        }
+        mock_tmdb_search.return_value = self.GAME_CHANGER_RESULTS
+        # Two candidates have a season 8, so the season cannot break the tie.
+        mock_tv.side_effect = self._shows_with_seasons(
+            {"129412": 8, "116823": 8, "322147": 1},
+        )
 
         def fake_tv_with_seasons(media_id, season_numbers):
             if str(media_id) == "129412":
-                # TVDB resolved the right show, but TMDB does not have the
-                # just-aired season yet, so the webhook falls back to title.
-                msg = "season 8 not on TMDB yet"
+                # A definitive failure for the TVDB-resolved show sends the
+                # webhook to its title fallback.
+                msg = "unusable show metadata"
                 raise ValueError(msg)
-            return {
-                "title": "Game Changer",
-                "image": "",
-                "season/8": {
-                    "image": "",
-                    "episodes": [{"episode_number": 10, "runtime": 30}],
-                },
-                "related": {"seasons": [{"season_number": 8}]},
-            }
+            return self._game_changer_metadata(media_id, season_numbers)
 
         mock_tv_with_seasons.side_effect = fake_tv_with_seasons
 
-        payload = {
-            "event": "media.scrobble",
-            "Account": {"title": "testuser"},
-            "Metadata": {
-                "librarySectionType": "show",
-                "type": "episode",
-                "ratingKey": "5010",
-                "grandparentRatingKey": "5000",
-                "grandparentTitle": "Game Changer",
-                "parentIndex": 8,
-                "index": 10,
-                "year": 2026,
-                "originallyAvailableAt": "2026-09-21",
-                "Guid": [{"id": "tmdb://7171350"}, {"id": "tvdb://11850032"}],
-            },
-        }
-
-        response = self._post_payload(payload)
+        response = self._post_payload(self.GAME_CHANGER_PAYLOAD)
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(Episode.objects.exists())
-        self.assertFalse(
-            Item.objects.filter(media_id="322147").exists(),
-        )
+        self.assertFalse(Item.objects.filter(media_id="322147").exists())
         show_reference = ExternalReference.objects.get(
             external_identity="5000",
             media_type=MediaTypes.TV.value,
@@ -1685,6 +1711,95 @@ class PlexWebhookTests(TestCase):
             show_reference.review_status,
             ExternalReferenceReviewStatus.NEEDS_REVIEW.value,
         )
+
+    @patch("app.providers.tmdb.search")
+    @patch("app.providers.tvdb.series_tmdb_id", return_value="129412")
+    @patch(
+        "app.providers.tvdb.episode_by_id",
+        return_value={"series_id": 1, "season_number": 8, "episode_number": 10},
+    )
+    @patch("app.providers.tvdb.enabled", return_value=True)
+    @patch(
+        "app.providers.tmdb.find",
+        return_value={"tv_episode_results": [], "tv_results": []},
+    )
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_tv_episode_transient_tmdb_error_retries_instead_of_guessing(
+        self,
+        mock_tv_with_seasons,
+        _mock_find,
+        _mock_tvdb_enabled,
+        _mock_episode_by_id,
+        _mock_series_tmdb_id,
+        _mock_tmdb_search,
+    ):
+        """A TMDB blip on the ID-resolved show must surface to the task's
+        retry, not fall through to a title guess (issue #1279).
+        """
+        response = requests.Response()
+        response.status_code = 503
+        blip = ProviderAPIError(
+            Sources.TMDB.value,
+            requests.exceptions.HTTPError(response=response),
+        )
+        mock_tv_with_seasons.side_effect = blip
+
+        with self.assertRaises(ProviderAPIError):
+            PlexWebhookProcessor().process_payload(
+                self.GAME_CHANGER_PAYLOAD,
+                self.user,
+            )
+        self.assertFalse(Episode.objects.exists())
+        self.assertEqual(
+            {str(call.args[0]) for call in mock_tv_with_seasons.call_args_list},
+            {"129412"},
+        )
+
+        mock_tv_with_seasons.side_effect = self._game_changer_metadata
+        PlexWebhookProcessor().process_payload(self.GAME_CHANGER_PAYLOAD, self.user)
+
+        self.assertTrue(
+            Episode.objects.filter(
+                item__media_id="129412",
+                item__season_number=8,
+                item__episode_number=10,
+            ).exists(),
+        )
+
+    @patch("app.providers.tmdb.tv")
+    @patch("app.providers.tvdb.enabled", return_value=False)
+    @patch("app.providers.tmdb.search")
+    @patch(
+        "app.providers.tmdb.find",
+        return_value={"tv_episode_results": [], "tv_results": []},
+    )
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_tv_episode_title_tie_broken_by_played_season(
+        self,
+        mock_tv_with_seasons,
+        mock_find,
+        mock_tmdb_search,
+        _mock_tvdb_enabled,
+        mock_tv,
+    ):
+        """Without TVDB, only one same-title show has the played season."""
+        mock_tmdb_search.return_value = self.GAME_CHANGER_RESULTS
+        mock_tv.side_effect = self._shows_with_seasons(
+            {"129412": 8, "116823": 2, "322147": 1},
+        )
+        mock_tv_with_seasons.side_effect = self._game_changer_metadata
+
+        response = self._post_payload(self.GAME_CHANGER_PAYLOAD)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            Episode.objects.filter(
+                item__media_id="129412",
+                item__season_number=8,
+                item__episode_number=10,
+            ).exists(),
+        )
+        self.assertFalse(Item.objects.filter(media_id="322147").exists())
 
     @patch("app.providers.tmdb.search")
     @patch(

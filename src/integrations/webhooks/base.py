@@ -1,7 +1,9 @@
 import logging
 import re
 from datetime import UTC, datetime
+from http import HTTPStatus
 
+import requests
 from django.db.models import Q
 from django.utils import timezone
 
@@ -10,9 +12,10 @@ from app import fork_services_play_dedupe as play_dedupe
 from app.log_safety import exception_summary
 from app.models import MediaTypes, ProviderMetadataStatus, Sources, Status
 from app.providers import tvmaze
+from app.providers.services import ProviderAPIError
 from app.services.completion import select_preferred_activity_entry
 from integrations import episode_remap
-from integrations.matching import split_title_year, unique_title_match
+from integrations.matching import split_title_year, title_matches
 from integrations.webhooks import anime_mappings, write_policy
 
 logger = logging.getLogger(__name__)
@@ -22,6 +25,27 @@ logger = logging.getLogger(__name__)
 # anime, so callers must not fall through to a plain TV row: doing so tracks it
 # in both libraries at once (discussion #967).
 ANIME_EPISODE_REFUSED = object()
+
+# Bounds the per-candidate show lookups a title tie can cost.
+MAX_SEASON_TIEBREAK_CANDIDATES = 5
+
+
+def _is_transient_provider_error(error):
+    """Return whether a provider failure is worth retrying the webhook for.
+
+    A 404 or other client error is an answer (e.g. an episode-level TMDB id);
+    a timeout, rate limit, or server error says nothing about the id.
+    """
+    if isinstance(error, requests.exceptions.RequestException):
+        return True
+    if not isinstance(error, ProviderAPIError):
+        return False
+    status = error.status_code
+    return (
+        status is None
+        or status in (HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_MANY_REQUESTS)
+        or status >= HTTPStatus.INTERNAL_SERVER_ERROR
+    )
 
 
 class BaseWebhookProcessor:
@@ -237,10 +261,16 @@ class BaseWebhookProcessor:
                         return None
 
         series_title = self._extract_series_title(payload)
+        payload_season = (
+            season_number
+            if season_number is not None
+            else self._extract_season_episode_from_payload(payload)[0]
+        )
         media_id, found_season, found_episode = self._find_tv_media_id(
             ids,
             series_title=series_title,
             allow_title_fallback=True,
+            season_number=payload_season,
         )
         if not media_id:
             logger.warning("No matching TMDB ID found for TV show")
@@ -267,7 +297,19 @@ class BaseWebhookProcessor:
         tv_metadata = None
         try:
             tv_metadata = app.providers.tmdb.tv_with_seasons(media_id, [season_number])
-        except Exception as exc:  # pragma: no cover - defensive network guard
+        except Exception as exc:
+            if _is_transient_provider_error(exc):
+                # The show id may well be right; TMDB just did not answer.
+                # Guessing by title here recorded watches on unrelated
+                # same-title shows (#1279). Let the webhook task retry.
+                logger.warning(
+                    "TMDB unavailable loading show %s season %s; retrying the "
+                    "webhook: %s",
+                    media_id,
+                    season_number,
+                    exception_summary(exc),
+                )
+                raise
             logger.warning(
                 "Failed tmdb.tv_with_seasons for season %s: %s",
                 season_number,
@@ -312,6 +354,7 @@ class BaseWebhookProcessor:
                         media_id = self._resolve_tv_by_title(
                             series_title,
                             self._extract_series_year(payload),
+                            season_number=season_number,
                         )
                         if media_id:
                             tv_metadata = app.providers.tmdb.tv_with_seasons(
@@ -341,6 +384,7 @@ class BaseWebhookProcessor:
                 alt_ids,
                 series_title=series_title,
                 allow_title_fallback=True,
+                season_number=season_number,
             )
             if fallback_media_id:
                 media_id = fallback_media_id
@@ -1079,6 +1123,7 @@ class BaseWebhookProcessor:
         series_title=None,
         allow_title_fallback=False,
         year=None,
+        season_number=None,
     ):
         """Find TV media ID from external IDs, with optional title search fallback.
 
@@ -1088,6 +1133,7 @@ class BaseWebhookProcessor:
             series_title: Show title used for title-search fallback.
             allow_title_fallback: Enable title-search when all ID lookups fail.
             year: First-air year used to disambiguate title-search results.
+            season_number: Played season, used only to break a title tie.
 
         Returns:
             tuple: (media_id, season_number, episode_number)
@@ -1171,7 +1217,11 @@ class BaseWebhookProcessor:
             "TV ID missing; attempting title fallback search for: %s", series_title
         )
         try:
-            found_id = self._resolve_tv_by_title(series_title, year)
+            found_id = self._resolve_tv_by_title(
+                series_title,
+                year,
+                season_number=season_number,
+            )
         except Exception as exc:
             logger.warning(
                 "Title search failed during TV resolution: %s",
@@ -1192,13 +1242,15 @@ class BaseWebhookProcessor:
         """
         return
 
-    def _resolve_tv_by_title(self, series_title, year=None):
+    def _resolve_tv_by_title(self, series_title, year=None, *, season_number=None):
         """Return the show-level TMDB id of a unique exact-title match.
 
         This is the one title-search path for TV webhooks. ``year`` is the
         show's first-air year; a trailing "(YYYY)" in the title supplies it
-        when absent, and the provider is searched with the bare title. A miss
-        or an ambiguous title is remembered so the caller can queue the event
+        when absent, and the provider is searched with the bare title. When
+        several shows share the title, the played season breaks the tie: a
+        show that has no such season cannot be the one being watched. A miss
+        or a remaining tie is remembered so the caller can queue the event
         for review instead of dropping it silently (issue #1279).
         """
         title, title_year = split_title_year(series_title)
@@ -1209,15 +1261,50 @@ class BaseWebhookProcessor:
             title,
             page=1,
         )
-        result = unique_title_match(
-            (search_results or {}).get("results") or [],
-            title,
-            year=year or title_year,
-        )
-        if result and result.get("media_id"):
-            return str(result["media_id"])
+        candidate_ids = [
+            str(result["media_id"])
+            for result in title_matches(
+                (search_results or {}).get("results") or [],
+                title,
+                year=year or title_year,
+            )
+            if result.get("media_id")
+        ]
+        if (
+            len(candidate_ids) > 1
+            and season_number not in (None, 0)
+            and len(candidate_ids) <= MAX_SEASON_TIEBREAK_CANDIDATES
+        ):
+            candidate_ids = [
+                media_id
+                for media_id in candidate_ids
+                if self._show_has_season(media_id, season_number)
+            ]
+            if len(candidate_ids) == 1:
+                logger.info(
+                    "Resolved same-title TV show %s by its season %s",
+                    candidate_ids[0],
+                    season_number,
+                )
+        if len(candidate_ids) == 1:
+            return candidate_ids[0]
         self._unresolved_series_title = series_title
         return None
+
+    def _show_has_season(self, media_id, season_number):
+        """Return whether TMDB lists ``season_number`` for the show."""
+        try:
+            seasons = (
+                app.providers.tmdb.tv(media_id).get("related") or {}
+            ).get("seasons") or []
+        except ProviderAPIError as exc:
+            if _is_transient_provider_error(exc):
+                raise
+            return False
+        return any(
+            str(season.get("season_number")) == str(season_number)
+            for season in seasons
+        )
 
     def _get_mal_id_from_provider_links(
         self,
@@ -1539,6 +1626,7 @@ class BaseWebhookProcessor:
             candidate_media_id = self._resolve_tv_by_title(
                 series_title,
                 self._extract_series_year(payload),
+                season_number=season_number,
             )
         except Exception as exc:  # pragma: no cover - defensive network guard
             logger.warning(
