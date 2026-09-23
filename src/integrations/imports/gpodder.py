@@ -12,7 +12,6 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.text import slugify
 
-from app import history_cache
 from app.models import (
     Item,
     MediaTypes,
@@ -101,7 +100,6 @@ class GPodderImporter:
                 exc,
             )
 
-        subscriptions = self._load_subscriptions()
         is_full_resync = (
             self.account.last_full_resync_at is None
             or timezone.now() - self.account.last_full_resync_at
@@ -112,6 +110,16 @@ class GPodderImporter:
             since=None if is_full_resync else self.account.episode_actions_since,
             device=self.account.device_filter,
         )
+        # Subscriptions mean one RSS download per feed. An incremental poll with
+        # no listening activity has nothing to match against them, so skip it;
+        # the daily full resync still refreshes the catalog.
+        if is_full_resync or any(
+            action.get("action") == "play" and self._has_listening_activity(action)
+            for action in actions
+        ):
+            subscriptions = self._load_subscriptions()
+        else:
+            subscriptions = {}
 
         imported_counts = defaultdict(int)
         sorted_actions = sorted(
@@ -148,10 +156,10 @@ class GPodderImporter:
             ],
         )
 
-        history_cache.invalidate_history_cache(self.user.id, force=True)
-        from app import statistics_cache
-
-        statistics_cache.schedule_all_ranges_refresh(self.user.id)
+        # History and statistics invalidation is left to import_media, which
+        # does it only when this run actually changed rows. Doing it here
+        # unconditionally wiped the whole history day cache on every empty
+        # 15-minute poll, and the coverage repair never caught up (#1158).
         return dict(imported_counts), self.warnings
 
     def _load_subscriptions(self):
@@ -172,8 +180,9 @@ class GPodderImporter:
             rss_metadata = {}
             rss_episodes = []
             try:
-                rss_metadata = podcast_rss.fetch_show_metadata_from_rss(raw_feed_url)
-                rss_episodes = podcast_rss.fetch_episodes_from_rss(raw_feed_url)
+                rss_metadata, rss_episodes = podcast_rss.fetch_feed_from_rss(
+                    raw_feed_url
+                )
             except Exception as exc:
                 self.warnings.append(
                     f"Failed to refresh RSS feed {raw_feed_url}: {exc}"

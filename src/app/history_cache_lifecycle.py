@@ -174,7 +174,7 @@ def invalidate_history_cache(
                 user_id,
                 logging_style,
                 scheduled,
-                "album_score_change",
+                "full_invalidate",
             )
 
 
