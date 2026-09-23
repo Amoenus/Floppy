@@ -61,6 +61,7 @@ from app.statistics_highlights import (
     _normalize_history_highlight_images,
     _normalize_history_highlights_by_type,
     _select_history_entry_for_day,
+    normalize_highlight_images,
 )
 from app.statistics_talent import (
     STATISTICS_TOP_N,
@@ -1026,6 +1027,12 @@ def get_statistics_minutes_by_type(user, start_date, end_date, range_name=None):
     return result
 
 
+def _finalize_for_read(data):
+    """Normalize a statistics payload for display without calling providers."""
+    _normalize_hours_per_media_type(data.get("hours_per_media_type"))
+    normalize_highlight_images(data)
+
+
 def get_statistics_data(user, start_date, end_date, range_name=None):
     """Return cached statistics, rebuilding if needed.
 
@@ -1059,9 +1066,7 @@ def get_statistics_data(user, start_date, end_date, range_name=None):
         )
         if not build_missing:
             _schedule_missing_day_builds(user, day_list, start_date, end_date)
-        _normalize_hours_per_media_type(data.get("hours_per_media_type"))
-        _normalize_history_highlight_images(data.get("history_highlights"))
-        _normalize_history_highlights_by_type(data.get("history_highlights_by_type"))
+        _finalize_for_read(data)
         return data
 
     eager_mode = _eager_statistics_mode()
@@ -1074,17 +1079,11 @@ def get_statistics_data(user, start_date, end_date, range_name=None):
             if eager_mode:
                 data = refresh_statistics_cache(user.id, range_name)
                 if data:
-                    _normalize_hours_per_media_type(data.get("hours_per_media_type"))
-                    _normalize_history_highlight_images(data.get("history_highlights"))
-                    _normalize_history_highlights_by_type(
-                        data.get("history_highlights_by_type")
-                    )
+                    _finalize_for_read(data)
                     return data
             schedule_statistics_refresh(user.id, range_name, allow_inline=False)
         data = cache_entry.get("data", {})
-        _normalize_hours_per_media_type(data.get("hours_per_media_type"))
-        _normalize_history_highlight_images(data.get("history_highlights"))
-        _normalize_history_highlights_by_type(data.get("history_highlights_by_type"))
+        _finalize_for_read(data)
         return data
 
     # Cache miss - check if refresh is in progress
@@ -1097,11 +1096,7 @@ def get_statistics_data(user, start_date, end_date, range_name=None):
         if eager_mode:
             data = refresh_statistics_cache(user.id, range_name)
             if data:
-                _normalize_hours_per_media_type(data.get("hours_per_media_type"))
-                _normalize_history_highlight_images(data.get("history_highlights"))
-                _normalize_history_highlights_by_type(
-                    data.get("history_highlights_by_type")
-                )
+                _finalize_for_read(data)
                 return data
         # Refresh is in progress, return minimal empty data structure
         # Frontend will poll and update when refresh completes
@@ -1134,11 +1129,7 @@ def get_statistics_data(user, start_date, end_date, range_name=None):
     if eager_mode:
         data = refresh_statistics_cache(user.id, range_name)
         if data:
-            _normalize_hours_per_media_type(data.get("hours_per_media_type"))
-            _normalize_history_highlight_images(data.get("history_highlights"))
-            _normalize_history_highlights_by_type(
-                data.get("history_highlights_by_type")
-            )
+            _finalize_for_read(data)
             return data
         return _get_empty_statistics_data()
 
@@ -1235,6 +1226,8 @@ __all__ = [
     "_is_writer_credit",
     "_iter_day_range",
     "_normalize_day_value",
+    "_normalize_history_highlight_images",
+    "_normalize_history_highlights_by_type",
     "_overlap_day_filter",
     "_parse_activity_dt",
     "_range_cache_covers_days",
@@ -1254,6 +1247,7 @@ __all__ = [
     "invalidate_all_statistics_days",
     "invalidate_statistics_cache",
     "itertools",
+    "normalize_highlight_images",
     "random",
     "relativedelta",
     "schedule_all_ranges_refresh",

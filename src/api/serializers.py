@@ -5,7 +5,7 @@ from django.utils.timezone import now
 from rest_framework import serializers
 
 from app import helpers as app_helpers
-from app.backdrops import resolve_backdrop  # FORK: horizontal artwork
+from app.backdrops import cached_backdrop_or_warm  # FORK: horizontal artwork
 from app.helpers import build_provider_ids
 from app.history_entry_builders import _serialize_show
 from app.models import (
@@ -248,7 +248,7 @@ class CompleteEpisodeSerializer(serializers.Serializer):
             "total_episodes_left": None,
             "image": image,
             # FORK: show-level backdrop
-            "backdrop": resolve_backdrop(media_metadata),
+            "backdrop": cached_backdrop_or_warm(media_metadata),
             "synopsis": episode.get("overview"),
             "genres": media_metadata.get("genres", []),
             "score": float(episode.get("vote_average")),
@@ -515,7 +515,7 @@ class CompleteMediaSerializer(serializers.Serializer):
             "total_episodes_left": episode_left_values[1],
             "image": media_metadata.get("image"),
             # FORK: 16:9 artwork
-            "backdrop": resolve_backdrop(media_metadata),
+            "backdrop": cached_backdrop_or_warm(media_metadata),
             "synopsis": media_metadata.get("synopsis"),
             "genres": media_metadata.get("genres"),
             "score": float(media_metadata.get("score"))
