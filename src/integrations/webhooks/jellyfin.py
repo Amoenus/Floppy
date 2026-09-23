@@ -34,9 +34,6 @@ JELLYFIN_RATING_MAX = 10
 # watched-state push; only this reason is the user clicking the checkmark.
 JELLYFIN_TOGGLE_PLAYED_REASON = "TogglePlayed"
 JELLYFIN_MANUAL_MARK_EVENTS = {"MarkPlayed", "MarkUnplayed"}
-# Ignore unfinished Stop events reported before this much playback (seconds),
-# matching Plex's MIN_STOP_VIEW_OFFSET_MS.
-MIN_STOP_POSITION_SECONDS = 60
 
 
 def _ticks_to_seconds(ticks) -> int | None:
@@ -104,15 +101,12 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             playback_media_type,
         )
 
-        # Play and Pause only update the card. Only Stop and manual marks
-        # write tracking rows, so a client that never sends Stop (e.g. a
-        # pseudo-live-TV app like Bunny Ears TV) cannot leave items stuck
-        # In Progress. Same rule as Plex.
-        if event_type in ("Play", "Pause"):
-            return
-
-        if event_type == "Stop" and self._is_short_unfinished_stop(payload):
-            logger.debug("Ignoring short unfinished Jellyfin Stop event")
+        position_seconds, _ = self._get_playback_progress(payload)
+        if not self._should_record(
+            "mark" if self._is_manual_mark(payload) else JELLYFIN_EVENT_MAP[event_type],
+            played=self._is_played(payload),
+            position_seconds=position_seconds,
+        ):
             return
 
         if not any(ids.values()):
@@ -195,13 +189,6 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
         if played is False and user.jellyfin_mark_unplayed_enabled:
             return "MarkUnplayed"
         return None
-
-    def _is_short_unfinished_stop(self, payload):
-        """Check if a Stop ended too early to count as started."""
-        if self._is_played(payload):
-            return False
-        position_seconds, _ = self._get_playback_progress(payload)
-        return position_seconds is None or position_seconds < MIN_STOP_POSITION_SECONDS
 
     def _get_played_at(self, payload):
         """Extract Jellyfin's completion timestamp when a play finished."""

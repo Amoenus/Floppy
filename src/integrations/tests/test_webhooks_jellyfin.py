@@ -2725,11 +2725,11 @@ FRIENDS_METADATA = {
 class JellyfinWriteRulesTests(TestCase):
     """Only Stop and the user's own watched toggle write tracking rows (#1250).
 
-    Play and Pause only update Now Playing, the same rule Plex follows so a
-    client that never sends Stop (e.g. Bunny Ears TV) cannot leave items
-    stuck In Progress. UserDataSaved changes watch state only when Jellyfin
-    says the user toggled the checkmark, never for progress saves, playback
-    end, or our own watched-state push echoing back.
+    The Play/Stop gate is the shared rule in integrations/webhooks/
+    write_policy.py (contract tests in test_webhook_write_policy.py); these
+    check the real rows it leads to. UserDataSaved changes watch state only
+    when Jellyfin says the user toggled the checkmark, never for progress
+    saves, playback end, or our own watched-state push echoing back.
     """
 
     def setUp(self):
@@ -2816,14 +2816,6 @@ class JellyfinWriteRulesTests(TestCase):
         self.assertFalse(Movie.objects.filter(user=self.user).exists())
         self.assertFalse(PlaybackProgress.objects.filter(user=self.user).exists())
         self.assertIsNotNone(live_playback.get_user_playback_state(self.user.id))
-
-    def test_short_unfinished_stop_is_ignored(self, *_mocks):
-        """A Stop under a minute is a skim, not a start."""
-        self.processor.process_payload(
-            self._movie("Stop", position=59),
-            self.user,
-        )
-        self.assertFalse(Movie.objects.filter(user=self.user).exists())
 
     def test_unfinished_stop_after_a_minute_is_in_progress(self, *_mocks):
         """Past a minute, an unfinished Stop records In Progress."""

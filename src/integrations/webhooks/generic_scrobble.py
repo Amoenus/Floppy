@@ -59,7 +59,12 @@ class GenericScrobbleProcessor(BaseWebhookProcessor):
         ids = self._extract_external_ids(payload)
         if not any(ids.values()):
             return
-        self._process_media(payload, user, ids)
+        if self._should_record(
+            "media.scrobble",
+            played=self._is_played(payload),
+            position_seconds=None,
+        ):
+            self._process_media(payload, user, ids)
 
     def _is_supported_event(self, event_type):
         return True

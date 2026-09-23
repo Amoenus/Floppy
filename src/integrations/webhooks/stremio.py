@@ -43,7 +43,12 @@ class StremioWebhookProcessor(BaseWebhookProcessor):
             return
 
         self._update_live_playback_state(payload, user, ids)
-        self._process_media(payload, user, ids)
+        if self._should_record(
+            "media.play",
+            played=self._is_played(payload),
+            position_seconds=None,
+        ):
+            self._process_media(payload, user, ids)
 
     def _update_live_playback_state(self, payload, user, ids):
         """Update the Now Playing card from a playback-start signal.

@@ -13,7 +13,7 @@ from app.providers import tvmaze
 from app.services.completion import select_preferred_activity_entry
 from integrations import episode_remap
 from integrations.matching import unique_title_match
-from integrations.webhooks import anime_mappings
+from integrations.webhooks import anime_mappings, write_policy
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,18 @@ class BaseWebhookProcessor:
         stamped with the push time, so the play-time dedupe cannot catch it.
         """
         return False
+
+    def _should_record(self, event, *, played, position_seconds):
+        """Check this integration's write policy before touching tracking rows.
+
+        See integrations/webhooks/write_policy.py.
+        """
+        return write_policy.should_record(
+            self.SOURCE_LABEL,
+            event,
+            played=played,
+            position_seconds=position_seconds,
+        )
 
     def _extract_external_ids(self, payload):
         """Extract external IDs from payload."""
