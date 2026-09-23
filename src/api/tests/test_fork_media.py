@@ -319,7 +319,7 @@ class ForkBackdropFieldTests(FloppyApiTestCase):
         self.assertEqual(payload["image"], self.tv_item.image)
         mock_backdrop.assert_not_called()
 
-    @patch("app.tasks.warm_backdrops_task.apply_async")
+    @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
     @patch("api.views.services.get_media_metadata")
     @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_detail_never_calls_the_provider_for_a_cold_backdrop(
@@ -359,7 +359,7 @@ class ForkBackdropFieldTests(FloppyApiTestCase):
         self.assertEqual(self._get_detail().json()["backdrop"], BACKDROP_URL)
         mock_backdrop.assert_called_once_with(MediaTypes.TV.value, media_id)
 
-    @patch("app.tasks.warm_backdrops_task.apply_async")
+    @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
     @patch("api.views.services.get_media_metadata")
     def test_detail_reports_null_when_no_backdrop_exists(
         self,

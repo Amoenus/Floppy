@@ -180,7 +180,7 @@ class BackdropWarmTests(TestCase):
             with self.subTest(item=item):
                 self.assertIsNone(backdrops.warm_identity(item))
 
-    @patch("app.tasks.warm_backdrops_task.apply_async")
+    @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
     def test_schedule_sends_one_task_and_dedupes_items(self, mock_apply):
         queued = backdrops.schedule_backdrop_warm(
             [_tv_item(), _tv_item(), _tv_item(media_id="1399")]
@@ -194,7 +194,7 @@ class BackdropWarmTests(TestCase):
 
     @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_warm_task_fetches_with_network(self, mock_backdrop):
-        from app.tasks import warm_backdrops_task
+        from app.tasks_backdrops import warm_backdrops_task
 
         warm_backdrops_task([backdrops.warm_identity(_tv_item())])
 
@@ -210,14 +210,14 @@ class BackdropWarmTests(TestCase):
         )
         self.assertIsNone(cache.get("tmdb_backdrop_tv_1399"))
 
-    @patch("app.tasks.warm_backdrops_task.apply_async")
+    @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
     def test_known_absence_is_not_warmed_again(self, mock_apply):
         cache.set("tmdb_backdrop_tv_1396", settings.IMG_NONE, 60)
 
         self.assertIsNone(backdrops.cached_backdrop_or_warm(_tv_item()))
         mock_apply.assert_not_called()
 
-    @patch("app.tasks.warm_backdrops_task.apply_async")
+    @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
     def test_cached_backdrop_or_warm_queues_a_cold_item(self, mock_apply):
         self.assertIsNone(backdrops.cached_backdrop_or_warm(_tv_item()))
         mock_apply.assert_called_once()

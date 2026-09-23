@@ -231,7 +231,7 @@ def schedule_backdrop_warm(items) -> int:
         return 0
 
     try:
-        from app.tasks import warm_backdrops_task
+        from app.tasks_backdrops import warm_backdrops_task
 
         warm_backdrops_task.apply_async(
             args=[identities],

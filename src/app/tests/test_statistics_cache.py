@@ -996,7 +996,7 @@ class NormalizeHistoryHighlightImagesTests(TestCase):
     def tearDown(self):
         cache.clear()
 
-    @patch("app.tasks.warm_backdrops_task.apply_async")
+    @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
     @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_serve_never_calls_the_provider(self, mock_backdrop, mock_warm):
         """Core regression test for issue #1249: a cold cache means no network."""
@@ -1051,7 +1051,7 @@ class NormalizeHistoryHighlightImagesTests(TestCase):
             self.assertEqual(entry["image"], BACKDROP_URL)
             self.assertTrue(entry["image_is_backdrop"])
 
-    @patch("app.tasks.warm_backdrops_task.apply_async")
+    @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
     def test_repeat_serves_queue_the_warm_once(self, mock_warm):
         for _ in range(3):
             statistics_cache.normalize_highlight_images(
@@ -1060,7 +1060,7 @@ class NormalizeHistoryHighlightImagesTests(TestCase):
 
         mock_warm.assert_called_once()
 
-    @patch("app.tasks.warm_backdrops_task.apply_async")
+    @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
     @patch("app.backdrops.cached_backdrop")
     def test_marked_backdrop_is_served_without_any_lookup(
         self, mock_cached, mock_warm
@@ -1076,7 +1076,7 @@ class NormalizeHistoryHighlightImagesTests(TestCase):
         mock_cached.assert_not_called()
         mock_warm.assert_not_called()
 
-    @patch("app.tasks.warm_backdrops_task.apply_async")
+    @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
     def test_per_type_highlights_are_upgraded(self, mock_warm):
         cache.set("tmdb_backdrop_tv_1396", BACKDROP_URL, 60)
         entry = _highlight_entry(_tv_item_dict(media_id="1396"))
@@ -1088,7 +1088,7 @@ class NormalizeHistoryHighlightImagesTests(TestCase):
         self.assertTrue(entry["image_is_backdrop"])
         mock_warm.assert_not_called()
 
-    @patch("app.tasks.warm_backdrops_task.apply_async")
+    @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
     def test_items_without_backdrops_queue_nothing(self, mock_warm):
         podcast = {
             "media_type": MediaTypes.PODCAST.value,
@@ -1141,7 +1141,7 @@ class HighlightArtworkRequestPathTests(TestCase):
     def tearDown(self):
         cache.clear()
 
-    @patch("app.tasks.warm_backdrops_task.apply_async")
+    @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
     @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_warm_statistics_cache_serve_makes_no_provider_call(
         self, mock_backdrop, mock_warm
@@ -1161,7 +1161,7 @@ class HighlightArtworkRequestPathTests(TestCase):
             served["history_highlights"]["first_play"]["image"], PORTRAIT_POSTER
         )
 
-    @patch("app.tasks.warm_backdrops_task.apply_async")
+    @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
     def test_release_candidates_are_not_resolved_before_selection(self, _mock_warm):
         """Only the chosen "Today in history" card is ever given a backdrop."""
         release = timezone.now().replace(year=2001)

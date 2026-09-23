@@ -112,6 +112,7 @@ from app.tasks_anime_library_repair import (  # noqa: E402
     convert_anime_library_shape_task,
     repair_duplicated_anime_libraries_task,
 )
+from app.tasks_backdrops import warm_backdrops_task  # noqa: E402, F401
 from app.tasks_backfill_state import (  # noqa: E402
     EXTERNAL_IDS_BACKFILL_VERSION,
     GENRE_BACKFILL_VERSION,
@@ -627,21 +628,6 @@ def build_statistics_days_task(user_id: int, start_token: str, end_token: str):
         day_list,
         build_missing=True,
     )
-
-
-@shared_task(name="Warm backdrops", ignore_result=True)
-def warm_backdrops_task(identities: list[dict]):
-    """Fetch missing horizontal backdrops into Redis.
-
-    Scheduled by ``backdrops.schedule_backdrop_warm`` from read paths that
-    must not call providers themselves; the next read picks the result up
-    from the cache.
-    """
-    from app import backdrops
-
-    for identity in identities or ():
-        # resolve_backdrop is best-effort and caches both hits and misses.
-        backdrops.resolve_backdrop(identity, allow_network=True)
 
 
 @shared_task(name="Refresh item game lengths")
