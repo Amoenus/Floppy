@@ -7,6 +7,7 @@ from django.apps import apps
 from django.conf import settings
 from django.core.cache import cache
 from django.db import models
+from django.db.models.functions import Coalesce, Greatest, Least
 from django.utils import formats, timezone
 
 from app import helpers
@@ -55,6 +56,24 @@ from app.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _span_may_touch_day(queryset, day_start, day_end):
+    """Narrow games/boardgames to rows whose play span can reach this day.
+
+    A superset of the exact per-day check the caller still runs: same span
+    fallbacks, ordered either way, widened by a day so converting to local
+    dates can never push a row out of the window. Without it every repeats
+    day loaded the user's whole game library (#1158).
+    """
+    first = Coalesce("start_date", "end_date", "created_at")
+    last = Coalesce("end_date", "start_date", "created_at")
+    margin = timedelta(days=1)
+    return (
+        queryset.filter(progress__gt=0)
+        .alias(span_lo=Least(first, last), span_hi=Greatest(first, last))
+        .filter(span_lo__lt=day_end + margin, span_hi__gte=day_start - margin)
+    )
 
 
 def build_history_day(user, day_key, logging_style_override=None, media_types=None):
@@ -186,25 +205,34 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
         else Movie.objects.none()
     )
 
-    movie_play_counts = (
-        movies_qs.values("item__media_id", "item__source")
-        .annotate(play_count=models.Count("id"))
-        .order_by()
+    movies = list(
+        movies_qs.filter(
+            models.Q(end_date__gte=day_start, end_date__lt=day_end)
+            | (
+                models.Q(end_date__isnull=True)
+                & models.Q(start_date__gte=day_start, start_date__lt=day_end)
+            ),
+        ).order_by("-end_date")
     )
-    movie_play_map = {
-        (row["item__media_id"], row["item__source"]): row["play_count"]
-        for row in movie_play_counts
-    }
 
-    movies = movies_qs.filter(
-        models.Q(end_date__gte=day_start, end_date__lt=day_end)
-        | (
-            models.Q(end_date__isnull=True)
-            & models.Q(start_date__gte=day_start, start_date__lt=day_end)
-        ),
-    ).order_by("-end_date")
+    # Play counts only for this day's titles, not the user's whole library.
+    movie_play_map = {}
+    if movies:
+        movie_play_counts = (
+            movies_qs.filter(
+                item__media_id__in={movie.item.media_id for movie in movies},
+                item__source__in={movie.item.source for movie in movies},
+            )
+            .values("item__media_id", "item__source")
+            .annotate(play_count=models.Count("id"))
+            .order_by()
+        )
+        movie_play_map = {
+            (row["item__media_id"], row["item__source"]): row["play_count"]
+            for row in movie_play_counts
+        }
 
-    for movie in movies.iterator(chunk_size=500):
+    for movie in movies:
         entry = _build_movie_entry(movie)
         if not entry:
             continue
@@ -671,7 +699,9 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
             entries.append(entry)
     else:
         games = (
-            Game.objects.filter(user=user).select_related("item")
+            _span_may_touch_day(Game.objects.filter(user=user), day_start, day_end)
+            .select_related("item")
+            .defer(*history_deferred_item_fields("item"))
             if include_game
             else Game.objects.none()
         )
@@ -729,7 +759,11 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
             entries.append(entry)
 
         boardgames = (
-            BoardGame.objects.filter(user=user).select_related("item")
+            _span_may_touch_day(
+                BoardGame.objects.filter(user=user), day_start, day_end
+            )
+            .select_related("item")
+            .defer(*history_deferred_item_fields("item"))
             if include_boardgame
             else BoardGame.objects.none()
         )
