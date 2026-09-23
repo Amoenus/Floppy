@@ -71,7 +71,9 @@ ANIME_LIST_DEFAULT_SORT_MAX_QUERIES = (
     # one, each once per cold cache (an hour in production, every test here).
 )
 ANIME_LIST_GROUPED_MAX_QUERIES = (
-    23  # grouped (TV-backed) anime adds no per-show runtime queries (24 when broken);
+    24  # grouped (TV-backed) anime adds no per-show runtime queries;
+    # +1 for the page COUNT: the list is paged by the library-query engine
+    # instead of counting a fully loaded list (#1248);
     # +4 from the Genres/Tags column Prefetch("item__item_tags") added in #457;
     # +2 from the instance and personal provider-credential reads
 )

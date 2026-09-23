@@ -3,7 +3,7 @@ import logging
 import math
 import time
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
 
@@ -27,6 +27,8 @@ from app.columns import (
     resolve_default_column_config,
     sanitize_column_prefs,
 )
+from app.library_query import LibraryQueryExecutor
+from app.library_query.adapters import from_media_list_filters
 from app.media_list_entry_grouping import entry_grouping_is_separate
 from app.media_list_filters import (
     MediaListFilters,
@@ -34,11 +36,11 @@ from app.media_list_filters import (
     apply_media_list_progress_filter,
     apply_media_list_rating_filter,
     apply_media_list_status_filter,
+    media_list_entries_for_items,
 )
 from app.media_list_filters import (
     normalize_completed_date_filter as _normalize_completed_date_filter,
 )
-from app.media_list_pagination import can_paginate_in_sql
 from app.models import (
     TV,
     BasicMedia,
@@ -1287,11 +1289,18 @@ def media_list(request, media_type):
         direction=direction,
         media_type=media_type,
     )
-    use_sql_media_pagination = can_paginate_in_sql(
-        sql_media_filters,
-        media_type,
-        sort_filter,
-    ) and not entry_grouping_is_separate()
+    # Every list is read through the shared library-query engine except the
+    # surfaces whose unit is not one item: separate-entry mode (one card per
+    # tracker row), TV's time-left grouping (its own cached order), and the
+    # podcast / music artist and album views (their own trackers, below).
+    _skip_generic_media_list = media_type == MediaTypes.PODCAST.value or (
+        media_type == MediaTypes.MUSIC.value and music_subview != "tracks"
+    )
+    use_sql_media_pagination = not (
+        entry_grouping_is_separate()
+        or (sort_filter == "time_left" and media_type == MediaTypes.TV.value)
+        or _skip_generic_media_list
+    )
 
     anime_library_mode = getattr(
         request.user,
@@ -1697,75 +1706,71 @@ def media_list(request, media_type):
     _cached_media_list_order = None
     if use_sql_media_pagination:
         items_per_page = 32
-        safe_page = max(page, 1)
-
-        def _load_sql_page(offset):
-            return BasicMedia.objects.get_media_list(
-                user=request.user,
-                media_type=media_type,
-                status_filter=tracked_status_filter,
-                sort_filter=query_sort_filter,
-                search=search_query,
-                direction=direction,
-                list_sql_filters=list_sql_filters,
-                sql_limit=items_per_page,
-                sql_offset=offset,
-            )
-
-        page_media, page_total = _load_sql_page((safe_page - 1) * items_per_page)
-        page_paginator = Paginator(range(page_total), items_per_page)
-        media_page = page_paginator.get_page(safe_page)
-        # Paginator.get_page() clamps an out-of-range request to the last page;
-        # repeat only that one narrow SQL slice so the rendered page keeps the
-        # existing Django pagination behavior.
-        if media_page.number != safe_page:
-            page_media, page_total = _load_sql_page(
-                (media_page.number - 1) * items_per_page
-            )
-            page_paginator = Paginator(range(page_total), items_per_page)
-            media_page = page_paginator.get_page(media_page.number)
+        engine_query = from_media_list_filters(sql_media_filters, (media_type,))
+        engine = LibraryQueryExecutor(request.user, engine_query)
+        engine_total = engine.count()
+        media_page = Paginator(range(engine_total), items_per_page).get_page(max(page, 1))
+        engine_page = engine.page(
+            (media_page.number - 1) * items_per_page,
+            items_per_page,
+            total=engine_total,
+        )
+        page_entries = media_list_entries_for_items(request.user, engine_page.items)
         media_page.object_list = [
-            MediaListEntry.from_media(media) for media in page_media
+            MediaListEntry(item=entry.item, media=entry.media) for entry in page_entries
         ]
+        if media_type == MediaTypes.ANIME.value:
+            _mark_grouped_anime_route(
+                [
+                    entry.media
+                    for entry in page_entries
+                    if entry.media is not None
+                    and entry.item.media_type == MediaTypes.TV.value
+                ],
+            )
+        if sort_filter == "next_episode_air_date":
+            # The cards show the date the list is ordered by.
+            for entry in page_entries:
+                if entry.media is not None:
+                    entry.media.next_episode_air_date = (
+                        BasicMedia.objects._next_episode_air_date_value(entry.media)
+                    )
         _sql_media_page = media_page
         media_list = []
         _media_list_full = []
-
         if filter_data is None:
-            # Only the menu's provider list reads watch_providers, and only
-            # for this one region. Anywhere else, the column is not selected.
+            # The menu lists what the status and list filters leave, before
+            # the per-item filters narrow it - the same candidates the list
+            # always offered - read as narrow Item rows, not hydrated media.
+            menu_filters = replace(
+                sql_media_filters,
+                rating="all",
+                collection="all",
+                progress="all",
+                author="",
+                format="",
+                provider="",
+                platforms=() if media_type == MediaTypes.GAME.value else platform_values,
+            )
             provider_region_for_values = (
                 watch_provider_region
                 if media_type in provider_media_types
                 else None
             )
-            filter_data_rows = list(
-                BasicMedia.objects.get_media_list_item_values(
-                    user=request.user,
-                    media_type=media_type,
-                    status_filter=tracked_status_filter,
-                    search=search_query,
-                    list_sql_filters=list_sql_filters,
-                    provider_region=provider_region_for_values,
-                ),
-            )
-            if media_type == MediaTypes.GAME.value and platform_values:
-                filter_data_filters = {
-                    **list_sql_filters,
-                    "platform_values": (),
-                    "platform_mode": "or",
-                }
-                filter_data_rows = list(
-                    BasicMedia.objects.get_media_list_item_values(
-                        user=request.user,
-                        media_type=media_type,
-                        status_filter=tracked_status_filter,
-                        search=search_query,
-                        list_sql_filters=filter_data_filters,
-                        provider_region=provider_region_for_values,
+
+            def _menu_rows(filters):
+                menu_engine = LibraryQueryExecutor(
+                    request.user,
+                    from_media_list_filters(filters, (media_type,)),
+                )
+                return list(
+                    BasicMedia.objects.item_values_for_menu(
+                        Item.objects.filter(pk__in=menu_engine.filtered.values("pk")).order_by(),
+                        provider_region_for_values,
                     ),
                 )
 
+            filter_data_rows = _menu_rows(menu_filters)
             item_ids = {row["id"] for row in filter_data_rows}
             if media_type == MediaTypes.GAME.value and item_ids:
                 for item_id, collection_platform in CollectionEntry.objects.filter(
@@ -1791,7 +1796,6 @@ def media_list(request, media_type):
                         collection_formats_by_item_id[item_id].add(
                             normalized_collection_format
                         )
-
             filter_data = build_filter_data_from_item_values(
                 filter_data_rows,
                 collection_formats_by_item_id=collection_formats_by_item_id,
@@ -1821,23 +1825,13 @@ def media_list(request, media_type):
                 or request.user.pinned_watch_providers
             )
             filter_data["show_progress"] = media_type in PROGRESS_MEDIA_TYPES
-
-            tag_rows = filter_data_rows
-            if tag_included_ids is not None or tag_excluded_ids is not None:
-                tag_free_filters = {
-                    **list_sql_filters,
-                    "tag_included_ids": None,
-                    "tag_excluded_ids": None,
-                }
-                tag_rows = list(
-                    BasicMedia.objects.get_media_list_item_values(
-                        user=request.user,
-                        media_type=media_type,
-                        status_filter=tracked_status_filter,
-                        search=search_query,
-                        list_sql_filters=tag_free_filters,
-                    ),
-                )
+            # Tag counts ignore the tag filter itself, or every other tag
+            # would count 0 (#1072).
+            tag_rows = (
+                _menu_rows(replace(menu_filters, tags=()))
+                if tag_values
+                else filter_data_rows
+            )
             filter_data.update(
                 _build_media_list_tag_data(
                     request.user,
@@ -1862,9 +1856,6 @@ def media_list(request, media_type):
         # here to avoid an O(row count) Python pass on large libraries (see
         # issue #1198). Music's "tracks" subview is the one case that
         # actually needs the per-track list built below.
-        _skip_generic_media_list = media_type == MediaTypes.PODCAST.value or (
-            media_type == MediaTypes.MUSIC.value and music_subview != "tracks"
-        )
         media_queryset = (
             BasicMedia.objects.none()
             if _skip_generic_media_list

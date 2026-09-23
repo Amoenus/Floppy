@@ -2404,11 +2404,6 @@ for _definition in (
         batch_values=_entry_value_sort(_episodes_left_value),
         needs=_MEDIA_AND_MAX,
     ),
-    SortDef(
-        ("home_next_episode_air_date",),
-        batch_values=_entry_value_sort(_entry_next_episode_air_date_timestamp),
-        needs=_MEDIA,
-    ),
 ):
     register_sort(_definition)
 
@@ -2417,7 +2412,6 @@ HOME_ENGINE_SORT_KEYS = {
     HomeSortChoices.RECENT: "home_recent",
     HomeSortChoices.COMPLETION: "home_completion",
     HomeSortChoices.EPISODES_LEFT: "home_episodes_left",
-    MediaSortChoices.NEXT_EPISODE_AIR_DATE: "home_next_episode_air_date",
 }
 
 
@@ -2431,7 +2425,7 @@ def home_row_seed(row) -> int:
 def _library_row_executor(user, row, normalized_filters, *, seed: int):
     sort_key = HOME_ENGINE_SORT_KEYS.get(row.sort_by, row.sort_by)
     if row.sort_by == HomeSortChoices.UPCOMING and row.media_type == MediaTypes.SEASON.value:
-        sort_key = "home_next_episode_air_date"
+        sort_key = MediaSortChoices.NEXT_EPISODE_AIR_DATE
     query = from_home_row_filters(
         user,
         normalized_filters,

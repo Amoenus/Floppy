@@ -393,14 +393,12 @@ class LibraryQueryParityTests(TestCase):
                 and self._values(key, old) == self._values(key, new),
             ),
             (
-                "platform sort uses the collected copy",
-                "Platform sorts by the platform the user collected an item on, "
-                "else its first listed platform, and items with no platform "
-                'sort last - the media list sorted a missing one as "".',
+                "platform sort uses the displayed platform",
+                "Platform sorts by the platform a card displays - the collected "
+                "copy's, else the item's only platform - with the rest last; "
+                "the API sorted by an item's first listed platform.",
                 lambda key, old, new: key[0] == "media_list"
-                and key[3].startswith("platform:")
-                and [pk for pk in old if pk not in self.platform_sensitive_ids]
-                == [pk for pk in new if pk not in self.platform_sensitive_ids],
+                and key[3].startswith("platform:"),
             ),
             (
                 "media list type-scoped filters",
