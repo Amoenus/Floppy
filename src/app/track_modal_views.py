@@ -14,7 +14,7 @@ from django.utils.translation import gettext_noop
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
-from app import custom_metadata, helpers
+from app import custom_metadata, helpers, history_processor
 from app import statistics as stats
 from app.collection_views import build_collection_modal_context
 from app.discover_views import _build_track_modal_discover_tab_context
@@ -876,6 +876,18 @@ def _render_standard_track_modal(
         "collection_tab_available": False,
         "collection_context": None,
     }
+    context["status_history_tab_available"] = bool(
+        media is not None
+        and media_type in (MediaTypes.TV.value, MediaTypes.SEASON.value),
+    )
+    context["status_changes"] = (
+        history_processor.status_change_log(
+            media,
+            limit=history_processor.STATUS_HISTORY_TAB_LENGTH,
+        )
+        if context["status_history_tab_available"]
+        else []
+    )
     koreader_account = getattr(request.user, "koreader_account", None)
     context["show_koreader_document_field"] = bool(
         media_type == MediaTypes.BOOK.value

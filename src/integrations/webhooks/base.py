@@ -2,6 +2,7 @@ import logging
 import re
 from datetime import UTC, datetime
 
+from django.db.models import Q
 from django.utils import timezone
 
 import app
@@ -1643,6 +1644,30 @@ class BaseWebhookProcessor:
 
         return Sources.TMDB.value, str(media_id), tv_metadata, season_metadata
 
+    def _status_change_reason(self):
+        """Label recorded in history when this webhook changes a status."""
+        source = (self.SOURCE_LABEL or "webhook").capitalize()
+        return f"{source} playback"
+
+    @staticmethod
+    def _show_deleted_by_user(user, tv_item, tmdb_id, tvdb_id):
+        """Return whether the user deleted this show under any of its ids.
+
+        The tombstone keeps the identity the show was tracked under, which can
+        differ from the one this event resolved to (a TVDB-tracked show seen
+        here through TMDB, say), so check every id the show is known by.
+        """
+        identities = Q(source=tv_item.source, media_id=tv_item.media_id)
+        if tmdb_id:
+            identities |= Q(source=Sources.TMDB.value, media_id=str(tmdb_id))
+        if tvdb_id:
+            identities |= Q(source=Sources.TVDB.value, media_id=str(tvdb_id))
+        return app.models.DeletedMedia.objects.filter(
+            identities,
+            user=user,
+            media_type=MediaTypes.TV.value,
+        ).exists()
+
     def _handle_tv_episode(
         self,
         media_id,
@@ -1960,6 +1985,27 @@ class BaseWebhookProcessor:
             provider_media_type=MediaTypes.TV.value,
         )
 
+        # A playback-start event proves nothing was watched yet, so it must not
+        # undo a status the user chose or bring back a show they deleted. Only
+        # a real play may do that (#1133).
+        played = self._is_played(payload)
+        if (
+            not played
+            and not app.models.TV.objects.filter(item=tv_item, user=user).exists()
+            and self._show_deleted_by_user(
+                user,
+                tv_item,
+                media_id,
+                tv_metadata.get("tvdb_id"),
+            )
+        ):
+            logger.info(
+                "Ignoring playback start for deleted show: %s",
+                item_tv_metadata["title"],
+            )
+            return None
+        start_keeps = {*app.models.USER_HELD_STATUSES, Status.COMPLETED.value}
+
         tv_instance, tv_created = app.models.TV.objects.get_or_create(
             item=tv_item,
             user=user,
@@ -1971,8 +2017,15 @@ class BaseWebhookProcessor:
 
         if tv_created:
             logger.info("Created new TV instance: %s", item_tv_metadata["title"])
+        elif not played and tv_instance.status in start_keeps:
+            logger.info(
+                "Keeping %s status on playback start: %s",
+                tv_instance.status,
+                item_tv_metadata["title"],
+            )
         elif tv_instance.status != Status.IN_PROGRESS.value:
             tv_instance.status = Status.IN_PROGRESS.value
+            tv_instance._change_reason = self._status_change_reason()
             tv_instance.save()
             logger.info(
                 "Updated TV instance status to %s: %s",
@@ -2075,7 +2128,12 @@ class BaseWebhookProcessor:
             user=user,
             related_tv=tv_instance,
             defaults={
-                "status": Status.IN_PROGRESS.value,
+                "status": (
+                    tv_instance.status
+                    if not played
+                    and tv_instance.status in app.models.USER_HELD_STATUSES
+                    else Status.IN_PROGRESS.value
+                ),
                 "entry_source": self.SOURCE_LABEL,
             },
         )
@@ -2086,8 +2144,11 @@ class BaseWebhookProcessor:
                 tv_metadata["title"],
                 season_number,
             )
+        elif not played and season_instance.status in start_keeps:
+            pass
         elif season_instance.status != Status.IN_PROGRESS.value:
             season_instance.status = Status.IN_PROGRESS.value
+            season_instance._change_reason = self._status_change_reason()
             season_instance.save()
             logger.info(
                 "Updated season instance status to %s: %s S%02d",

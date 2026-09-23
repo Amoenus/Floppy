@@ -2,7 +2,13 @@
 # resolve app.models.providers, from when app/models.py was a single module.
 from app import providers  # noqa: F401
 from app.models.application_settings import ApplicationSettings
-from app.models.choices import MediaTypes, ProviderMetadataStatus, Sources, Status
+from app.models.choices import (
+    USER_HELD_STATUSES,
+    MediaTypes,
+    ProviderMetadataStatus,
+    Sources,
+    Status,
+)
 from app.models.credits import (
     CREDITS_BACKFILL_VERSION,
     DISCOVER_MOVIE_METADATA_BACKFILL_VERSION,
@@ -106,6 +112,7 @@ __all__ = [
     "PERSON_PROFILE_BACKFILL_VERSION",
     "TRAKT_POPULARITY_BACKFILL_VERSION",
     "TV",
+    "USER_HELD_STATUSES",
     "ActiveAnimeManager",
     "ActiveAnimeQuerySet",
     "Album",

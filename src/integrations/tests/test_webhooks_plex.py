@@ -174,6 +174,7 @@ class PlexWebhookTests(TestCase):
                 "max_progress": 1,
                 "title": "Metadata Title",
                 "image": "",
+                "details": {"status": "Ended"},
                 "related": {
                     "seasons": [
                         {"season_number": 1, "image": ""},

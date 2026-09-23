@@ -16,7 +16,7 @@
       {% if activity_subtitle.duration_text %}
         <span class="inline-flex items-center">
           <span>
-            {{ activity_subtitle.duration_text|cut:" watched"|cut:" played"|cut:" listened"|cut:" read" }}{% if activity_subtitle.primary_text %} ({{ activity_subtitle.primary_text|translate_activity_text:media_type }}){% endif %}
+            {{ activity_subtitle.duration_text|cut:" watched"|cut:" played"|cut:" listened"|cut:" read" }}{% if activity_subtitle.primary_text %} ({{ activity_subtitle.primary_text|cut:"Progress: "|translate_activity_text:media_type }}){% endif %}
           </span>
         </span>
         {% if activity_subtitle.date_start or activity_subtitle.date_end %}

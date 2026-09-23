@@ -157,6 +157,7 @@ class EpisodeStatusTests(TestCase):
             "season/1": {
                 "episodes": [{"episode_number": 1}],
             },
+            "details": {"status": "Ended"},
             "related": {
                 "seasons": [{"season_number": 1}],
             },
@@ -224,6 +225,7 @@ class EpisodeStatusTests(TestCase):
             "season/1": {
                 "episodes": [{"episode_number": 1}],
             },
+            "details": {"status": "Ended"},
             "related": {
                 "seasons": [{"season_number": 1}],  # Only one season
             },
@@ -293,6 +295,7 @@ class EpisodeStatusTests(TestCase):
                     {"episode_number": 3},
                 ],
             },
+            "details": {"status": "Ended"},
             "related": {
                 "seasons": [{"season_number": 1}],
             },
