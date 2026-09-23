@@ -836,10 +836,15 @@ def capture_episode_history_identity(sender, instance, **kwargs):
     if instance.pk:
         previous = (
             Episode.objects.filter(pk=instance.pk)
-            .values_list("related_season__user_id", "end_date")
+            .values_list("related_season__user_id", "end_date", "start_date")
             .first()
         )
     instance._previous_history_identity = previous
+
+
+def _episode_history_day_key(end_date, start_date):
+    """Return the day an Episode is listed on: its finish, else its start."""
+    return history_cache.history_day_key(end_date or start_date)
 
 
 @receiver(post_save, sender=Episode)
@@ -856,12 +861,12 @@ def refresh_history_cache_on_episode_save(sender, instance, **kwargs):
     if hasattr(instance, "_previous_history_identity"):
         delattr(instance, "_previous_history_identity")
     user_id = getattr(getattr(instance, "related_season", None), "user_id", None)
-    day_key = history_cache.history_day_key(getattr(instance, "end_date", None))
+    day_key = _episode_history_day_key(instance.end_date, instance.start_date)
     changes = {}
     for changed_user_id, changed_day_key in (
         (
             previous[0] if previous else None,
-            history_cache.history_day_key(previous[1]) if previous else None,
+            _episode_history_day_key(previous[1], previous[2]) if previous else None,
         ),
         (user_id, day_key),
     ):
@@ -895,7 +900,7 @@ def refresh_history_cache_on_episode_delete(sender, instance, **kwargs):
     ):
         return
     user_id = getattr(getattr(instance, "related_season", None), "user_id", None)
-    day_key = history_cache.history_day_key(getattr(instance, "end_date", None))
+    day_key = _episode_history_day_key(instance.end_date, instance.start_date)
     changes = {user_id: [day_key]} if user_id and day_key else {}
     runtime_user_ids = [user_id] if user_id else []
     transaction.on_commit(

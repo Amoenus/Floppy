@@ -112,10 +112,13 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
 
     # Episodes
     episodes = (
-        Episode.all_objects.filter(
-            related_season__user=user,
-            end_date__gte=day_start,
-            end_date__lt=day_end,
+        Episode.all_objects.filter(related_season__user=user)
+        .filter(
+            models.Q(end_date__gte=day_start, end_date__lt=day_end)
+            | (
+                models.Q(end_date__isnull=True)
+                & models.Q(start_date__gte=day_start, start_date__lt=day_end)
+            ),
         )
         .select_related(
             "item",
@@ -129,7 +132,7 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
                 "related_season__related_tv__item",
             ),
         )
-        .order_by("-end_date")
+        .order_by("-end_date", "-start_date")
         if include_episode
         else Episode.all_objects.none()
     )
