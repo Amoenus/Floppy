@@ -48,6 +48,7 @@ from django.db import DatabaseError, connections
 from django.db.migrations.executor import MigrationExecutor
 
 from app.log_safety import redact_secrets, safe_url
+from app.redis_diagnosis import explain_redis_error
 from app.redis_tuning import parse_size
 from config.runtime_profile import sizing_report, web_concurrency_warning
 from config.sqlite_integrity import (
@@ -701,17 +702,20 @@ def check_redis() -> CheckResult:
                 facts=facts,
             )
         except (redis.RedisError, OSError, ValueError) as error:
+            # "Check Redis is running" is the wrong advice when the hostname
+            # does not resolve: Redis is running, on a network Floppy is not on.
+            cause, fix = explain_redis_error(error, url)
+            if not fix:
+                fix = _where(
+                    "check that the Redis service is running and reachable",
+                    "check that Redis is running and that REDIS_URL points at it",
+                )
             return CheckResult(
                 name="redis",
                 status=FAIL,
                 summary=f"cannot reach {shown} ({', '.join(roles)})",
-                cause=clean(error),
-                fix=_where(
-                    f"{CONFIG} check that the Redis service is running and "
-                    "reachable",
-                    f"{CONFIG} check that Redis is running and that REDIS_URL "
-                    "points at it",
-                ),
+                cause=cause or clean(error),
+                fix=f"{CONFIG} {fix}",
                 facts=facts,
             )
         if _memory_ceiling(client) == 0:

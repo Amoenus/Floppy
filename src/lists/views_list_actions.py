@@ -11,6 +11,7 @@ import contextlib
 import json
 import logging
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required, login_required
 from django.db import transaction
@@ -30,6 +31,7 @@ from app.library_query.adapters import (
 )
 from app.models import Item, MediaTypes, Status
 from app.providers import services
+from app.redis_diagnosis import queue_failure_message
 from app.services import metadata_resolution
 from app.templatetags.app_tags import media_type_readable_plural
 from integrations.upload_staging import (
@@ -346,9 +348,17 @@ def import_list_csv(request):
             "new",
             staged_paths=(staged_file,),
         )
-    except Exception:
+    except Exception as error:
         logger.exception("Could not queue custom list CSV import")
-        messages.error(request, "The list import could not be queued. Try again.")
+        messages.error(
+            request,
+            queue_failure_message(
+                error,
+                "The list import could not be queued.",
+                "Try again.",
+                settings.CELERY_BROKER_URL,
+            ),
+        )
         return redirect("lists")
 
     messages.info(request, gettext("List import started in the background."))
