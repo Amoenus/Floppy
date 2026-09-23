@@ -17,12 +17,18 @@ from django.db.models import (
     ExpressionWrapper,
     F,
     Max,
+    Q,
     Subquery,
     Value,
 )
 from django.db.models.functions import Coalesce, Lower
 
-from app.library_query.filters import NEEDS_MAX_PROGRESS, NEEDS_MEDIA, TypeContext
+from app.library_query.filters import (
+    NEEDS_MAX_PROGRESS,
+    NEEDS_MEDIA,
+    TypeContext,
+    latest_value,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -40,7 +46,11 @@ RANDOM_MIXER = 1103515245
 
 @dataclass(frozen=True)
 class SortDef:
-    """How one sort key orders candidates."""
+    """How one sort key orders candidates.
+
+    ``sql`` returns ``None`` for a media type whose value it cannot express;
+    the query is then ordered in Python.
+    """
 
     keys: tuple[str, ...]
     sql: Callable[[TypeContext, int], object] | None = None
@@ -56,6 +66,11 @@ def _field(name: str):
 
 def _tracker_aggregate(sort_key: str):
     """Order by the value ``_aggregate_item_data`` computes across rows."""
+    field_name = {
+        "start_date": "start_date",
+        "end_date": "end_date",
+        "progress": "progress",
+    }[sort_key]
 
     def build(ctx: TypeContext, seed: int):
         from app.models import BasicMedia
@@ -64,6 +79,9 @@ def _tracker_aggregate(sort_key: str):
         for source in ctx.sources:
             if source.is_episode:
                 continue
+            if not source.has_field(field_name):
+                # The value is derived in Python (TV dates come from seasons).
+                return None
             subquery = BasicMedia.objects._aggregated_sort_subquery(
                 source.model,
                 ctx.user,
@@ -78,6 +96,11 @@ def _tracker_aggregate(sort_key: str):
         return subqueries[0] if len(subqueries) == 1 else Coalesce(*subqueries)
 
     return build
+
+
+def _latest_score(ctx: TypeContext, seed: int):
+    """Order by the score on the most recently active scored row."""
+    return latest_value(ctx, "score", Q(score__isnull=False))
 
 
 def _latest_created(ctx: TypeContext, seed: int):
@@ -136,7 +159,7 @@ SORTS: tuple[SortDef, ...] = (
     SortDef(("date_added", "added", "created_at"), sql=_latest_created, tracker=True),
     SortDef(("start_date", "started"), sql=_tracker_aggregate("start_date"), tracker=True),
     SortDef(("end_date", "ended"), sql=_tracker_aggregate("end_date"), tracker=True),
-    SortDef(("score",), sql=_tracker_aggregate("score"), tracker=True),
+    SortDef(("score",), sql=_latest_score, tracker=True),
     SortDef(("progress", "plays"), sql=_tracker_aggregate("progress"), tracker=True),
     SortDef(("random",), sql=_random_sql),
     # The rest are computed in Python from the hydrated candidate.

@@ -12,6 +12,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from app.library_query.spec import (
+    ROUTING_LIBRARY,
+    ROUTING_MODEL,
     STATUS_MATCH_ANY,
     STATUS_MATCH_CHOICES,
     STATUS_MATCH_LATEST,
@@ -19,6 +21,26 @@ from app.library_query.spec import (
     LibraryQuery,
     SortSpec,
 )
+
+# Smart-rule JSON records which evaluation semantics it was saved under.
+# Rules without the key predate the shared engine and keep the semantics they
+# were built with, so no saved list changes membership:
+#   1 - status and rating match any tracker row, platform and format read the
+#       item only, and anime tracked on TV rows stays in TV;
+#   2 - the media list's semantics (latest row, collected copies, the user's
+#       anime library preference).
+SMART_RULES_SEMANTICS_KEY = "semantics_version"
+SMART_RULES_LEGACY_SEMANTICS = 1
+SMART_RULES_CURRENT_SEMANTICS = 2
+
+
+def smart_rules_use_legacy_semantics(rules: dict) -> bool:
+    """Return whether saved rules predate the shared engine's semantics."""
+    try:
+        version = int(rules.get(SMART_RULES_SEMANTICS_KEY) or SMART_RULES_LEGACY_SEMANTICS)
+    except (TypeError, ValueError):
+        version = SMART_RULES_LEGACY_SEMANTICS
+    return version < SMART_RULES_CURRENT_SEMANTICS
 
 if TYPE_CHECKING:
     from app.media_list_filters import MediaListFilters
@@ -75,7 +97,12 @@ def from_media_list_filters(
     )
 
 
-def filter_values_from_rules(rules: dict, *, default_status_match: str) -> FilterValues:
+def filter_values_from_rules(
+    rules: dict,
+    *,
+    default_status_match: str,
+    collection_attributes: bool = True,
+) -> FilterValues:
     """Build filter values from normalized smart-rule JSON.
 
     Relative date windows ("in the last N days") are resolved here, at
@@ -118,6 +145,7 @@ def filter_values_from_rules(rules: dict, *, default_status_match: str) -> Filte
         provider=str(rules.get("provider") or ""),
         tags=_values(rules.get("tag")),
         tag_mode=str(rules.get("tag_mode") or "or"),
+        collection_attributes=collection_attributes,
     )
 
 
@@ -129,19 +157,33 @@ def from_smart_rules(
     sort_key: str = "title",
     direction: str = "",
 ) -> LibraryQuery:
-    """Build the query a smart list evaluates.
-
-    Rules saved before ``status_match`` existed keep "any row" status
-    semantics, so an existing list's membership does not change.
-    """
+    """Build the query a smart list evaluates, under the semantics it was saved with."""
+    legacy = smart_rules_use_legacy_semantics(rules)
     list_ids = tuple(int(value) for value in (rules.get("list") or []) if value)
     return LibraryQuery(
         media_types=media_types,
-        filters=filter_values_from_rules(rules, default_status_match=STATUS_MATCH_ANY),
+        filters=filter_values_from_rules(
+            rules,
+            default_status_match=STATUS_MATCH_ANY if legacy else STATUS_MATCH_LATEST,
+            collection_attributes=not legacy,
+        ),
         sort=SortSpec(key=sort_key or "title", direction=direction),
         union_list_ids=list_ids,
+        routing=ROUTING_MODEL if legacy else ROUTING_LIBRARY,
         provider_region=str(getattr(owner, "watch_provider_region", "") or ""),
     )
+
+
+def home_engine_direction(sort_key: str, direction: str) -> str:
+    """Translate a Home row's saved direction into the engine's.
+
+    Home rows saved "descending popularity" to mean most popular first. The
+    engine, like the media list, orders popularity by rank, where most popular
+    first is ascending.
+    """
+    if sort_key == "popularity" and direction in ("asc", "desc"):
+        return "asc" if direction == "desc" else "desc"
+    return direction
 
 
 def from_home_row_filters(
@@ -164,7 +206,11 @@ def from_home_row_filters(
             normalized_filters,
             default_status_match=STATUS_MATCH_LATEST,
         ),
-        sort=SortSpec(key=sort_key or "title", direction=direction, seed=seed),
+        sort=SortSpec(
+            key=sort_key or "title",
+            direction=home_engine_direction(sort_key, direction),
+            seed=seed,
+        ),
         include_collection_only=True,
         provider_region=str(getattr(owner, "watch_provider_region", "") or ""),
         pinned_providers=tuple(getattr(owner, "pinned_watch_providers", None) or ()),

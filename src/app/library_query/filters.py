@@ -115,7 +115,7 @@ def all_q(qs):
     return reduce(and_, qs) if qs else Q()
 
 
-def _latest_value(ctx: TypeContext, value_field: str, row_q: Q | None = None):
+def latest_value(ctx: TypeContext, value_field: str, row_q: Q | None = None):
     """Return the item's value of ``value_field`` on its most recent row.
 
     An item belongs to exactly one tracker model, so coalescing the sources
@@ -169,7 +169,7 @@ def _status_sql(values: FilterValues, ctx: TypeContext):
     statuses = [value for value in values.statuses if value and value != "all"]
     if values.status_match == STATUS_MATCH_ANY or not statuses:
         return None
-    latest = _latest_value(ctx, "status")
+    latest = latest_value(ctx, "status")
     condition = Q(In(latest, statuses))
     if values.include_no_status:
         condition |= Q(IsNull(latest, True))
@@ -240,7 +240,7 @@ def _rating_sql(values: FilterValues, ctx: TypeContext):
             return ~_any_row(ctx, Q(score__isnull=False))
         return _any_row(ctx, scored)
 
-    latest_score = _latest_value(ctx, "score", Q(score__isnull=False))
+    latest_score = latest_value(ctx, "score", Q(score__isnull=False))
     if values.rating == "not_rated":
         return Q(IsNull(latest_score, True))
     condition = Q(IsNull(latest_score, False))
@@ -314,8 +314,10 @@ def _release_window_sql(values: FilterValues, ctx: TypeContext):
     return condition
 
 
-def _platform_q(ctx: TypeContext, platform: str) -> Q:
+def _platform_q(ctx: TypeContext, platform: str, *, collected: bool) -> Q:
     """Match a platform, preferring the platform the user collected it on."""
+    if not collected:
+        return _json_array_q("platforms", platform)
     explicit = CollectionEntry.objects.filter(
         user=ctx.user,
         item_id=OuterRef("pk"),
@@ -326,7 +328,10 @@ def _platform_q(ctx: TypeContext, platform: str) -> Q:
 
 
 def _platforms_sql(values: FilterValues, ctx: TypeContext):
-    platform_qs = [_platform_q(ctx, value) for value in values.platforms]
+    platform_qs = [
+        _platform_q(ctx, value, collected=values.collection_attributes)
+        for value in values.platforms
+    ]
     if values.platform_mode == "and":
         return all_q(platform_qs)
     if values.platform_mode == "not":
@@ -335,7 +340,10 @@ def _platforms_sql(values: FilterValues, ctx: TypeContext):
 
 
 def _format_sql(values: FilterValues, ctx: TypeContext):
-    return Q(format__iexact=values.format.strip()) | Q(
+    own_format = Q(format__iexact=values.format.strip())
+    if not values.collection_attributes:
+        return own_format
+    return own_format | Q(
         Exists(
             CollectionEntry.objects.filter(
                 user=ctx.user,

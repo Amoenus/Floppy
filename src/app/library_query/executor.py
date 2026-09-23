@@ -30,6 +30,7 @@ from django.utils import timezone
 
 from app.library_query import filters as filter_registry
 from app.library_query import sorts as sort_registry
+from app.library_query.spec import ROUTING_MODEL
 from app.library_query.trackers import tracker_sources
 from app.models.choices import MediaTypes, Sources
 from app.models.item import Item
@@ -78,7 +79,7 @@ class LibraryQueryExecutor:
             filter_registry.TypeContext(
                 user=self.user,
                 media_type=media_type,
-                sources=tuple(tracker_sources(self.user, media_type)),
+                sources=tuple(tracker_sources(self.user, media_type, self.query.routing)),
                 today=self.today,
                 provider_region=self.query.provider_region,
                 pinned_providers=self.query.pinned_providers,
@@ -93,7 +94,7 @@ class LibraryQueryExecutor:
         """Return the condition for an item being in this type's candidates."""
         values = self.query.filters
         active = self._active(ctx)
-        type_q = Q(media_type=ctx.media_type) | Q(library_media_type=ctx.media_type)
+        type_q = self._type_q(ctx)
 
         if self.query.list_id is not None:
             from lists.models import CustomListItem
@@ -119,6 +120,12 @@ class LibraryQueryExecutor:
             membership |= self._collection_only_q(ctx)
         return membership
 
+    def _type_q(self, ctx) -> Q:
+        """Return: the item itself belongs to this type's library."""
+        if self.query.routing == ROUTING_MODEL:
+            return Q(media_type=ctx.media_type)
+        return Q(media_type=ctx.media_type) | Q(library_media_type=ctx.media_type)
+
     def _tracked_q(self, ctx, active) -> Q:
         """Return: a tracker row of this type satisfies every row condition."""
         per_source = []
@@ -139,7 +146,7 @@ class LibraryQueryExecutor:
         """Return collected items of this type that have no tracker row."""
         from app.models.discovery import CollectionEntry
 
-        type_q = Q(media_type=ctx.media_type) | Q(library_media_type=ctx.media_type)
+        type_q = self._type_q(ctx)
         direct = Q(
             Exists(
                 CollectionEntry.objects.filter(user=self.user, item_id=OuterRef("pk")),
@@ -236,10 +243,21 @@ class LibraryQueryExecutor:
     @cached_property
     def uses_sql(self) -> bool:
         """Return whether filters and sort all compile to SQL."""
-        return self.sort.sql is not None and not self._needs_scan
+        return bool(self.contexts) and self._sort_expressions is not None and not (
+            self._needs_scan
+        )
+
+    @cached_property
+    def _sort_expressions(self) -> list | None:
+        if self.sort.sql is None:
+            return None
+        expressions = [self.sort.sql(ctx, self.query.sort.seed) for ctx in self.contexts]
+        if any(expression is None for expression in expressions):
+            return None
+        return expressions
 
     def _sort_expression(self):
-        expressions = [self.sort.sql(ctx, self.query.sort.seed) for ctx in self.contexts]
+        expressions = self._sort_expressions
         if len(expressions) == 1 or not self.sort.tracker:
             return expressions[0]
         return Coalesce(*expressions)
@@ -310,7 +328,8 @@ class LibraryQueryExecutor:
     def _scan_ranked(self) -> list[tuple]:
         """Return ``(value, title, id)`` for every match, in order."""
         queryset = self.filtered
-        if self.sort.sql is not None:
+        sql_sort = bool(self.contexts) and self._sort_expressions is not None
+        if sql_sort:
             queryset = queryset.annotate(_library_sort=self._sort_expression())
         if self.query.union_list_ids:
             queryset = queryset.annotate(_in_union=self._union_exists())
@@ -320,9 +339,10 @@ class LibraryQueryExecutor:
             for definition in self._predicates(ctx):
                 needs |= definition.needs
         contexts_by_type = {ctx.media_type: ctx for ctx in self.contexts}
-        python_key = None if self.sort.sql is not None else sort_registry.python_key(
-            self.query.sort.key,
-        )
+        python_key = None if sql_sort else sort_registry.python_key(self.query.sort.key)
+        if python_key is not None:
+            # A tracker value computed in Python reads the aggregated row.
+            needs.add(filter_registry.NEEDS_MEDIA)
 
         rows = []
         iterator = queryset.iterator(chunk_size=self.batch_size)
@@ -340,11 +360,13 @@ class LibraryQueryExecutor:
                         for definition in self._predicates(ctx)
                     ):
                         continue
-                value = (
-                    candidate.item._library_sort
-                    if python_key is None
-                    else python_key(candidate)
-                )
+                if python_key is None:
+                    value = candidate.item._library_sort
+                elif candidate.media is None and self.sort.tracker:
+                    # No tracker row, so no tracker value (not zero progress).
+                    value = None
+                else:
+                    value = python_key(candidate)
                 rows.append((value, (candidate.item.title or "").lower(), candidate.item.pk))
 
         return order_rows(rows, descending=self.direction == DESC)

@@ -15,6 +15,7 @@ from django.apps import apps
 from django.db import models
 from django.db.models import Case, F, OuterRef, Q, When
 
+from app.library_query.spec import ROUTING_MODEL
 from app.models.choices import MediaTypes
 from app.services import metadata_resolution
 
@@ -41,20 +42,20 @@ class TrackerSource:
         """Return the user's rows for the outer item."""
         return self.rows(user).filter(item_id=OuterRef(outer_ref))
 
+    def has_field(self, name: str) -> bool:
+        """Return whether rows store ``name`` (TV derives dates from seasons)."""
+        return any(field.attname == name for field in self.model._meta.concrete_fields)
+
     def activity(self):
         """Return the expression that orders rows by most recent activity."""
-        if self.is_episode:
-            return Case(
-                When(end_date__isnull=False, then=F("end_date")),
-                default=F("created_at"),
-                output_field=models.DateTimeField(),
-            )
-        return Case(
-            When(end_date__isnull=False, then=F("end_date")),
-            When(progressed_at__isnull=False, then=F("progressed_at")),
-            default=F("created_at"),
-            output_field=models.DateTimeField(),
-        )
+        whens = [
+            When(**{f"{name}__isnull": False}, then=F(name))
+            for name in ("end_date", "progressed_at")
+            if self.has_field(name)
+        ]
+        if not whens:
+            return F("created_at")
+        return Case(*whens, default=F("created_at"), output_field=models.DateTimeField())
 
 
 def _source(media_type: str, item_q: Q | None = None) -> TrackerSource:
@@ -74,13 +75,16 @@ def _source(media_type: str, item_q: Q | None = None) -> TrackerSource:
     )
 
 
-def tracker_sources(user, media_type: str) -> list[TrackerSource]:
+def tracker_sources(user, media_type: str, routing: str) -> list[TrackerSource]:
     """Return the tracker sources that make up ``media_type``'s library.
 
     Anime a user tracks as TV lives on TV rows with an anime library bucket.
-    ``anime_library_visibility`` decides whether those rows appear in the
-    Anime library, the TV library, or both, exactly as the media list does.
+    With ``library`` routing, ``anime_library_visibility`` decides whether
+    those rows appear in the Anime library, the TV library, or both, exactly
+    as the media list does. With ``model`` routing they stay on TV.
     """
+    if routing == ROUTING_MODEL:
+        return [_source(media_type)]
     anime_bucket = Q(library_media_type=MediaTypes.ANIME.value)
     if media_type == MediaTypes.ANIME.value:
         include_in_anime, _include_in_tv = metadata_resolution.anime_library_visibility(

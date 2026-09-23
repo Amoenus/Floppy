@@ -183,7 +183,8 @@ def _filter_queryset_by_item_json_array_ci(
 def item_ids_with_json_array_value_ci(item_json_field: str, normalized_target: str):
     """Return an ``Item`` id subquery for a case-insensitive JSON-array match.
 
-    ``normalized_target`` must already be lower-cased. Only the column of the
+    ``normalized_target`` must already be trimmed and lower-cased; stored
+    elements are compared the same way. Only the column of the
     ``Item`` table itself is referenced, so the subquery stays valid wherever
     Django nests it (see ``_filter_queryset_by_item_json_array_ci``).
     """
@@ -195,14 +196,14 @@ def item_ids_with_json_array_value_ci(item_json_field: str, normalized_target: s
                 SELECT 1 FROM jsonb_array_elements_text(
                     COALESCE({cc}::jsonb, '[]'::jsonb)
                 ) AS _arr_el
-                WHERE LOWER(_arr_el::text) = %s
+                WHERE LOWER(TRIM(_arr_el::text)) = %s
             )
         """
     elif connection.vendor == "sqlite":
         where_sql = f"""
             EXISTS (
                 SELECT 1 FROM json_each(COALESCE({cc}, '[]'))
-                WHERE LOWER(json_each.value) = %s
+                WHERE LOWER(TRIM(json_each.value)) = %s
             )
         """
     else:

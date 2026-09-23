@@ -15,6 +15,13 @@ STATUS_MATCH_CHOICES = frozenset({STATUS_MATCH_LATEST, STATUS_MATCH_ANY})
 
 SET_MODES = frozenset({"and", "or", "not"})
 
+# Which libraries an item belongs to. ``library`` follows the user's anime
+# library preference, as the media list does: anime tracked on TV rows can
+# show in Anime, TV, or both. ``model`` puts an item in its tracker model's
+# type only, which is how smart lists saved before the engine behave.
+ROUTING_LIBRARY = "library"
+ROUTING_MODEL = "model"
+
 
 @dataclass(frozen=True)
 class FilterValues:
@@ -63,6 +70,9 @@ class FilterValues:
     provider: str = ""
     tags: tuple[str, ...] = ()
     tag_mode: str = "or"
+    # Whether a collected copy's platform and format count, as the media list
+    # does. Smart lists saved before the shared engine read the item only.
+    collection_attributes: bool = True
 
 
 @dataclass(frozen=True)
@@ -91,6 +101,7 @@ class LibraryQuery:
     union_list_ids: tuple[int, ...] = ()
     include_collection_only: bool = False
     dedupe_cross_provider: bool = True
+    routing: str = ROUTING_LIBRARY
     provider_region: str = ""
     pinned_providers: tuple[str, ...] = ()
 
