@@ -216,7 +216,7 @@
                           title="{% translate "Add to custom lists" %}"
                           hx-get="{% media_view_url 'lists_modal' item %}"
                           hx-vals='{"return_url": "{{ card_return_url|urlencode }}"}'
-                          hx-target="#{% component_id 'lists' item %}"
+                          hx-target="#{% component_id 'lists' item %}{% if home_row_id %}-home-{{ home_row_id }}{% endif %}"
                           hx-trigger="click once"
                           @click="listsOpen = true">
                     {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
@@ -236,7 +236,7 @@
                           title="{% if media %}Watched{% else %}Mark watched{% endif %}"
                           hx-get="{% url 'track_modal' source=item.source media_type='episode' media_id=item.media_id season_number=item.season_number %}"
                           hx-vals='{"return_url": "{{ card_return_url|urlencode }}", "episode_number": "{{ item.episode_number }}"{% if media %}, "instance_id": "{{ media.id }}"{% else %}, "is_create": "1"{% endif %}}'
-                          hx-target="#{% component_id 'track' item media.id %}"
+                          hx-target="#{% component_id 'track' item media.id %}{% if home_row_id %}-home-{{ home_row_id }}{% endif %}"
                           hx-trigger="click once"
                           @click="trackOpen = true">
                     {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
@@ -251,7 +251,7 @@
                           title="{% translate "Add to custom lists" %}"
                           hx-get="{% media_view_url 'lists_modal' item %}"
                           hx-vals='{"return_url": "{{ card_return_url|urlencode }}"}'
-                          hx-target="#{% component_id 'lists' item %}"
+                          hx-target="#{% component_id 'lists' item %}{% if home_row_id %}-home-{{ home_row_id }}{% endif %}"
                           hx-trigger="click once"
                           @click="listsOpen = true">
                     {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
@@ -270,7 +270,7 @@
                             title="{% translate "Edit tracking" %}"
                             hx-get="{% url 'podcast_show_track_modal' podcast_show.id %}"
                             hx-vals='{"return_url": "{{ card_return_url|urlencode }}"{% if home_row_id %}, "home_row_id": "{{ home_row_id }}"{% endif %}}'
-                            hx-target="#podcast-show-track-modal-{{ podcast_show.id }}-{{ media.id }}"
+                            hx-target="#podcast-show-track-modal-{{ podcast_show.id }}-{{ media.id }}{% if home_row_id %}-home-{{ home_row_id }}{% endif %}"
                             hx-trigger="click once"
                             @click="trackOpen = true">
                       {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
@@ -280,7 +280,7 @@
                             title="{% translate "Edit tracking" %}"
                             hx-get="{% url 'album_track_modal' media.album.id %}"
                             hx-vals='{"return_url": "{{ card_return_url|urlencode }}"{% if home_row_id %}, "home_row_id": "{{ home_row_id }}"{% endif %}}'
-                            hx-target="#album-track-modal-{{ media.album.id }}"
+                            hx-target="#album-track-modal-{{ media.album.id }}{% if home_row_id %}-home-{{ home_row_id }}{% endif %}"
                             hx-trigger="click once"
                             @click="trackOpen = true">
                       {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
@@ -290,7 +290,7 @@
                             title="{% translate "Edit tracking" %}"
                             hx-get="{% url 'artist_track_modal' media.artist.id %}"
                             hx-vals='{"return_url": "{{ card_return_url|urlencode }}"{% if home_row_id %}, "home_row_id": "{{ home_row_id }}"{% endif %}}'
-                            hx-target="#artist-track-modal-{{ media.artist.id }}"
+                            hx-target="#artist-track-modal-{{ media.artist.id }}{% if home_row_id %}-home-{{ home_row_id }}{% endif %}"
                             hx-trigger="click once"
                             @click="trackOpen = true">
                       {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
@@ -300,7 +300,7 @@
                             title="{% translate "Add to tracker" %}"
                             hx-get="{% media_view_url 'track_modal' item %}"
                             hx-vals='{"return_url": "{{ card_return_url|urlencode }}", "instance_id": "{{ media.id }}"{% if home_row_id %}, "home_row_id": "{{ home_row_id }}"{% endif %}}'
-                            hx-target="#{% component_id 'track' item media.id %}"
+                            hx-target="#{% component_id 'track' item media.id %}{% if home_row_id %}-home-{{ home_row_id }}{% endif %}"
                             hx-trigger="click once"
                             @click="trackOpen = true">
                       {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
@@ -311,7 +311,7 @@
                           title="{% translate "Add to custom lists" %}"
                           hx-get="{% media_view_url 'lists_modal' item %}"
                           hx-vals='{"return_url": "{{ card_return_url|urlencode }}"}'
-                          hx-target="#{% component_id 'lists' item %}"
+                          hx-target="#{% component_id 'lists' item %}{% if home_row_id %}-home-{{ home_row_id }}{% endif %}"
                           hx-trigger="click once"
                           @click="listsOpen = true">
                     {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
@@ -679,13 +679,13 @@
           <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
                style="width: min(96vw, 72rem);">
             {% if use_podcast_show|default:False and podcast_show %}
-              <div id="podcast-show-track-modal-{{ podcast_show.id }}-{{ media.id }}"></div>
+              <div id="podcast-show-track-modal-{{ podcast_show.id }}-{{ media.id }}{% if home_row_id %}-home-{{ home_row_id }}{% endif %}"></div>
             {% elif media|safe_attr:"home_music_card" and media.album %}
-              <div id="album-track-modal-{{ media.album.id }}"></div>
+              <div id="album-track-modal-{{ media.album.id }}{% if home_row_id %}-home-{{ home_row_id }}{% endif %}"></div>
             {% elif media|safe_attr:"home_music_card" and media.artist %}
-              <div id="artist-track-modal-{{ media.artist.id }}"></div>
+              <div id="artist-track-modal-{{ media.artist.id }}{% if home_row_id %}-home-{{ home_row_id }}{% endif %}"></div>
             {% else %}
-              <div id="{% component_id 'track' item media.id %}"></div>
+              <div id="{% component_id 'track' item media.id %}{% if home_row_id %}-home-{{ home_row_id }}{% endif %}"></div>
             {% endif %}
           </div>
         </div>
@@ -697,7 +697,7 @@
              @mousedown.self="listsOpen = false"
              class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div class="w-96 max-h-[90vh] px-4 md:px-0 relative z-60">
-            <div id="{% component_id 'lists' item %}"></div>
+            <div id="{% component_id 'lists' item %}{% if home_row_id %}-home-{{ home_row_id }}{% endif %}"></div>
           </div>
         </div>
 

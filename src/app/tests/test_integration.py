@@ -14,7 +14,7 @@ from playwright.sync_api import expect, sync_playwright
 from app.discover.schemas import RowResult
 from app.models import Game, Item, MediaTypes, Movie, Sources, Status
 from app.tests.views.test_track_modal import _tv_with_seasons_payload
-from users.models import DateFormatChoices
+from users.models import DateFormatChoices, HomeScreenRow, HomeScreenRowTypeChoices
 
 
 @tag("slow", "playwright")
@@ -181,6 +181,78 @@ class IntegrationTest(StaticLiveServerTestCase):
                 lambda request: "lists_modal" in request.url,
             ):
                 card.get_by_title("Add to custom lists").click()
+            lists_modal = card.locator("[x-show='listsOpen']")
+            expect(lists_modal).to_be_visible()
+            expect(lists_modal.locator(".list-modal-root")).to_be_visible()
+        finally:
+            touch_context.close()
+
+    def test_home_poster_action_modal_is_visible_on_touch(self):
+        item = Item.objects.create(
+            media_id="poster-action-test",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Poster Action Test",
+            image="https://example.com/poster.jpg",
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.IN_PROGRESS.value)
+        HomeScreenRow.objects.create(
+            user=self.user,
+            media_type=MediaTypes.MOVIE.value,
+            position=10,
+            row_type=HomeScreenRowTypeChoices.LIBRARY_QUERY,
+            sort_by="recent",
+            direction="desc",
+            filters={"status": [Status.IN_PROGRESS.value]},
+        )
+        touch_context = self.browser.new_context(
+            storage_state=self.context.storage_state(),
+            has_touch=True,
+            is_mobile=True,
+            viewport={"width": 390, "height": 844},
+        )
+        try:
+            page = touch_context.new_page()
+            page.goto(self.live_server_url + "/")
+            cards = page.locator(
+                '.home-row-card .media-card:has(a.media-card-title[title="Poster Action Test"])'
+            )
+            expect(cards).to_have_count(2)
+            for title in ("Add to tracker", "Add to custom lists"):
+                first_target = (
+                    cards.nth(0).get_by_title(title).get_attribute("hx-target")
+                )
+                second_target = (
+                    cards.nth(1).get_by_title(title).get_attribute("hx-target")
+                )
+                self.assertNotEqual(first_target, second_target)
+                self.assertEqual(page.locator(second_target).count(), 1)
+            card = cards.nth(1)
+            expect(card).to_be_visible()
+            card.locator(".media-card-poster").click()
+            card.get_by_title("Add to custom lists").click()
+            modal = card.locator("[x-show='listsOpen']")
+            expect(modal.locator(".list-modal-root")).to_be_visible()
+            box = modal.bounding_box()
+            self.assertIsNotNone(box)
+            self.assertLess(abs(box["x"]), 2)
+            self.assertLess(abs(box["y"]), 2)
+            self.assertLess(abs(box["width"] - 390), 2)
+            self.assertLess(abs(box["height"] - 844), 2)
+            self.assertTrue(
+                modal.evaluate(
+                    "element => element.contains(document.elementFromPoint(innerWidth / 2, innerHeight / 2))"
+                )
+            )
+            modal.locator(".list-modal-root button").first.click()
+            expect(modal).not_to_be_visible()
+            card.get_by_title("Add to tracker").click()
+            track_modal = card.locator("[x-show='trackOpen']")
+            expect(track_modal.locator("[data-track-modal-root]")).to_be_visible()
+            page.keyboard.press("Escape")
+            expect(track_modal).not_to_be_visible()
+            card.get_by_title("View your activity history").click()
+            page.wait_for_url("**/history?*")
         finally:
             touch_context.close()
 
@@ -586,11 +658,9 @@ class IntegrationTest(StaticLiveServerTestCase):
             .nth(1)
             .get_by_role("button", name="Clear date")
         )
-        start_clear = (
-            create_modal.locator(".date-picker-closed-field")
-            .first
-            .get_by_role("button", name="Clear date")
-        )
+        start_clear = create_modal.locator(
+            ".date-picker-closed-field"
+        ).first.get_by_role("button", name="Clear date")
         # mediaForm may auto-fill end_date after the create modal opens.
         expect(end_clear.or_(end_quick_actions)).to_be_visible()
         if end_clear.is_visible():
@@ -617,15 +687,11 @@ class IntegrationTest(StaticLiveServerTestCase):
         expect(
             end_quick_actions.get_by_role("button", name="Release Date", exact=True)
         ).to_have_count(0)
-        end_picker_dialog = create_modal.get_by_role(
-            "dialog", name="End date picker"
-        )
+        end_picker_dialog = create_modal.get_by_role("dialog", name="End date picker")
         expect(end_picker_dialog).not_to_be_visible()
 
         before_start_action = self.page.evaluate("Date.now()")
-        start_quick_actions.get_by_role(
-            "button", name="Start Now", exact=True
-        ).click()
+        start_quick_actions.get_by_role("button", name="Start Now", exact=True).click()
         after_start_action = self.page.evaluate("Date.now()")
         start_value_ms = self.page.evaluate(
             "value => new Date(value).getTime()",
@@ -778,7 +844,9 @@ class IntegrationTest(StaticLiveServerTestCase):
         save_request.value.response()
         expect(self.page.locator("[data-track-modal-root]:visible")).to_have_count(0)
 
-        new_movie = Movie.objects.filter(item=item, user=self.user).order_by("-id").first()
+        new_movie = (
+            Movie.objects.filter(item=item, user=self.user).order_by("-id").first()
+        )
         self.assertIsNotNone(new_movie)
         self.assertIsNone(new_movie.start_date)
         self.assertIsNone(new_movie.end_date)
@@ -997,7 +1065,9 @@ class IntegrationTest(StaticLiveServerTestCase):
         expect(calendar.locator("[data-calendar-cell]")).to_have_count(42)
         expect(calendar.locator('[data-calendar-cell="2026-03-01"]')).to_have_count(1)
         expect(calendar.locator('[data-calendar-cell="2026-03-05"]')).to_have_count(1)
-        expect(calendar.locator('[data-calendar-cell="2026-03-01"]')).not_to_be_disabled()
+        expect(
+            calendar.locator('[data-calendar-cell="2026-03-01"]')
+        ).not_to_be_disabled()
         expect(calendar.locator('[data-calendar-cell="2026-03-05"]')).to_be_disabled()
         expect(calendar.locator("span.absolute.bottom-1")).to_have_count(3)
 
@@ -1025,7 +1095,8 @@ class IntegrationTest(StaticLiveServerTestCase):
             "March 2024",
         )
         session_modal.get_by_role(
-            "button", name="Close activity history",
+            "button",
+            name="Close activity history",
         ).click()
 
         self.page.get_by_role("button", name="More tracking actions").click()
@@ -1043,7 +1114,9 @@ class IntegrationTest(StaticLiveServerTestCase):
         ).to_contain_text("March 2024")
         date_picker.locator('[data-calendar-cell="2024-02-29"]').click()
         self.assertTrue(
-            track_modal.locator('input[name="end_date"]').input_value().startswith(
+            track_modal.locator('input[name="end_date"]')
+            .input_value()
+            .startswith(
                 "2024-02-29T",
             ),
         )
@@ -1194,7 +1267,9 @@ class IntegrationTest(StaticLiveServerTestCase):
         )
         self.assertEqual(filtered_layout["overflowX"], "auto")
         self.assertEqual(filtered_layout["overflowY"], "hidden")
-        self.assertGreater(filtered_layout["scrollWidth"], filtered_layout["clientWidth"])
+        self.assertGreater(
+            filtered_layout["scrollWidth"], filtered_layout["clientWidth"]
+        )
 
         self.page.set_viewport_size({"width": 390, "height": 774})
         mobile_layout = self.page.evaluate(
@@ -1204,7 +1279,9 @@ class IntegrationTest(StaticLiveServerTestCase):
                 bodyWidth: document.body.scrollWidth,
             })""",
         )
-        self.assertLessEqual(mobile_layout["documentWidth"], mobile_layout["viewportWidth"])
+        self.assertLessEqual(
+            mobile_layout["documentWidth"], mobile_layout["viewportWidth"]
+        )
         self.assertLessEqual(mobile_layout["bodyWidth"], mobile_layout["viewportWidth"])
 
         self.page.set_viewport_size({"width": 1440, "height": 774})
@@ -1216,11 +1293,15 @@ class IntegrationTest(StaticLiveServerTestCase):
                     ?.getBoundingClientRect().width,
             })""",
         )
-        self.assertLessEqual(desktop_layout["documentWidth"], desktop_layout["viewportWidth"])
+        self.assertLessEqual(
+            desktop_layout["documentWidth"], desktop_layout["viewportWidth"]
+        )
         self.assertEqual(desktop_layout["chartWidth"], 150)
 
     @patch("app.discover_views.discover.get_discover_rows")
-    def test_discover_match_signal_wraps_without_page_overflow(self, mock_get_discover_rows):
+    def test_discover_match_signal_wraps_without_page_overflow(
+        self, mock_get_discover_rows
+    ):
         """Long Discover row metadata stays inside the viewport on mobile."""
         match_signal = (
             "Driven by your current 90-109 Minutes, 2010s, Adventure phase "
