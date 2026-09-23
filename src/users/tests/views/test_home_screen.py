@@ -601,14 +601,12 @@ class HomeScreenViewTests(TestCase):
             "which would 504 the home page after a cache clear (#621).",
         )
 
-    def test_library_query_rows_share_one_collection_scan_per_request(self):
-        """`_collection_filter_context` should run once per request, not per row.
+    def test_library_query_rows_do_not_scan_the_collection_in_python(self):
+        """Collection-only items are found in SQL, never by a CollectionEntry scan.
 
-        `_library_query_entries` always calls `collect_matching_item_ids`
-        with `include_collection_only_untracked=True`, which needs the
-        user's collection context whenever a row's status filter is empty.
-        Building several such rows in one `build_home_page_groups` call
-        must not re-scan `CollectionEntry` once per row/media type.
+        Rows with an empty status filter include items the user collected but
+        never tracked. That used to load the user's whole collection once per
+        request (#621); the library-query engine now reads it in SQL.
         """
         enabled_media_types = [
             MediaTypes.MOVIE.value,
@@ -636,9 +634,9 @@ class HomeScreenViewTests(TestCase):
 
         self.assertEqual(
             spy.call_count,
-            1,
-            "Expected one shared CollectionEntry scan per request, "
-            f"got {spy.call_count} calls across {len(enabled_media_types)} rows.",
+            0,
+            f"Expected no Python CollectionEntry scan, got {spy.call_count} "
+            f"across {len(enabled_media_types)} rows.",
         )
 
     def test_cached_row_section_skips_rebuild_after_empty_sentinel(self):
