@@ -183,6 +183,9 @@ def _smart_list_detail_response(
                 "sort_direction": request.GET.get(
                     "direction", saved_rules["sort_direction"]
                 ),
+                # Not a request parameter: a list always evaluates under the
+                # semantics it was saved with.
+                "semantics_version": saved_rules["semantics_version"],
             },
             custom_list.owner,
         )

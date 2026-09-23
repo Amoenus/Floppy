@@ -1898,10 +1898,13 @@ class ListDetailViewTests(TestCase):
         # them, so their absence here is the gating working, not a dropped
         # field. `provider` needs a watch region; this fixture has none.
         conditionally_offered = {"provider"}
+        # Stored on the list and kept by every save; never edited in the form.
+        not_editable = {"semantics_version"}
         missing = [
             key
             for key in smart_rules.SMART_FILTER_KEYS
             if key not in conditionally_offered
+            and key not in not_editable
             and f'name="{field_names.get(key, key)}"' not in html
         ]
         self.assertEqual(missing, [])

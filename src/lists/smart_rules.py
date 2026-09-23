@@ -52,6 +52,9 @@ SMART_FILTER_KEYS = (
     "tag",
     "tag_mode",
     "list",
+    # Which evaluation semantics the rules were saved under; missing means
+    # the pre-engine semantics (see app.library_query.adapters).
+    "semantics_version",
 )
 
 TAG_MODE_CHOICES = {"and", "or", "not"}
@@ -92,6 +95,7 @@ SMART_FILTER_DEFAULTS = {
     "tag": [],
     "tag_mode": "or",
     "list": [],
+    "semantics_version": "",
 }
 
 MAX_RATING = 10.0
@@ -497,6 +501,9 @@ def normalize_rule_payload(payload, owner):
         deduped_tags.append(value)
 
     list_ids = _valid_linked_list_ids(owner, _payload_getlist(payload, "list"))
+    semantics_version = str(_payload_get(payload, "semantics_version", "") or "").strip()
+    if not semantics_version.isdigit():
+        semantics_version = ""
 
     return {
         "media_types": normalized_media_types,
@@ -530,7 +537,24 @@ def normalize_rule_payload(payload, owner):
         "tag": deduped_tags,
         "tag_mode": tag_mode,
         "list": list_ids,
+        "semantics_version": semantics_version,
     }
+
+
+def saved_filters(normalized_rules: dict, custom_list) -> dict:
+    """Return the rules to store for a list, keeping its semantics version.
+
+    Editing a list's rules never changes how the list is evaluated; only a
+    newly created smart list starts on the current semantics.
+    """
+    filters = {
+        key: normalized_rules.get(key, SMART_FILTER_DEFAULTS[key])
+        for key in SMART_FILTER_KEYS
+    }
+    filters["semantics_version"] = str(
+        (custom_list.smart_filters or {}).get("semantics_version") or "",
+    )
+    return filters
 
 
 def normalize_list_rules(custom_list) -> dict:
