@@ -22,7 +22,11 @@ from app.models import (
     Status,
 )
 from app.providers import tmdb
-from integrations.models import PlexAccount
+from integrations.models import (
+    ExternalReference,
+    ExternalReferenceReviewStatus,
+    PlexAccount,
+)
 from integrations.webhooks.plex import PlexWebhookProcessor
 
 
@@ -1599,6 +1603,184 @@ class PlexWebhookTests(TestCase):
             str(mock_tv_with_seasons.call_args_list[0].args[0]),
             "108255",
         )
+
+    @patch("app.providers.tvdb.series_tmdb_id", return_value="129412")
+    @patch(
+        "app.providers.tvdb.episode_by_id",
+        return_value={"series_id": 1, "season_number": 8, "episode_number": 10},
+    )
+    @patch("app.providers.tvdb.enabled", return_value=True)
+    @patch("app.providers.tmdb.search")
+    @patch(
+        "app.providers.tmdb.find",
+        return_value={"tv_episode_results": [], "tv_results": []},
+    )
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_tv_episode_title_search_never_picks_show_by_episode_year(
+        self,
+        mock_tv_with_seasons,
+        mock_find,
+        mock_tmdb_search,
+        *_tvdb_mocks,
+    ):
+        """An ambiguous title must go to review, not to the show that
+        premiered the year the episode aired (issue #1279).
+        """
+        mock_tmdb_search.return_value = {
+            "results": [
+                {"media_id": 129412, "title": "Game Changer", "year": "2019"},
+                {"media_id": 116823, "title": "Game Changer", "year": "2021"},
+                {"media_id": 322147, "title": "Game Changer", "year": "2026"},
+            ],
+        }
+
+        def fake_tv_with_seasons(media_id, season_numbers):
+            if str(media_id) == "129412":
+                # TVDB resolved the right show, but TMDB does not have the
+                # just-aired season yet, so the webhook falls back to title.
+                msg = "season 8 not on TMDB yet"
+                raise ValueError(msg)
+            return {
+                "title": "Game Changer",
+                "image": "",
+                "season/8": {
+                    "image": "",
+                    "episodes": [{"episode_number": 10, "runtime": 30}],
+                },
+                "related": {"seasons": [{"season_number": 8}]},
+            }
+
+        mock_tv_with_seasons.side_effect = fake_tv_with_seasons
+
+        payload = {
+            "event": "media.scrobble",
+            "Account": {"title": "testuser"},
+            "Metadata": {
+                "librarySectionType": "show",
+                "type": "episode",
+                "ratingKey": "5010",
+                "grandparentRatingKey": "5000",
+                "grandparentTitle": "Game Changer",
+                "parentIndex": 8,
+                "index": 10,
+                "year": 2026,
+                "originallyAvailableAt": "2026-09-21",
+                "Guid": [{"id": "tmdb://7171350"}, {"id": "tvdb://11850032"}],
+            },
+        }
+
+        response = self._post_payload(payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Episode.objects.exists())
+        self.assertFalse(
+            Item.objects.filter(media_id="322147").exists(),
+        )
+        show_reference = ExternalReference.objects.get(
+            external_identity="5000",
+            media_type=MediaTypes.TV.value,
+        )
+        self.assertIsNone(show_reference.matched_item)
+        self.assertEqual(
+            show_reference.review_status,
+            ExternalReferenceReviewStatus.NEEDS_REVIEW.value,
+        )
+
+    @patch("app.providers.tmdb.search")
+    @patch(
+        "app.providers.tmdb.find",
+        return_value={"tv_episode_results": [], "tv_results": []},
+    )
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_tv_episode_title_search_uses_year_suffix_in_series_title(
+        self,
+        mock_tv_with_seasons,
+        mock_find,
+        mock_tmdb_search,
+    ):
+        """Plex disambiguates remakes as "Title (YYYY)"; that year is the
+        show's first-air year and picks the right same-title result.
+        """
+        mock_tmdb_search.return_value = {
+            "results": [
+                {
+                    "media_id": 108255,
+                    "title": "All Creatures Great & Small",
+                    "year": "2020",
+                },
+                {
+                    "media_id": 7406,
+                    "title": "All Creatures Great and Small",
+                    "year": "1978",
+                },
+            ],
+        }
+        mock_tv_with_seasons.return_value = {
+            "title": "All Creatures Great & Small",
+            "image": "",
+            "season/7": {
+                "image": "",
+                "episodes": [{"episode_number": 1, "runtime": 46}],
+            },
+            "related": {"seasons": [{"season_number": 7}]},
+        }
+
+        payload = {
+            "event": "media.scrobble",
+            "Account": {"title": "testuser"},
+            "Metadata": {
+                "type": "episode",
+                "grandparentTitle": "All Creatures Great & Small (2020)",
+                "title": "Back to School",
+                "index": 1,
+                "parentIndex": 7,
+                "year": 2026,
+                "originallyAvailableAt": "2026-09-17",
+            },
+        }
+
+        response = self._post_payload(payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            Episode.objects.filter(
+                item__media_id="108255",
+                item__season_number=7,
+                item__episode_number=1,
+            ).exists(),
+        )
+        mock_tmdb_search.assert_called_with(
+            MediaTypes.TV.value,
+            "All Creatures Great & Small",
+            page=1,
+        )
+
+    def test_series_year_ignores_episode_and_season_air_years(self):
+        """Only show-level fields may constrain a title search (#1279)."""
+        processor = PlexWebhookProcessor()
+
+        def year_for(metadata):
+            return processor._extract_series_year({"Metadata": metadata})
+
+        self.assertIsNone(
+            year_for({"type": "episode", "year": 2026, "originallyAvailableAt": "2026-09-21"}),
+        )
+        self.assertEqual(
+            year_for(
+                {
+                    "type": "episode",
+                    "year": 2026,
+                    "grandparentOriginallyAvailableAt": "2019-05-17",
+                },
+            ),
+            "2019",
+        )
+        self.assertIsNone(year_for({"type": "season", "year": 2026}))
+        self.assertEqual(
+            year_for({"type": "season", "year": 2026, "parentYear": 2019}),
+            "2019",
+        )
+        self.assertEqual(year_for({"type": "show", "year": 2019}), "2019")
 
     @patch("app.providers.tmdb.find")
     @patch("app.providers.tmdb.tv_with_seasons")

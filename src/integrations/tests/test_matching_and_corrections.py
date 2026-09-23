@@ -26,7 +26,7 @@ from integrations.match_corrections import (
     apply_match_correction,
     preview_match_correction,
 )
-from integrations.matching import unique_title_match
+from integrations.matching import split_title_year, unique_title_match
 from integrations.models import ExternalReference
 
 
@@ -60,6 +60,17 @@ class MatchingSafetyTests(TestCase):
             year=2022,
         )
         self.assertEqual(result["id"], 8)
+
+    def test_split_title_year_reads_media_server_disambiguation(self):
+        self.assertEqual(
+            split_title_year("All Creatures Great & Small (2020)"),
+            ("All Creatures Great & Small", "2020"),
+        )
+        self.assertEqual(split_title_year("Show [1978] "), ("Show", "1978"))
+        self.assertEqual(split_title_year("Game Changer"), ("Game Changer", None))
+        # A title that is only a year is a title, not a suffix.
+        self.assertEqual(split_title_year("(1984)"), ("(1984)", None))
+        self.assertEqual(split_title_year(None), ("", None))
 
 
 class MatchCorrectionTests(TestCase):

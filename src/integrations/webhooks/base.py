@@ -12,7 +12,7 @@ from app.models import MediaTypes, ProviderMetadataStatus, Sources, Status
 from app.providers import tvmaze
 from app.services.completion import select_preferred_activity_entry
 from integrations import episode_remap
-from integrations.matching import unique_title_match
+from integrations.matching import split_title_year, unique_title_match
 from integrations.webhooks import anime_mappings, write_policy
 
 logger = logging.getLogger(__name__)
@@ -309,21 +309,10 @@ class BaseWebhookProcessor:
                         "Attempting title-based TMDB search for webhook payload"
                     )
                     try:
-                        search_results = app.providers.tmdb.search(
-                            MediaTypes.TV.value,
+                        media_id = self._resolve_tv_by_title(
                             series_title,
-                            page=1,
+                            self._extract_series_year(payload),
                         )
-                        metadata = payload.get("Metadata") or {}
-                        matched = unique_title_match(
-                            (search_results or {}).get("results") or [],
-                            series_title,
-                            year=(
-                                metadata.get("grandparentYear")
-                                or metadata.get("year")
-                            ),
-                        )
-                        media_id = matched.get("media_id") if matched else None
                         if media_id:
                             tv_metadata = app.providers.tmdb.tv_with_seasons(
                                 media_id,
@@ -1182,42 +1171,53 @@ class BaseWebhookProcessor:
             "TV ID missing; attempting title fallback search for: %s", series_title
         )
         try:
-            search_results = app.providers.tmdb.search(
-                MediaTypes.TV.value,
-                series_title,
-                page=1,
-            )
-            results = (search_results or {}).get("results") or []
-            found_id = self._pick_title_search_result(results, series_title, year)
-            if found_id:
-                logger.info("Resolved TV entry via title search")
-                return str(found_id), None, None
-
-            # Retry with year stripped from titles like "Show (YYYY)"
-            clean_title = re.sub(r"\s*\(\d{4}\)$", "", series_title[:500])
-            if clean_title != series_title:
-                search_results = app.providers.tmdb.search(
-                    MediaTypes.TV.value,
-                    clean_title,
-                    page=1,
-                )
-                results = (search_results or {}).get("results") or []
-                found_id = self._pick_title_search_result(results, clean_title, year)
-                if found_id:
-                    logger.info("Resolved TV entry via normalized title search")
-                    return str(found_id), None, None
+            found_id = self._resolve_tv_by_title(series_title, year)
         except Exception as exc:
             logger.warning(
                 "Title search failed during TV resolution: %s",
                 exception_summary(exc),
             )
+            found_id = None
+        if found_id:
+            logger.info("Resolved TV entry via title search")
+            return found_id, None, None
 
         return None, None, None
 
-    def _pick_title_search_result(self, results, title, year=None):
-        """Pick only a unique normalized-title result constrained by year."""
-        result = unique_title_match(results, title, year=year)
-        return result.get("media_id") if result else None
+    def _extract_series_year(self, payload):
+        """Return the show's first-air year from the payload, if it has one.
+
+        Override in subclasses. Never return an episode's or season's air
+        year: it selects whichever same-title show premiered that year.
+        """
+        return
+
+    def _resolve_tv_by_title(self, series_title, year=None):
+        """Return the show-level TMDB id of a unique exact-title match.
+
+        This is the one title-search path for TV webhooks. ``year`` is the
+        show's first-air year; a trailing "(YYYY)" in the title supplies it
+        when absent, and the provider is searched with the bare title. A miss
+        or an ambiguous title is remembered so the caller can queue the event
+        for review instead of dropping it silently (issue #1279).
+        """
+        title, title_year = split_title_year(series_title)
+        if not title:
+            return None
+        search_results = app.providers.tmdb.search(
+            MediaTypes.TV.value,
+            title,
+            page=1,
+        )
+        result = unique_title_match(
+            (search_results or {}).get("results") or [],
+            title,
+            year=year or title_year,
+        )
+        if result and result.get("media_id"):
+            return str(result["media_id"])
+        self._unresolved_series_title = series_title
+        return None
 
     def _get_mal_id_from_provider_links(
         self,
@@ -1536,10 +1536,9 @@ class BaseWebhookProcessor:
             return None, None
 
         try:
-            search_results = app.providers.tmdb.search(
-                MediaTypes.TV.value,
+            candidate_media_id = self._resolve_tv_by_title(
                 series_title,
-                page=1,
+                self._extract_series_year(payload),
             )
         except Exception as exc:  # pragma: no cover - defensive network guard
             logger.warning(
@@ -1549,13 +1548,6 @@ class BaseWebhookProcessor:
             )
             return None, None
 
-        metadata = payload.get("Metadata") or {}
-        result = unique_title_match(
-            search_results.get("results") or [],
-            series_title,
-            year=metadata.get("grandparentYear") or metadata.get("year"),
-        )
-        candidate_media_id = result.get("media_id") if result else None
         if candidate_media_id and str(candidate_media_id) not in seen_media_ids:
             recovered_tv_metadata = self._load_tv_metadata_with_required_season(
                 candidate_media_id,

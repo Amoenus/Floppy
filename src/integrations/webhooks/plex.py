@@ -131,6 +131,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             payload=payload,
         )
         self._active_match_reference = reference
+        self._unresolved_series_title = None
         if reference and reference.review_status == external_references.ExternalReferenceReviewStatus.IGNORED.value:
             return None
         target = external_references.reference_target(reference)
@@ -236,10 +237,15 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             return None
 
         processed_item = self._process_media(payload, user, ids)
+        # A title search that could not pick one show is the last guess
+        # before the event is dropped; queue it for review rather than lose
+        # it silently (issue #1279).
         self._remember_plex_reference(
             payload,
             user,
             matched_item=processed_item,
+            needs_review=processed_item is None
+            and bool(self._unresolved_series_title),
         )
         if (
             event_type in ("media.stop", "media.scrobble")
@@ -444,40 +450,36 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             if media_type == MediaTypes.TV.value
             else metadata.get("title")
         )
-        if media_type == MediaTypes.TV.value:
-            # Plex episode payloads never carry a grandparent year, and the
-            # episode's own originallyAvailableAt/year describe when the
-            # EPISODE aired, not the show's first-air year. Falling through
-            # to those would constrain the title search to a year that can
-            # never match a show past its first season. See issue #1239.
-            original_date = metadata.get(
-                "grandparentOriginallyAvailableAt",
-            ) or metadata.get("grandparentYear")
-        else:
-            original_date = metadata.get("originallyAvailableAt") or metadata.get(
-                "year",
-            )
-
         if not search_title:
             logger.debug("Cannot resolve plex:// GUID without title")
             return ids
 
         try:
-            from app.providers import tmdb
+            if media_type == MediaTypes.TV.value:
+                tmdb_id = self._resolve_tv_by_title(
+                    search_title,
+                    self._extract_series_year(payload),
+                )
+            else:
+                from app.providers import tmdb
 
-            search_results = tmdb.search(
-                media_type,
-                search_title,
-                page=1,
-            )
+                search_results = tmdb.search(
+                    media_type,
+                    search_title,
+                    page=1,
+                )
+                original_date = metadata.get("originallyAvailableAt") or metadata.get(
+                    "year",
+                )
+                matched = unique_title_match(
+                    search_results.get("results") or [],
+                    search_title,
+                    year=str(original_date).split("-")[0] if original_date else None,
+                )
+                tmdb_id = matched.get("media_id") if matched else None
         except Exception:  # pragma: no cover - defensive
             logger.exception("Failed TMDB search while resolving plex:// GUID")
             return ids
-
-        results = search_results.get("results") or []
-        year = str(original_date).split("-")[0] if original_date else None
-        matched = unique_title_match(results, search_title, year=year)
-        tmdb_id = matched.get("media_id") if matched else None
 
         if tmdb_id:
             ids["tmdb_id"] = str(tmdb_id)
@@ -546,7 +548,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             lookup_ids,
             series_title=self._extract_series_title(payload),
             allow_title_fallback=True,
-            year=(payload.get("Metadata") or {}).get("year"),
+            year=self._extract_series_year(payload),
         )
         if resolved_id:
             ids["tmdb_id"] = str(resolved_id)
@@ -594,10 +596,9 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         series_title = metadata.get("parentTitle") or metadata.get("grandparentTitle")
         if series_title:
             try:
-                search_results = app.providers.tmdb.search(
-                    MediaTypes.TV.value,
+                matched_id = self._resolve_tv_by_title(
                     series_title,
-                    page=1,
+                    self._extract_series_year(payload),
                 )
             except Exception as exc:
                 logger.warning(
@@ -605,14 +606,8 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                     exception_summary(exc),
                 )
             else:
-                year = metadata.get("year") or metadata.get("parentYear")
-                matched = unique_title_match(
-                    (search_results or {}).get("results") or [],
-                    series_title,
-                    year=str(year).split("-")[0] if year else None,
-                )
-                if matched:
-                    ids["tmdb_id"] = str(matched.get("media_id"))
+                if matched_id:
+                    ids["tmdb_id"] = matched_id
                     logger.info(
                         "Resolved Plex season rating via title to show-level "
                         "TMDB ID: %s",
@@ -1537,6 +1532,27 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         if self._get_media_type(payload) == MediaTypes.TV.value:
             return payload.get("Metadata", {}).get("grandparentTitle")
         return None
+
+    def _extract_series_year(self, payload):
+        """Return the show's first-air year from a Plex payload.
+
+        Episode payloads carry the episode's air date in ``year`` and
+        ``originallyAvailableAt`` and a season's ``year`` is the season's, so
+        only the show-level fields count (issues #1239, #1279).
+        """
+        metadata = payload.get("Metadata") or {}
+        kind = metadata.get("type")
+        if kind == "episode":
+            value = metadata.get("grandparentOriginallyAvailableAt") or metadata.get(
+                "grandparentYear",
+            )
+        elif kind == "season":
+            value = metadata.get("parentYear")
+        elif kind == "show":
+            value = metadata.get("originallyAvailableAt") or metadata.get("year")
+        else:
+            value = None
+        return str(value).split("-", 1)[0] if value else None
 
     def _extract_external_ids(self, payload):
         metadata = payload.get("Metadata", {})

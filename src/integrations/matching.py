@@ -3,8 +3,21 @@
 import re
 import unicodedata
 
-_TRAILING_YEAR_RE = re.compile(r"\s*(?:\(\d{4}\)|\[\d{4}\])\s*$")
+_TRAILING_YEAR_RE = re.compile(r"\s*(?:\((\d{4})\)|\[(\d{4})\])\s*$")
 _NON_WORD_RE = re.compile(r"[^\w]+", re.UNICODE)
+
+
+def split_title_year(value):
+    """Split ``"Title (YYYY)"`` into ``("Title", "YYYY")``.
+
+    Media servers append the first-release year to disambiguate same-title
+    works. Providers index the bare title, and the year identifies the work.
+    """
+    value = (value or "").strip()
+    match = _TRAILING_YEAR_RE.search(value)
+    if not match or match.start() == 0:
+        return value, None
+    return value[: match.start()], match.group(1) or match.group(2)
 
 
 def normalize_title(value):
