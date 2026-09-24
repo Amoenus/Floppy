@@ -141,7 +141,9 @@ def populate_trakt_popularity_data_for_items(
             )
 
     run.reenqueue_if_deferred(
-        lambda ids: enqueue_trakt_popularity_backfill_items(ids, force=force),
+        lambda ids, countdown: enqueue_trakt_popularity_backfill_items(
+            ids, countdown=countdown, force=force
+        ),
     )
 
     return {
