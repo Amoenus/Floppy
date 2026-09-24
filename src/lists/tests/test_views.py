@@ -23,7 +23,7 @@ from app.models import (
 )
 from lists import smart_rules
 from lists.feeds import FloppyRssFeed
-from lists.models import CustomList, CustomListItem, ListActivity
+from lists.models import CustomList, CustomListItem, ListActivity, ListRecommendation
 from users.models import DateFormatChoices
 
 
@@ -4371,3 +4371,56 @@ class QuickAddListItemTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Test Track - Test Artist")
         self.assertContains(response, "Showing page 1 of 3")
+
+
+class ListRecommendationsViewTests(TestCase):
+    """Tests for the list recommendations queue."""
+
+    def setUp(self):
+        """Create a list owner with one tracked and one untracked recommendation."""
+        self.credentials = {"username": "owner", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.custom_list = CustomList.objects.create(name="Queue", owner=self.user)
+        self.tracked_item = Item.objects.create(
+            media_id="rec-tracked",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Tracked Recommendation",
+        )
+        self.untracked_item = Item.objects.create(
+            media_id="rec-untracked",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Untracked Recommendation",
+        )
+        ListRecommendation.objects.create(
+            custom_list=self.custom_list,
+            item=self.tracked_item,
+            anonymous_name="Friend",
+        )
+        ListRecommendation.objects.create(
+            custom_list=self.custom_list,
+            item=self.untracked_item,
+            anonymous_name="Friend",
+        )
+
+    def test_card_shows_viewer_rating_and_status_for_tracked_items(self):
+        """A recommended item the owner already tracks shows their rating and status."""
+        movie = Movie.objects.create(
+            item=self.tracked_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=1,
+            score=9,
+        )
+        self.client.login(**self.credentials)
+
+        response = self.client.get(
+            reverse("list_recommendations", args=[self.custom_list.id]),
+        )
+
+        content = response.content.decode()
+        self.assertIn("Untracked Recommendation", content)
+        self.assertIn(f'id="media-card-rating-{movie.id}"', content)
+        self.assertIn(f'id="media-status-chip-{movie.id}"', content)
+        self.assertEqual(content.count('class="media-status-chip '), 1)
