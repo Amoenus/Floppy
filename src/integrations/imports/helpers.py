@@ -19,6 +19,7 @@ from simple_history.utils import bulk_create_with_history
 import app
 from app import providers
 from app.db_retry import run_retryable_db_operation
+from app.history_cache_utils import history_deferred_item_fields
 from app.models import Episode, MediaTypes, Status
 from app.services.completion import normalize_completed_entry
 from integrations import import_progress
@@ -88,6 +89,12 @@ def find_item_across_buckets(preferred_bucket=None, **identity):
     return candidates[0]
 
 
+# Importers read identity fields off the preloaded items, never these. Loading
+# them for a whole library (``watch_providers`` is ~146 KiB a title) ran a large
+# Trakt export import out of memory before it wrote anything (#1252).
+PRELOAD_DEFERRED_ITEM_FIELDS = history_deferred_item_fields("item")
+
+
 def get_existing_media(user):
     """Get all existing media for the user to check against during import."""
     excluded_types = [MediaTypes.SEASON.value, MediaTypes.EPISODE.value]
@@ -97,7 +104,11 @@ def get_existing_media(user):
     for media_type in valid_types:
         media_model = apps.get_model(app_label="app", model_name=media_type)
 
-        for media in media_model.objects.filter(user=user).select_related("item"):
+        for media in (
+            media_model.objects.filter(user=user)
+            .select_related("item")
+            .defer(*PRELOAD_DEFERRED_ITEM_FIELDS)
+        ):
             existing[media_type][media.item.source][media.item.media_id] = media
 
     counts = [
@@ -122,14 +133,20 @@ def get_existing_children(user):
         MediaTypes.SEASON.value: defaultdict(dict),
         MediaTypes.EPISODE.value: defaultdict(dict),
     }
-    for season in app.models.Season.objects.filter(user=user).select_related("item"):
+    for season in (
+        app.models.Season.objects.filter(user=user)
+        .select_related("item")
+        .defer(*PRELOAD_DEFERRED_ITEM_FIELDS)
+    ):
         item = season.item
         existing[MediaTypes.SEASON.value][item.source][
             (item.media_id, item.season_number)
         ] = season
-    for episode in app.models.Episode.objects.filter(
-        related_season__user=user,
-    ).select_related("item"):
+    for episode in (
+        app.models.Episode.objects.filter(related_season__user=user)
+        .select_related("item")
+        .defer(*PRELOAD_DEFERRED_ITEM_FIELDS)
+    ):
         item = episode.item
         existing[MediaTypes.EPISODE.value][item.source][
             (item.media_id, item.season_number, item.episode_number)
