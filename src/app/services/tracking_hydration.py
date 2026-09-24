@@ -501,6 +501,10 @@ def ensure_item_metadata(
     if not item.runtime and runtime:
         item.runtime = runtime
         update_fields.append("runtime")
+    if item.provider_episode_count is None:
+        update_fields.extend(
+            metadata_utils.apply_provider_episode_count(item, metadata),
+        )
     if watch_providers and item.watch_providers != watch_providers:
         item.watch_providers = watch_providers
         update_fields.append("watch_providers")
