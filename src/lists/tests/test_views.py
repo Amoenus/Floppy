@@ -2573,6 +2573,40 @@ class ListDetailViewTests(TestCase):
         self.assertNotContains(response, "hero_track_button")
         self.assertNotContains(response, "empty overlay")
 
+    def test_select_items_button_sits_inside_the_bulk_selection_scope(self):
+        """The header's Select Items button must be inside bulkSelection, or it is dead.
+
+        Alpine reads selectMode from the closest component; a button above it
+        threw "selectMode is not defined" and did nothing.
+        """
+        smart_list = CustomList.objects.create(
+            name="Smart Scope",
+            owner=self.user,
+            is_smart=True,
+        )
+        for custom_list in (self.custom_list, smart_list):
+            with self.subTest(smart=custom_list.is_smart):
+                content = self.client.get(
+                    reverse("list_detail", args=[custom_list.id]),
+                ).content.decode()
+                scope = content.index('x-data="bulkSelection(')
+                self.assertGreater(content.index("toggleSelectMode()"), scope)
+                # $refs cannot see a ref inside the nested bulkSelection component.
+                self.assertNotIn("$refs.itemsView", content)
+
+    def test_viewer_who_can_only_recommend_gets_no_select_items_button(self):
+        """Bulk actions edit the list, so a recommend-only viewer has no selection."""
+        self.custom_list.visibility = "public"
+        self.custom_list.allow_recommendations = True
+        self.custom_list.save()
+        self.client.login(**self.other_credentials)
+
+        response = self.client.get(reverse("list_detail", args=[self.custom_list.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Recommend Item")
+        self.assertNotContains(response, "toggleSelectMode()")
+
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
     def test_list_detail_episode_card_shows_rating(
