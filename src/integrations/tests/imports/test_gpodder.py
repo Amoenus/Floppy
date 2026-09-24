@@ -704,7 +704,7 @@ class GPodderImporterTests(TestCase):
 @patch("integrations.imports.gpodder.gpodder_api.fetch_subscriptions")
 @patch("integrations.imports.gpodder.gpodder_api.fetch_episode_actions")
 @patch("integrations.imports.gpodder.podcast_rss.fetch_feed_from_rss")
-@patch("app.statistics_cache.schedule_all_ranges_refresh")
+@patch("app.statistics_cache.invalidate_all_statistics_days")
 @patch("app.history_cache.invalidate_history_cache")
 class GPodderRecurringPollCostTests(TestCase):
     """An empty 15-minute poll must not wipe caches or download feeds (#1158)."""
@@ -787,4 +787,4 @@ class GPodderRecurringPollCostTests(TestCase):
 
         mock_fetch_feed.assert_called_once_with("https://example.com/feed.xml")
         mock_invalidate.assert_any_call(self.user.id, force=True)
-        mock_stats_refresh.assert_any_call(self.user.id)
+        mock_stats_refresh.assert_any_call(self.user.id, reason="media_import")

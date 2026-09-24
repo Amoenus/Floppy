@@ -126,13 +126,15 @@ def import_media(
         # payloads after imports (notably reproducible with SIMKL imports).
         history_cache.invalidate_history_cache(user.id, force=True)
 
-        # bulk_create also bypasses the post_save signals that normally schedule a statistics
-        # cache refresh. Trigger it explicitly so the hours card and activity overview reflect
-        # the newly imported media without requiring a manual page reload or waiting for the
-        # next scheduled Celery beat.
+        # bulk_create also bypasses the post_save signals that mark statistics days
+        # dirty, and the importer does not report which days it touched. Drop every
+        # day payload; the background sync rebuilds them in budgeted slices while
+        # the last published numbers keep being served.
         from app import statistics_cache as _statistics_cache
 
-        _statistics_cache.schedule_all_ranges_refresh(user.id)
+        _statistics_cache.invalidate_all_statistics_days(
+            user.id, reason="media_import"
+        )
     else:
         logger.info(
             "calendar_reload_skipped reason=no_items_imported importer=%s user_id=%s",

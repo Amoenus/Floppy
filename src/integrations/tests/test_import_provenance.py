@@ -62,7 +62,7 @@ class ImportRunProvenanceTests(TestCase):
         self.assertEqual(run.status, ImportRun.Status.FAILED)
         self.assertIsNotNone(run.finished_at)
 
-    @patch("app.statistics_cache.schedule_all_ranges_refresh")
+    @patch("app.statistics_cache.invalidate_all_statistics_days")
     @patch("integrations.tasks._media_imports.history_cache.invalidate_history_cache")
     @patch("events.tasks.reload_calendar.delay")
     def test_unchanged_import_preserves_caches(self, calendar, invalidate, refresh):
@@ -86,7 +86,7 @@ class ImportRunProvenanceTests(TestCase):
         self.assertEqual(run.skipped_count, 12)
         self.assertEqual(run.failed_count, 2)
 
-    @patch("app.statistics_cache.schedule_all_ranges_refresh")
+    @patch("app.statistics_cache.invalidate_all_statistics_days")
     @patch("integrations.tasks._media_imports.history_cache.invalidate_history_cache")
     @patch("events.tasks.reload_calendar.delay")
     def test_updated_import_refreshes_caches(self, calendar, invalidate, refresh):
@@ -96,7 +96,7 @@ class ImportRunProvenanceTests(TestCase):
         import_media(importer, None, self.user.id, "overwrite")
         calendar.assert_called_once_with()
         invalidate.assert_called_once_with(self.user.id, force=True)
-        refresh.assert_called_once_with(self.user.id)
+        refresh.assert_called_once_with(self.user.id, reason="media_import")
 
     def test_bulk_create_media_leaves_import_run_null_outside_tracking(self):
         """Calling bulk_create_media directly (no import_media wrapper) tags nothing."""

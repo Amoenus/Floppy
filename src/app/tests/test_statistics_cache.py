@@ -15,7 +15,7 @@ from app import (
     statistics_aggregator,
     statistics_cache,
     statistics_refresh,
-    statistics_refresh_run,
+    statistics_sync,
 )
 from app.models import Item, MediaTypes, Movie, Sources, Status
 from app.statistics_aggregator import (
@@ -73,17 +73,8 @@ class StatisticsRefreshPayloadRetentionTests(TestCase):
         cache.clear()
 
     def test_refresh_rebuilds_days_whose_cache_write_failed(self):
-        """A run cannot carry day payloads across Celery task boundaries.
-
-        The single-shot refresh kept a failed day's payload in Python and
-        handed it to the aggregator as ``prebuilt_days``. A chunked run records
-        the day identifier instead and lets the aggregator's existing
-        ``build_missing`` path rebuild it, so the published numbers are
-        unchanged while nothing unbounded is retained between chunks.
-        """
+        """A day whose payload write failed is rebuilt by the aggregate."""
         failed_key = statistics_refresh._day_cache_key(self.user.id, self.days[0])
-        # Creating the fixture already warmed these through the eager refresh
-        # signal; drop them so the run genuinely has to rebuild them.
         cache.delete_many(
             [statistics_refresh._day_cache_key(self.user.id, day) for day in self.days]
         )
@@ -99,7 +90,7 @@ class StatisticsRefreshPayloadRetentionTests(TestCase):
 
         with (
             patch.object(
-                statistics_refresh_run.cache,
+                statistics_sync.cache,
                 "set_many",
                 side_effect=set_many_dropping_one_day,
             ),
@@ -126,6 +117,7 @@ class StatisticsRefreshPayloadRetentionTests(TestCase):
         )
 
 
+@override_settings(CELERY_TASK_ALWAYS_EAGER=False, TESTING=False)
 class StatisticsRefreshSchedulingTests(TestCase):
     def setUp(self):
         cache.clear()
@@ -137,87 +129,37 @@ class StatisticsRefreshSchedulingTests(TestCase):
     def tearDown(self):
         cache.clear()
 
-    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
-    def test_schedule_statistics_refresh_uses_interactive_priority_by_default(
-        self,
-        mock_apply_async,
-    ):
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
+    def test_background_sync_yields_to_webhooks_but_not_to_imports(self, enqueue):
         scheduled = statistics_cache.schedule_statistics_refresh(
-            self.user.id,
-            "This Month",
-            allow_inline=False,
+            self.user.id, "This Month", allow_inline=False
         )
 
         self.assertTrue(scheduled)
-        mock_apply_async.assert_called_once()
+        priority = enqueue.call_args.kwargs["priority"]
+        self.assertEqual(priority, settings.CELERY_TASK_PRIORITY_STATISTICS_SYNC)
+        self.assertGreater(priority, settings.CELERY_TASK_PRIORITY_INTERACTIVE)
+        self.assertLess(priority, settings.CELERY_TASK_PRIORITY_FOLLOWUP)
+        route = settings.CELERY_TASK_ROUTES["app.tasks.statistics_sync_task"]
+        self.assertEqual(route["queue"], "interactive")
+
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
+    def test_forced_refresh_is_queued_ahead_of_other_syncs(self, enqueue):
+        statistics_cache.schedule_statistics_refresh(
+            self.user.id, "This Month", force=True
+        )
+
         self.assertEqual(
-            mock_apply_async.call_args.kwargs["priority"],
+            enqueue.call_args.kwargs["priority"],
             settings.CELERY_TASK_PRIORITY_INTERACTIVE,
         )
 
-    @patch("app.statistics_refresh.schedule_statistics_refresh")
-    def test_schedule_all_ranges_refresh_prioritizes_preferred_and_cached_all_time(
-        self,
-        mock_schedule_statistics_refresh,
-    ):
-        self.user.statistics_default_range = "This Month"
-        self.user.save(update_fields=["statistics_default_range"])
-        cache.set(
-            statistics_cache._cache_key(self.user.id, "All Time"),
-            {"history_version": "cached"},
-            timeout=60,
-        )
+    def test_schedule_all_ranges_refresh_records_a_change(self):
+        before = statistics_sync.current_generation(self.user.id)
+        with self.captureOnCommitCallbacks(execute=False):
+            statistics_cache.schedule_all_ranges_refresh(self.user.id)
 
-        statistics_cache.schedule_all_ranges_refresh(
-            self.user.id,
-            debounce_seconds=0,
-            countdown=3,
-        )
-
-        mock_schedule_statistics_refresh.assert_has_calls(
-            [
-                call(
-                    self.user.id,
-                    "This Month",
-                    debounce_seconds=0,
-                    countdown=3,
-                    allow_inline=False,
-                    priority=settings.CELERY_TASK_PRIORITY_FOLLOWUP,
-                ),
-                call(
-                    self.user.id,
-                    "All Time",
-                    debounce_seconds=0,
-                    countdown=3 + statistics_cache.STATISTICS_ALL_TIME_REFRESH_DELAY,
-                    allow_inline=False,
-                    priority=settings.CELERY_TASK_PRIORITY_BACKGROUND,
-                ),
-            ],
-        )
-        self.assertEqual(mock_schedule_statistics_refresh.call_count, 2)
-
-    @patch("app.statistics_refresh.schedule_statistics_refresh")
-    def test_schedule_all_ranges_refresh_skips_uncached_all_time(
-        self,
-        mock_schedule_statistics_refresh,
-    ):
-        self.user.statistics_default_range = "Last 90 Days"
-        self.user.save(update_fields=["statistics_default_range"])
-
-        statistics_cache.schedule_all_ranges_refresh(
-            self.user.id,
-            debounce_seconds=0,
-            countdown=5,
-        )
-
-        mock_schedule_statistics_refresh.assert_called_once_with(
-            self.user.id,
-            "Last 90 Days",
-            debounce_seconds=0,
-            countdown=5,
-            allow_inline=False,
-            priority=settings.CELERY_TASK_PRIORITY_FOLLOWUP,
-        )
+        self.assertGreater(statistics_sync.current_generation(self.user.id), before)
 
 
 @override_settings(CELERY_TASK_ALWAYS_EAGER=False, TESTING=False)
@@ -232,15 +174,17 @@ class StatisticsStaleResultTests(TestCase):
     def tearDown(self):
         cache.clear()
 
-    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
-    def test_invalidation_serves_previous_result_and_schedules_refresh(self, enqueue):
+    def _invalidate(self, range_name=None):
+        with self.captureOnCommitCallbacks(execute=False):
+            statistics_cache.invalidate_statistics_cache(self.user.id, range_name)
+        cache.delete(statistics_sync._gate_key(self.user.id))
+
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
+    def test_invalidation_serves_previous_result_and_queues_a_sync(self, enqueue):
         for range_name in ("This Month", None):
             with self.subTest(range_name=range_name):
-                cache.delete(
-                    statistics_cache._refresh_lock_key(self.user.id, "This Month")
-                )
+                self._invalidate(range_name)
                 enqueue.reset_mock()
-                statistics_cache.invalidate_statistics_cache(self.user.id, range_name)
 
                 result = statistics_cache.get_statistics_data(
                     self.user, None, None, "This Month"
@@ -251,13 +195,13 @@ class StatisticsStaleResultTests(TestCase):
 
     @patch("app.statistics_cache.refresh_statistics_cache")
     @patch(
-        "app.tasks.refresh_statistics_cache_task.apply_async",
+        "app.tasks_interactive.statistics_sync_task.apply_async",
         side_effect=OSError("offline"),
     )
     def test_unavailable_worker_keeps_previous_result_without_inline_rebuild(
         self, enqueue, rebuild
     ):
-        statistics_cache.invalidate_statistics_cache(self.user.id)
+        self._invalidate()
 
         result = statistics_cache.get_statistics_data(
             self.user, None, None, "This Month"
@@ -266,16 +210,13 @@ class StatisticsStaleResultTests(TestCase):
         self.assertEqual(result, self.data)
         enqueue.assert_called_once()
         rebuild.assert_not_called()
-        self.assertIsNone(
-            cache.get(statistics_cache._refresh_lock_key(self.user.id, "This Month"))
-        )
 
     def test_completed_refresh_replaces_previous_result(self):
-        statistics_cache.invalidate_statistics_cache(self.user.id)
+        self._invalidate()
         updated = statistics_cache._get_empty_statistics_data()
         statistics_cache.cache_statistics_data(self.user.id, "This Month", updated)
 
-        with patch("app.tasks.refresh_statistics_cache_task.apply_async") as enqueue:
+        with patch("app.tasks_interactive.statistics_sync_task.apply_async") as enqueue:
             result = statistics_cache.get_statistics_data(
                 self.user, None, None, "This Month"
             )
@@ -283,10 +224,10 @@ class StatisticsStaleResultTests(TestCase):
         self.assertEqual(result, updated)
         enqueue.assert_not_called()
 
-    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
     def test_previous_day_result_refreshes_even_without_new_activity(self, enqueue):
         later = timezone.now() + timedelta(days=1)
-        with patch("app.statistics_cache.timezone.now", return_value=later):
+        with patch("django.utils.timezone.now", return_value=later):
             result = statistics_cache.get_statistics_data(
                 self.user, None, None, "This Month"
             )
@@ -296,15 +237,15 @@ class StatisticsStaleResultTests(TestCase):
         self.assertEqual(result, self.data)
         enqueue.assert_called_once()
 
-    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
     def test_local_midnight_refreshes_a_recent_today_snapshot(self, enqueue):
         # UTC is still the same date, but Tokyo has crossed midnight.
         before = datetime(2026, 6, 1, 14, 59, tzinfo=UTC)
         after = before + timedelta(minutes=2)
         with timezone.override(ZoneInfo("Asia/Tokyo")):
-            with patch("app.statistics_cache.timezone.now", return_value=before):
+            with patch("django.utils.timezone.now", return_value=before):
                 statistics_cache.cache_statistics_data(self.user.id, "Today", self.data)
-            with patch("app.statistics_cache.timezone.now", return_value=after):
+            with patch("django.utils.timezone.now", return_value=after):
                 result = statistics_cache.get_statistics_data(
                     self.user, None, None, "Today"
                 )
@@ -312,13 +253,11 @@ class StatisticsStaleResultTests(TestCase):
         self.assertEqual(result, self.data)
         enqueue.assert_called_once()
 
-    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
-    def test_polling_refreshes_previous_day_results_with_matching_history_version(
-        self, enqueue
-    ):
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
+    def test_polling_reports_and_queues_a_previous_day_result(self, enqueue):
         self.client.force_login(self.user)
         later = timezone.now() + timedelta(days=1)
-        with patch("app.statistics_cache.timezone.now", return_value=later):
+        with patch("django.utils.timezone.now", return_value=later):
             response = self.client.get(
                 reverse("cache_status"),
                 {"cache_type": "statistics", "range_name": "This Month"},
@@ -327,19 +266,19 @@ class StatisticsStaleResultTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["exists"])
         self.assertTrue(response.json()["is_stale"])
-        self.assertTrue(response.json()["refresh_scheduled"])
+        self.assertTrue(response.json()["is_refreshing"])
         enqueue.assert_called_once()
 
-    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
     def test_unchanged_same_day_snapshot_does_not_rebuild_every_fifteen_minutes(
         self, enqueue
     ):
         before = datetime(2026, 6, 1, 12, tzinfo=UTC)
         with timezone.override(ZoneInfo("UTC")):
-            with patch("app.statistics_cache.timezone.now", return_value=before):
+            with patch("django.utils.timezone.now", return_value=before):
                 statistics_cache.cache_statistics_data(self.user.id, "Today", self.data)
             with patch(
-                "app.statistics_cache.timezone.now",
+                "django.utils.timezone.now",
                 return_value=before + timedelta(hours=2),
             ):
                 result = statistics_cache.get_statistics_data(
@@ -348,7 +287,7 @@ class StatisticsStaleResultTests(TestCase):
         self.assertEqual(result, self.data)
         enqueue.assert_not_called()
 
-    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
     def test_lightweight_statistics_reads_refresh_retained_stale_results(self, enqueue):
         for reader, key in (
             (statistics_cache.get_statistics_minutes_by_type, "minutes_per_media_type"),
@@ -356,11 +295,8 @@ class StatisticsStaleResultTests(TestCase):
             (statistics_cache.get_top_talent_data, "top_talent"),
         ):
             with self.subTest(reader=reader.__name__):
-                cache.delete(
-                    statistics_cache._refresh_lock_key(self.user.id, "This Month")
-                )
+                self._invalidate()
                 enqueue.reset_mock()
-                statistics_cache.invalidate_statistics_cache(self.user.id)
                 result = reader(self.user, None, None, "This Month")
                 self.assertEqual(result, self.data[key])
                 enqueue.assert_called_once()
@@ -369,19 +305,26 @@ class StatisticsStaleResultTests(TestCase):
         ttl = cache.ttl(statistics_cache._cache_key(self.user.id, "This Month"))
         self.assertGreater(ttl, 24 * 60 * 60)
 
-    def test_stale_covering_range_cannot_publish_a_fresh_derived_snapshot(self):
-        statistics_cache.cache_statistics_data(self.user.id, "All Time", self.data)
-        start, end = statistics_cache._get_predefined_range_dates("This Month")
-        later = timezone.now() + timedelta(days=1)
-        with patch("app.statistics_cache.timezone.now", return_value=later):
-            covers = statistics_cache._has_covering_range_cache(
-                self.user.id,
-                "This Month",
-                start,
-                end,
-                statistics_cache.get_history_version(self.user.id),
-            )
-        self.assertFalse(covers)
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
+    def test_snapshot_survives_a_cache_flush(self, enqueue):
+        cache.clear()
+
+        result = statistics_cache.get_statistics_data(
+            self.user, None, None, "This Month"
+        )
+
+        self.assertEqual(result["hours_per_media_type"], self.data["hours_per_media_type"])
+        self.assertNotIn("statistics_building", result)
+
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
+    def test_never_built_range_reports_building_and_queues_urgently(self, enqueue):
+        result = statistics_cache.get_statistics_data(self.user, None, None, "All Time")
+
+        self.assertTrue(result["statistics_building"])
+        self.assertEqual(
+            enqueue.call_args.kwargs["priority"],
+            settings.CELERY_TASK_PRIORITY_INTERACTIVE,
+        )
 
 
 class StatisticsHourBucketTests(TestCase):

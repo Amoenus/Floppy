@@ -1888,99 +1888,29 @@ def cache_status(request):
                 }
             )
 
-        cache_key = statistics_cache._cache_key(request.user.id, range_name)
-        refresh_lock_key = statistics_cache._refresh_lock_key(
-            request.user.id, range_name
+        # Reports the published snapshot and never touches a running sync. A
+        # stale snapshot only makes sure a sync is queued; the page itself
+        # polls this only after a manual Refresh or for a never-built range.
+        from app import statistics_sync
+
+        entry = statistics_sync.load_snapshot(request.user.id, range_name)
+        is_stale = statistics_sync.entry_is_stale(entry, user_id=request.user.id)
+        if is_stale:
+            statistics_sync.ensure_sync(request.user.id, urgent=entry is None)
+        sync_running = statistics_sync.sync_is_running(request.user.id)
+        built_at = entry.get("built_at") if entry else None
+        recently_built = bool(
+            built_at and timezone.now() - built_at < timedelta(seconds=60)
         )
-        cache_entry = cache.get(cache_key)
-        refresh_lock = cache.get(refresh_lock_key)
-        if refresh_lock and statistics_cache._lock_is_stale(refresh_lock):
-            cache.delete(refresh_lock_key)
-            refresh_lock = None
-
-        any_range_refreshing = statistics_cache._any_range_refreshing(request.user.id)
-        metadata_lock, metadata_built_at, metadata_recently_built = (
-            statistics_cache._metadata_refresh_status(request.user.id)
-        )
-        metadata_refreshing = metadata_lock is not None
-
-        refresh_scheduled = False
-        if cache_entry:
-            built_at = cache_entry.get("built_at")
-            is_stale = statistics_cache.is_statistics_cache_stale(
-                cache_entry, request.user.id
-            )
-            recently_built = False
-            age = None
-            if built_at:
-                age = timezone.now() - built_at
-                # Consider cache "recently built" if it was built in the last 60 seconds
-                # This helps catch refreshes that completed just before or during page load
-                recently_built = age < timedelta(seconds=60)
-
-            if not is_stale and refresh_lock:
-                cache.delete(refresh_lock_key)
-                refresh_lock = None
-            elif is_stale and refresh_lock is None:
-                refresh_scheduled = statistics_cache.schedule_statistics_refresh(
-                    request.user.id,
-                    range_name,
-                    allow_inline=False,
-                )
-                refresh_lock = (
-                    cache.get(refresh_lock_key) if refresh_scheduled else refresh_lock
-                )
-
-            is_refreshing = (
-                refresh_lock is not None or refresh_scheduled or metadata_refreshing
-            )
-            return JsonResponse(
-                {
-                    "exists": True,
-                    "built_at": built_at.isoformat() if built_at else None,
-                    "is_stale": is_stale,
-                    "is_refreshing": is_refreshing,
-                    "recently_built": recently_built,
-                    "any_range_refreshing": any_range_refreshing,
-                    "refresh_scheduled": refresh_scheduled,
-                    "metadata_refreshing": metadata_refreshing,
-                    "metadata_built_at": metadata_built_at.isoformat()
-                    if metadata_built_at
-                    else None,
-                    "metadata_recently_built": metadata_recently_built,
-                }
-            )
-        refresh_scheduled = False
-        if refresh_lock is None:
-            # True cold miss (no cache entry, no active lock). This is the normal
-            # state right after a bulk import, but it's also what a lost refresh
-            # looks like (task never dequeued, worker restarted mid-task, etc.).
-            # Re-schedule defensively; schedule_statistics_refresh() is debounced
-            # via its own lock/dedupe keys, so polling this repeatedly is safe.
-            refresh_scheduled = statistics_cache.schedule_statistics_refresh(
-                request.user.id,
-                range_name,
-                allow_inline=False,
-            )
-            refresh_lock = (
-                cache.get(refresh_lock_key) if refresh_scheduled else refresh_lock
-            )
-
-        is_refreshing = refresh_lock is not None or metadata_refreshing
         return JsonResponse(
             {
-                "exists": False,
-                "built_at": None,
-                "is_stale": False,
-                "is_refreshing": is_refreshing,
-                "recently_built": False,
-                "any_range_refreshing": any_range_refreshing,
-                "refresh_scheduled": refresh_scheduled,
-                "metadata_refreshing": metadata_refreshing,
-                "metadata_built_at": metadata_built_at.isoformat()
-                if metadata_built_at
-                else None,
-                "metadata_recently_built": metadata_recently_built,
+                "exists": entry is not None,
+                "built_at": built_at.isoformat() if built_at else None,
+                "is_stale": bool(entry) and is_stale,
+                "is_refreshing": is_stale,
+                "recently_built": recently_built,
+                "any_range_refreshing": sync_running,
+                "refresh_scheduled": False,
             }
         )
 

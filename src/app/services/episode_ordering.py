@@ -195,4 +195,12 @@ def apply_change(tv, order, *, token, resolutions):
     )
     for item in Item.objects.filter(pk__in=touched):
         project_watch_state(tv.user, item, record_changes=False)
+    # Queryset updates and bulk creates fire no signals: mark the watched days
+    # before and after the remap so Statistics rebuild them.
+    from app import statistics_sync
+
+    moved_days = [row.end_date for row in rows] + [
+        resolution.get("fields", {}).get("end_date") for resolution in resolutions
+    ]
+    statistics_sync.mark_days(tv.user_id, moved_days, reason="episode_order_change")
     return journal

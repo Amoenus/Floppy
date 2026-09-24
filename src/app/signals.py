@@ -2,6 +2,7 @@ import json
 import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
+from datetime import date, datetime
 
 from celery import states
 from celery.signals import before_task_publish, task_failure, task_success
@@ -106,8 +107,6 @@ TRACKED_TASK_NAMES = frozenset(
 )
 DISCOVER_PRIORITY_HISTORY_DEBOUNCE_SECONDS = 15
 DISCOVER_PRIORITY_HISTORY_COUNTDOWN = 15
-DISCOVER_PRIORITY_STATISTICS_DEBOUNCE_SECONDS = 20
-DISCOVER_PRIORITY_STATISTICS_COUNTDOWN = 20
 _SUPPRESS_MEDIA_CACHE_CHANGE_SIGNALS: ContextVar[bool] = ContextVar(
     "suppress_media_cache_change_signals",
     default=False,
@@ -510,20 +509,6 @@ def _invalidate_history_for_media_change(
         )
 
 
-def _schedule_statistics_refresh_for_media_change(
-    user_id: int, *, prioritized: bool
-) -> None:
-    if prioritized:
-        statistics_cache.schedule_all_ranges_refresh(
-            user_id,
-            debounce_seconds=DISCOVER_PRIORITY_STATISTICS_DEBOUNCE_SECONDS,
-            countdown=DISCOVER_PRIORITY_STATISTICS_COUNTDOWN,
-        )
-        return
-
-    statistics_cache.schedule_all_ranges_refresh(user_id)
-
-
 def _clear_media_runtime_caches(user_id: int, changed_media_type: str) -> None:
     from app.cache_utils import (
         clear_home_row_cache_for_user,
@@ -588,13 +573,16 @@ def _handle_media_cache_change(
         for day_keys, _logging_styles in history_specs or []
         for day_key in day_keys or []
     )
+    statistics_marked = False
     if history_specs and not has_history_days:
         # Planning activity is commonly undated. There is no day key to
         # invalidate in that case, but it can still appear in a title's
-        # history and affect cached all-time/statistics payloads.
+        # history. Statistics read undated rows straight from the database
+        # when aggregating, so no day payload is affected: re-aggregating the
+        # ranges is enough.
         history_cache.invalidate_history_cache(user_id)
         statistics_cache.invalidate_statistics_cache(user_id)
-        statistics_cache.invalidate_all_statistics_days(user_id, reason=reason)
+        statistics_marked = True
 
     normalized_stat_days = [
         day_value for day_value in (statistics_day_values or []) if day_value
@@ -605,9 +593,12 @@ def _handle_media_cache_change(
             day_values=normalized_stat_days,
             reason=reason,
         )
+        statistics_marked = True
 
-    if schedule_statistics:
-        _schedule_statistics_refresh_for_media_change(user_id, prioritized=prioritized)
+    if schedule_statistics and not statistics_marked:
+        # Status, score and count changes reach every range without touching a
+        # day payload; recording the change is what makes the sync rebuild.
+        statistics_cache.invalidate_statistics_cache(user_id)
 
 
 def _invalidate_discover_from_item_tag(instance) -> None:
@@ -905,6 +896,70 @@ def refresh_history_cache_on_episode_delete(sender, instance, **kwargs):
         ),
         using=kwargs.get("using"),
     )
+
+
+def _statistics_days_for_dates(start_dt, end_dt):
+    # Unsaved assignments can still hold a plain date; treat it as that day.
+    start_dt, end_dt = (
+        timezone.make_aware(datetime.combine(value, datetime.min.time()))
+        if isinstance(value, date) and not isinstance(value, datetime)
+        else value
+        for value in (start_dt, end_dt)
+    )
+    days = set(history_cache.history_day_keys_for_range(start_dt, end_dt) or [])
+    for value in (start_dt, end_dt):
+        if day_key := history_cache.history_day_key(value):
+            days.add(day_key)
+    return days
+
+
+@receiver(pre_save, sender=Movie)
+@receiver(pre_save, sender=Music)
+@receiver(pre_save, sender=Podcast)
+@receiver(pre_save, sender=Game)
+@receiver(pre_save, sender=BoardGame)
+@receiver(pre_save, sender=Anime)
+@receiver(pre_save, sender=Manga)
+@receiver(pre_save, sender=Book)
+@receiver(pre_save, sender=Comic)
+def capture_statistics_previous_dates(sender, instance, **kwargs):
+    """Remember a row's persisted dates, so moving them re-marks the old days.
+
+    The change handlers only see the new dates; without this the day an entry
+    moved away from kept counting it until something else rebuilt it.
+    """
+    if kwargs.get("raw") or not instance.pk:
+        return
+    if media_cache_change_signals_suppressed() or media_change_side_effects_suppressed():
+        return
+    instance._statistics_previous_dates = (
+        sender.objects.filter(pk=instance.pk).values_list("start_date", "end_date").first()
+    )
+
+
+@receiver(post_save, sender=Movie)
+@receiver(post_save, sender=Music)
+@receiver(post_save, sender=Podcast)
+@receiver(post_save, sender=Game)
+@receiver(post_save, sender=BoardGame)
+@receiver(post_save, sender=Anime)
+@receiver(post_save, sender=Manga)
+@receiver(post_save, sender=Book)
+@receiver(post_save, sender=Comic)
+def mark_statistics_previous_dates(sender, instance, **kwargs):
+    """Mark the days a row's dates moved away from."""
+    previous = instance.__dict__.pop("_statistics_previous_dates", None)
+    if kwargs.get("raw") or not previous:
+        return
+    if previous == (instance.start_date, instance.end_date):
+        return
+    old_days = _statistics_days_for_dates(*previous) - _statistics_days_for_dates(
+        instance.start_date, instance.end_date
+    )
+    if old_days:
+        statistics_cache.invalidate_statistics_days(
+            instance.user_id, old_days, reason="media_date_moved"
+        )
 
 
 @receiver([post_save, post_delete], sender=Movie)

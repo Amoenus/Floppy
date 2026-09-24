@@ -1416,7 +1416,7 @@ class TestPlexPostImportSideEffects(TestCase):
         self.user = User.objects.create_user(username="plexsideeffects")
 
     @patch("integrations.tasks.update_collection_metadata_from_plex.apply_async")
-    @patch("app.statistics_cache.schedule_all_ranges_refresh")
+    @patch("app.statistics_cache.invalidate_all_statistics_days")
     @patch("integrations.tasks._media_imports.history_cache.invalidate_history_cache")
     @patch("integrations.tasks._media_imports.events.tasks.reload_calendar.delay")
     @patch("integrations.imports.plex.importer")
@@ -1435,14 +1435,16 @@ class TestPlexPostImportSideEffects(TestCase):
         self.assertIn("1 created", result)
         mock_reload_calendar.assert_called_once()
         mock_invalidate_history.assert_called_once_with(self.user.id, force=True)
-        mock_schedule_stats.assert_called_once_with(self.user.id)
+        mock_schedule_stats.assert_called_once_with(
+            self.user.id, reason="media_import"
+        )
         mock_collection_refresh.assert_called_once_with(
             args=("all", self.user.id),
             countdown=60,
         )
 
     @patch("integrations.tasks.update_collection_metadata_from_plex.apply_async")
-    @patch("app.statistics_cache.schedule_all_ranges_refresh")
+    @patch("app.statistics_cache.invalidate_all_statistics_days")
     @patch("integrations.tasks._media_imports.history_cache.invalidate_history_cache")
     @patch("integrations.tasks._media_imports.events.tasks.reload_calendar.delay")
     @patch("integrations.imports.plex.importer")

@@ -475,6 +475,15 @@ def statistics(request):
             end_date,
             range_name=selected_range_name,
         )
+        statistics_building = bool(statistics_data.pop("statistics_building", False))
+        statistics_built_at = None
+        if selected_range_name in statistics_cache.PREDEFINED_RANGES:
+            from app import statistics_sync
+
+            snapshot = statistics_sync.load_snapshot(
+                request.user.id, selected_range_name
+            )
+            statistics_built_at = snapshot.get("built_at") if snapshot else None
 
         show_year_charts = selected_range_name in (None, "All Time")
         has_finite_range = start_date is not None and end_date is not None
@@ -606,6 +615,8 @@ def statistics(request):
             "start_date_str": start_date_str_for_url,
             "end_date_str": end_date_str_for_url,
             "selected_range_name": selected_range_name,
+            "statistics_building": statistics_building,
+            "statistics_built_at": statistics_built_at,
             "selected_range_dates_label": selected_range_dates_label,
             "selected_compare_mode": selected_compare_mode,
             "selected_compare_label": _compare_label,
@@ -818,7 +829,16 @@ TALENT_FRAGMENT_CACHE_TTL = 300
 
 
 def _talent_fragment_cache_key(user, range_token, compare_mode):
+    # The fragment renders from the published range, so it must turn over when
+    # a new snapshot is published, not only when data changes: keying on the
+    # change token alone cached the stale snapshot's output for the full TTL.
     history_version = statistics_cache.get_history_version(user.id)
+    if range_token in statistics_cache.PREDEFINED_RANGES:
+        from app import statistics_sync
+
+        entry = statistics_sync.load_snapshot(user.id, range_token)
+        if entry and entry.get("built_at"):
+            history_version = f"{history_version}:{entry['built_at'].isoformat()}"
     top_talent_sort = getattr(user, "top_talent_sort_by", "plays")
     genre_sort = getattr(user, "genre_sort_by", "time")
     studio_sort = getattr(user, "studio_sort_by", "plays")
@@ -993,18 +1013,9 @@ def refresh_statistics(request):
     if range_name not in statistics_cache.PREDEFINED_RANGES:
         return JsonResponse({"error": "Invalid range_name"}, status=400)
 
-    statistics_cache.invalidate_all_statistics_days(
-        request.user.id,
-        reason=f"manual_statistics_refresh:{range_name}",
-    )
-    statistics_cache.invalidate_statistics_cache(request.user.id, range_name)
-    statistics_cache.schedule_statistics_refresh(
-        request.user.id,
-        range_name,
-        debounce_seconds=0,
-        countdown=0,
-        allow_inline=True,
-    )
+    from app import statistics_sync
+
+    statistics_sync.request_manual_refresh(request.user, range_name)
 
     return JsonResponse({"success": True, "message": "Statistics refresh scheduled"})
 
@@ -1138,9 +1149,6 @@ def update_top_talent_sort(request):
             if statistics_cache.range_needs_top_talent_upgrade(
                 request.user.id, range_name
             ):
-                statistics_cache.invalidate_statistics_cache(
-                    request.user.id, range_name
-                )
                 statistics_cache.refresh_statistics_cache(request.user.id, range_name)
                 requires_reload = True
         except Exception as exc:  # pragma: no cover - best effort compatibility upgrade
@@ -1497,14 +1505,10 @@ def update_statistics_preferences(request):
     if fields_to_update:
         request.user.save(update_fields=fields_to_update)
         if invalidate_cache:
+            # These preferences shape the day payloads, so every day rebuilds.
             statistics_cache.invalidate_all_statistics_days(
                 request.user.id,
                 reason="statistics_preferences_changed",
-            )
-            statistics_cache.invalidate_statistics_cache(request.user.id)
-            statistics_cache.schedule_all_ranges_refresh(
-                request.user.id,
-                debounce_seconds=0,
             )
 
     return JsonResponse({"status": "ok"})

@@ -707,7 +707,9 @@ class PocketCastsImporter:
                 self.user.username,
             )
             schedule_history_refresh(self.user.id)
-            statistics_cache.schedule_all_ranges_refresh(self.user.id)
+            statistics_cache.invalidate_all_statistics_days(
+                self.user.id, reason="pocketcasts_import"
+            )
 
         return imported_counts, "\n".join(self.warnings) if self.warnings else ""
 

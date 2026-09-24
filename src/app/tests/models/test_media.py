@@ -261,4 +261,6 @@ class CompletionNormalizationTests(TestCase):
 
         history.assert_called_once_with(self.user.id)
         stats.assert_called_once_with(self.user.id)
-        stats_days.assert_called_once_with(self.user.id, reason="movie_change")
+        # Undated rows are read straight from the database when aggregating, so
+        # no day payload needs to be thrown away.
+        stats_days.assert_not_called()

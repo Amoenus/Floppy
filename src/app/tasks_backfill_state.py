@@ -528,8 +528,15 @@ def _schedule_metadata_statistics_refresh(items, field: str, reason: str):
     for user_id, day_keys in user_day_keys.items():
         if not day_keys:
             continue
-        statistics_cache.mark_metadata_refreshing(user_id, reason=reason)
-        statistics_cache.invalidate_statistics_days(user_id, day_keys, reason=reason)
+        if field == MetadataBackfillField.CREDITS:
+            # Day payloads carry no credits (talent is aggregated per range
+            # from the database), so re-aggregating is enough. Rebuilding the
+            # days turned every backfill batch into hundreds of day builds.
+            statistics_cache.invalidate_statistics_cache(user_id)
+        else:
+            statistics_cache.invalidate_statistics_days(
+                user_id, day_keys, reason=reason
+            )
         statistics_cache.schedule_all_ranges_refresh(
             user_id,
             debounce_seconds=10,

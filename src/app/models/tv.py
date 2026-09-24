@@ -658,6 +658,14 @@ class TV(Media):
                 ),
             )
         bulk_create_with_history(episodes_to_create, Episode)
+        if episodes_to_create:
+            # The bulk write fires no signals, and the show's own save signal
+            # ran before these episodes existed.
+            from app import statistics_sync
+
+            statistics_sync.mark_rows(
+                self.user_id, episodes_to_create, reason="tv_completed_fan_out"
+            )
 
     def _mark_in_progress_seasons_as_dropped(self):
         """Mark all in-progress seasons as dropped."""
@@ -1070,6 +1078,13 @@ class Season(Media):
                         bulk_create_with_history(
                             episodes_to_create,
                             Episode,
+                        )
+                        from app import statistics_sync
+
+                        statistics_sync.mark_rows(
+                            self.user_id,
+                            episodes_to_create,
+                            reason="season_completed_fan_out",
                         )
 
                     # Completing the season ends any pass it was in.

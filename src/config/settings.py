@@ -1561,11 +1561,10 @@ if not CELERY_TASK_SOFT_TIME_LIMIT:
 # interactive work strands it behind every background batch.
 CELERY_TASK_PRIORITY_INTERACTIVE = 0
 CELERY_TASK_PRIORITY_FOLLOWUP = 3
-# A Statistics refresh continuation must never outrank a webhook just because
-# its run started first. Publishing it above 0 puts it on "interactive:<n>",
-# which the worker's BRPOP drains only after the bare "interactive" key where
-# scrobbles and playback work land.
-CELERY_TASK_PRIORITY_STATISTICS_CONTINUATION = 3
+# A background Statistics sync yields to webhooks (0) but, on the minimal-tier
+# combined worker, still drains ahead of FOLLOWUP imports and backfills: at 3 a
+# chunk of the old refresh run could wait behind them indefinitely (#1272).
+CELERY_TASK_PRIORITY_STATISTICS_SYNC = 1
 CELERY_TASK_PRIORITY_DEFAULT = 5
 CELERY_TASK_PRIORITY_BACKGROUND = 9
 # Celery copies task_default_priority onto every task before it consults the
@@ -1574,49 +1573,22 @@ CELERY_TASK_PRIORITY_BACKGROUND = 9
 # supplies both the explicit classes and the default fallback instead.
 CELERY_TASK_DEFAULT_PRIORITY = None
 
-# Statistics refresh runs. A run is a bounded sequence of interactive chunk
-# tasks; these are the knobs a Docker session turns to keep the slowest chunk
-# inside the interactive latency budget.
-STATISTICS_REFRESH_CHUNK_DAYS = config(
-    "STATISTICS_REFRESH_CHUNK_DAYS",
-    default=25,
-    cast=int,
+# Statistics sync (docs/architecture/statistics-sync.md). One sync task works
+# for at most this many seconds, then queues its own follow-up, so the
+# single-slot interactive worker is never held for a whole All Time rebuild.
+STATISTICS_SYNC_TASK_BUDGET_SECONDS = config(
+    "STATISTICS_SYNC_TASK_BUDGET_SECONDS", default=10, cast=int
 )
-# Seconds to delay each continuation. Default 0 on purpose: Celery's Redis
-# transport hands an ETA task to the worker immediately and holds it in memory
-# until due, which with prefetch_multiplier=1 occupies the worker's only
-# prefetch slot. Raise it only if a broker needs the breathing room.
-STATISTICS_REFRESH_CHUNK_COUNTDOWN = config(
-    "STATISTICS_REFRESH_CHUNK_COUNTDOWN",
-    default=0,
-    cast=int,
+# Days built per prefetch slice inside a sync.
+STATISTICS_SYNC_SLICE_DAYS = config("STATISTICS_SYNC_SLICE_DAYS", default=25, cast=int)
+# The heavy ranges (Last 90 Days .. All Time) are rebuilt once changes have
+# been quiet this long, and never trail by more than the max delay. Hot ranges
+# (Today .. Last 30 Days) rebuild on every sync.
+STATISTICS_SYNC_HEAVY_SETTLE_SECONDS = config(
+    "STATISTICS_SYNC_HEAVY_SETTLE_SECONDS", default=90, cast=int
 )
-# Lease TTL for a run's control record, heartbeated by every chunk.
-STATISTICS_REFRESH_RUN_LEASE = config(
-    "STATISTICS_REFRESH_RUN_LEASE",
-    default=300,
-    cast=int,
-)
-# How long to let History settle before restarting a run that aborted because
-# History moved under it.
-#
-# A run that notices the version changed must abort: publishing would
-# overwrite a newer result with numbers built against the old version. It then
-# owes a fresh run. Restarting that run immediately is what produced the
-# observed failure: a credits backfill bumps the history version roughly every
-# ten seconds while it drains, so an All Time refresh did about nine seconds
-# of work, aborted, restarted, and repeated seven times in a minute, burning
-# the interactive worker on results that were known to be stale before they
-# were built.
-#
-# Short on purpose. This is a settling window, not a backoff: each window
-# still ends in exactly one run, planned against the latest version, so a
-# History that never stops changing delays each attempt by this much and no
-# more. Set it to 0 to restore the immediate restart.
-STATISTICS_HISTORY_DEBOUNCE_SECONDS = config(
-    "STATISTICS_HISTORY_DEBOUNCE_SECONDS",
-    default=20,
-    cast=int,
+STATISTICS_SYNC_HEAVY_MAX_DELAY_SECONDS = config(
+    "STATISTICS_SYNC_HEAVY_MAX_DELAY_SECONDS", default=600, cast=int
 )
 
 CELERY_RESULT_EXTENDED = True
@@ -1678,11 +1650,22 @@ CELERY_TASK_ROUTES = {
         "queue": "interactive",
         "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
     },
-    # Each continuation builds one bounded chunk of days and returns, so the
-    # worker is free between chunks. See docs/architecture/statistics-refresh-runs.md.
+    # Retired chunk-run name; drains queued messages into a sync.
     "app.tasks.continue_statistics_refresh_task": {
         "queue": "interactive",
-        "priority": CELERY_TASK_PRIORITY_STATISTICS_CONTINUATION,
+        "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
+    },
+    # Budget-bounded, and yields to webhooks. See
+    # docs/architecture/statistics-sync.md.
+    "app.tasks.statistics_sync_task": {
+        "queue": "interactive",
+        "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
+    },
+    # Cheap (one query, then enqueues). On the interactive worker so a long
+    # import on the background worker cannot delay recovery of lost syncs.
+    "Reconcile statistics sync": {
+        "queue": "interactive",
+        "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
     },
     # History cache rebuilds now bound their inline work (see
     # refresh_history_cache in history_cache_reader.py), but they're kept off the
@@ -1826,6 +1809,13 @@ CELERY_BEAT_SCHEDULE = {
     # A control-command reply (control.revoke, the celery_ping health check)
     # can write a malformed Kombu Redis binding at any point during uptime,
     # not just at startup, so this bounds how long a bad entry survives (#588).
+    # The Statistics sync's safety net: finds users whose ranges trail their
+    # changes (lost/starved sync messages, midnight rollover, first build after
+    # an upgrade or a cache flush) and queues a sync.
+    "reconcile_statistics_sync": {
+        "task": "Reconcile statistics sync",
+        "schedule": 60,
+    },
     "repair_celery_broker_bindings": {
         "task": "Repair Celery broker bindings",
         "schedule": 60 * 15,

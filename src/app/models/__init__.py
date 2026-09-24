@@ -90,6 +90,11 @@ from app.models.provider_credential import (
     InstanceProviderCredential,
     UserProviderCredential,
 )
+from app.models.statistics import (
+    StatisticsDirtyDay,
+    StatisticsSnapshot,
+    StatisticsSyncState,
+)
 from app.models.tombstone import DeletedMedia
 from app.models.tv import (
     TV,
@@ -177,6 +182,9 @@ __all__ = [
     "RewatchAlreadyCompleteError",
     "Season",
     "Sources",
+    "StatisticsDirtyDay",
+    "StatisticsSnapshot",
+    "StatisticsSyncState",
     "Status",
     "Studio",
     "Tag",

@@ -371,7 +371,7 @@ A run that aborts on `history_version_changed` used to restart immediately.
 Under a credits backfill — which bumps the version roughly every ten seconds
 while its queue drains — that produced seven aborted All Time refreshes in a
 minute. An abort of that kind now waits a short settling window that coalesces
-further aborts. See [statistics-refresh-runs.md](statistics-refresh-runs.md)
+further aborts. The sync that replaced runs never aborts at all; see [statistics-sync.md](statistics-sync.md)
 for the state machine itself.
 
 ### History day-cache repair — 13.6 h of CPU in 16.7 h (#1158)
