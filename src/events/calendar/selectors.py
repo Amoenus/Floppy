@@ -91,14 +91,24 @@ def filter_items_to_fetch(items):
 
     # Provider responses are not cached, so every selected item costs a live
     # network call. Drop the ones checked recently enough that nothing can
-    # usefully have changed. Items the TV/movie selectors picked are exempt --
-    # those were chosen because TMDB's change feed reported a change, or because
-    # they have no events yet, so re-checking them is the point.
+    # usefully have changed. Only TMDB change-feed hits are exempt: re-checking
+    # them is the point. Items picked because they have no events yet follow the
+    # window too -- an ended show never gains a season event, and exempting it
+    # re-fetched it on every reload (#1158). Never-checked items stay due.
     stale_after_hours = getattr(settings, "CALENDAR_ITEM_STALE_AFTER_HOURS", 0)
     if stale_after_hours > 0:
         fresh_cutoff = now - timezone.timedelta(hours=stale_after_hours)
+        change_feed_q = Q(
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            media_id__in=get_changed_tmdb_tv_ids(),
+        ) | Q(
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            media_id__in=get_changed_tmdb_movie_ids(),
+        )
         selected = selected.exclude(
-            Q(calendar_checked_at__gte=fresh_cutoff) & ~(tv_q | movie_q),
+            Q(calendar_checked_at__gte=fresh_cutoff) & ~change_feed_q,
         )
 
     return selected.distinct()
