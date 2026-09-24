@@ -31,7 +31,7 @@ from app.models import MediaTypes, Sources, Status
 from app.models.tv import PRODUCTION_STATUS_ENDED, classify_production_status
 from app.providers import services
 from app.services import grouped_anime
-from integrations import anime_mapping, import_progress
+from integrations import anime_mapping, connection_health, import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 from integrations.models import StremioAccount
@@ -39,6 +39,7 @@ from integrations.models import StremioAccount
 logger = logging.getLogger(__name__)
 
 STREMIO_API_BASE_URL = "https://api.strem.io/api"
+STREMIO_INVALID_SESSION_CODE = 1
 CINEMETA_VIDEO_IDS_URL = (
     "https://v3-cinemeta.strem.io/catalog/series/video-ids/imdbIds={ids}"
 )
@@ -80,6 +81,15 @@ _STATUS_RANK = {
 }
 
 
+
+def _is_invalid_session(error):
+    """Return whether a Stremio API error means the auth key is no longer valid."""
+    if isinstance(error, dict):
+        if error.get("code") == STREMIO_INVALID_SESSION_CODE:
+            return True
+        error = error.get("message", "")
+    return "session does not exist" in str(error).lower()
+
 def _api_call(method, auth_key=None, **params):
     """Call a Stremio API method and unwrap the result envelope."""
     body = dict(params)
@@ -100,6 +110,11 @@ def _api_call(method, auth_key=None, **params):
         else:
             message = str(error)
         msg = f"Stremio API error: {message}"
+        # Stremio answers an expired or revoked auth key with code 1,
+        # "Session does not exist". Any other envelope error is not about
+        # the credentials.
+        if _is_invalid_session(error):
+            raise helpers.ConnectionAuthError(msg)
         raise MediaImportError(msg)
 
     result = response.get("result")
@@ -209,11 +224,7 @@ class StremioImporter:
         try:
             self.auth_key = helpers.decrypt_or_raise(self.account.auth_key)
         except MediaImportError as decrypt_error:
-            self.account.connection_broken = True
-            self.account.last_error_message = str(decrypt_error)
-            self.account.save(
-                update_fields=["connection_broken", "last_error_message", "updated_at"],
-            )
+            connection_health.record_failure(self.account, decrypt_error, auth=True)
             raise
 
         self.existing_media = helpers.get_existing_media(user)
@@ -235,7 +246,11 @@ class StremioImporter:
         try:
             items = get_library_items(self.auth_key)
         except MediaImportError as error:
-            self._mark_broken(str(error))
+            connection_health.record_failure(
+                self.account,
+                error,
+                auth=isinstance(error, helpers.ConnectionAuthError),
+            )
             raise
 
         movies, series, anime = self._partition_items(items)
@@ -316,16 +331,7 @@ class StremioImporter:
         helpers.bulk_create_media(self.bulk_media, self.user)
 
         self.account.last_sync_at = timezone.now()
-        self.account.connection_broken = False
-        self.account.last_error_message = ""
-        self.account.save(
-            update_fields=[
-                "last_sync_at",
-                "connection_broken",
-                "last_error_message",
-                "updated_at",
-            ],
-        )
+        connection_health.record_success(self.account, extra_fields=["last_sync_at"])
 
         imported_counts = {
             media_type: len(media_list)
@@ -333,16 +339,6 @@ class StremioImporter:
         }
         return imported_counts, "\n".join(dict.fromkeys(self.warnings))
 
-    def _mark_broken(self, message):
-        self.account.connection_broken = True
-        self.account.last_error_message = message
-        self.account.save(
-            update_fields=[
-                "connection_broken",
-                "last_error_message",
-                "updated_at",
-            ],
-        )
 
     def _partition_items(self, items):
         """Split library items into importable movies, series, and anime."""

@@ -31,6 +31,14 @@ class MediaImportError(Exception):
     """Custom exception for import errors."""
 
 
+class ConnectionAuthError(MediaImportError):
+    """The provider rejected our credentials (401/403).
+
+    The one import failure that marks an account ``connection_broken``; see
+    ``integrations.connection_health``.
+    """
+
+
 class MediaImportUnexpectedError(Exception):
     """Custom exception for unexpected import errors."""
 

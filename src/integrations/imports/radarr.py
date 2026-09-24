@@ -10,8 +10,9 @@ from django.utils import timezone
 
 from app.models import Item, MediaTypes, Sources
 from app.providers import services
-from integrations import import_progress
+from integrations import connection_health, import_progress
 from integrations.imports.helpers import (
+    ConnectionAuthError,
     MediaImportError,
     decrypt_or_raise,
     find_item_across_buckets,
@@ -42,7 +43,7 @@ class RadarrClient:
             raise MediaImportError(msg) from error
         if response.status_code in (401, 403):
             msg = "Radarr API key is invalid or unauthorized"
-            raise MediaImportError(msg)
+            raise ConnectionAuthError(msg)
         if response.status_code >= HTTPStatus.BAD_REQUEST:
             msg = f"Radarr request failed ({response.status_code}) for {path}"
             raise MediaImportError(msg)
@@ -82,11 +83,8 @@ class RadarrImporter:
         try:
             api_key = decrypt_or_raise(self.instance.api_key)
         except MediaImportError as error:
-            self.instance.connection_broken = True
-            self.instance.last_error_message = str(error)
-            self.instance.save(
-                update_fields=["connection_broken", "last_error_message", "updated_at"],
-            )
+            # An unreadable stored key needs a reconnect as much as a rejected one.
+            connection_health.record_failure(self.instance, error, auth=True)
             raise
 
         self.client = RadarrClient(self.instance.base_url, api_key)
@@ -99,10 +97,10 @@ class RadarrImporter:
         try:
             movies = self.client.movies()
         except MediaImportError as error:
-            self.instance.connection_broken = True
-            self.instance.last_error_message = str(error)
-            self.instance.save(
-                update_fields=["connection_broken", "last_error_message", "updated_at"]
+            connection_health.record_failure(
+                self.instance,
+                error,
+                auth=isinstance(error, ConnectionAuthError),
             )
             raise
 
@@ -133,16 +131,7 @@ class RadarrImporter:
             imported_counts["updated"] += 1
 
         self.instance.last_sync_at = timezone.now()
-        self.instance.connection_broken = False
-        self.instance.last_error_message = ""
-        self.instance.save(
-            update_fields=[
-                "last_sync_at",
-                "connection_broken",
-                "last_error_message",
-                "updated_at",
-            ]
-        )
+        connection_health.record_success(self.instance, extra_fields=["last_sync_at"])
 
         return dict(imported_counts), "\n".join(dict.fromkeys(self.warnings))
 

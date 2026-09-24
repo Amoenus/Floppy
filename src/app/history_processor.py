@@ -10,14 +10,11 @@ from app.templatetags import app_tags
 def process_history_entries(history_records, media_type, media_entry_number, user):
     """Process all history records into timeline entries."""
     timeline_entries = []
-    last = history_records.first()
-
-    for _ in range(history_records.count()):
-        entry = process_history_entry((last, last.prev_record), media_type, user)
+    for record in history_records:
+        entry = process_history_entry((record, record.prev_record), media_type, user)
         if entry["changes"]:
             entry["media_entry_number"] = media_entry_number
             timeline_entries.append(entry)
-        last = last.prev_record
 
     return timeline_entries
 
@@ -80,6 +77,9 @@ def organize_changes(changes, media_type, user):
     for change in changes:
         if change.field == "progress" and media_type == MediaTypes.MOVIE.value:
             continue
+        # An episode's `dropped` flag mirrors its status, which is shown.
+        if change.field == "dropped" and media_type == MediaTypes.EPISODE.value:
+            continue
 
         change_data = {
             "description": format_description(
@@ -117,19 +117,29 @@ def collect_creation_changes(new_record, history_model, media_type, user):
         "other_changes": [],
     }
 
+    is_episode = media_type == MediaTypes.EPISODE.value
+    # A finished episode play always says when it finished, even without a
+    # date, and its status goes without saying. Any other status, such as an
+    # open play, is shown instead (issue #1278).
+    episode_finished = is_episode and getattr(new_record, "status", None) in {
+        Status.COMPLETED.value,
+        None,
+    }
+
     for field in history_model._meta.get_fields():
         if (
             field.name.startswith("history_")
             or field.name == "id"
             or not hasattr(new_record, field.attname)
             or (field.name == "progress" and media_type == MediaTypes.MOVIE.value)
+            # An episode's `dropped` flag mirrors its status.
+            or (is_episode and field.name == "dropped")
+            or (episode_finished and field.name == "status")
         ):
             continue
 
         value = getattr(new_record, field.attname, None)
-        if not value and not (
-            media_type == MediaTypes.EPISODE.value and field.name == "end_date"
-        ):
+        if not value and not (episode_finished and field.name == "end_date"):
             continue
 
         change_data = {

@@ -9,7 +9,6 @@ from urllib.parse import urlencode
 
 from django.apps import apps
 from django.conf import settings
-from django.core.exceptions import ObjectDoesNotExist
 from django.core.paginator import EmptyPage, Paginator
 from django.db.models.functions import ExtractDay, ExtractMonth
 from django.db.utils import OperationalError
@@ -25,12 +24,10 @@ from app import (
     helpers,
     history_cache,
     history_cache_reader,
-    history_processor,
 )
 from app import statistics as stats
 from app.models import (
     Anime,
-    BasicMedia,
     BoardGame,
     Book,
     Comic,
@@ -57,78 +54,6 @@ _MONTH_CACHE_UNSUPPORTED_FILTER_KEYS = frozenset(
         "tv",
     },
 )
-
-
-@require_GET
-def history_modal(
-    request,
-    source,
-    media_type,
-    media_id,
-    season_number=None,
-    episode_number=None,
-):
-    """Return the history page for a media item."""
-    instance_id = request.GET.get("instance_id")
-    if instance_id:
-        try:
-            media = BasicMedia.objects.get_media(
-                request.user,
-                media_type,
-                instance_id,
-            )
-            user_medias = [media]
-        except (ObjectDoesNotExist, ValueError, TypeError):
-            user_medias = BasicMedia.objects.filter_media(
-                request.user,
-                media_id,
-                media_type,
-                source,
-                season_number=season_number,
-                episode_number=episode_number,
-            )
-    else:
-        user_medias = BasicMedia.objects.filter_media(
-            request.user,
-            media_id,
-            media_type,
-            source,
-            season_number=season_number,
-            episode_number=episode_number,
-        )
-
-    try:
-        total_medias = user_medias.count()
-    except TypeError:
-        total_medias = len(user_medias)
-    timeline_entries = []
-    for index, media in enumerate(user_medias, start=1):
-        history = (
-            media.history.filter(end_date__isnull=False)
-            if hasattr(media.history, "filter")
-            else [h for h in media.history.all() if h.end_date]
-        )
-        if history:
-            media_entry_number = total_medias - index + 1
-            timeline_entries.extend(
-                history_processor.process_history_entries(
-                    history,
-                    media_type,
-                    media_entry_number,
-                    request.user,
-                ),
-            )
-    return render(
-        request,
-        "app/components/fill_history.html",
-        {
-            "user": request.user,
-            "media_type": media_type,
-            "timeline": timeline_entries,
-            "total_medias": total_medias,
-            "return_url": request.GET.get("return_url", ""),
-        },
-    )
 
 
 @require_http_methods(["DELETE"])

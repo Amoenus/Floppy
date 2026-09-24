@@ -8,7 +8,7 @@ from django.core.validators import (
     MinValueValidator,
 )
 from django.db import models, transaction
-from django.db.models import Max
+from django.db.models import F, Max
 from django.utils import timezone
 from django.utils.functional import cached_property
 from model_utils import FieldTracker
@@ -1599,10 +1599,12 @@ class Season(Media):
         """
         item = self.get_episode_item(episode_number)
 
+        # The latest finished play, never an open one ahead of it: databases
+        # disagree on where a NULL end date sorts.
         episodes = Episode.objects.filter(
             related_season=self,
             item=item,
-        ).order_by("-end_date")
+        ).order_by(F("end_date").desc(nulls_last=True), "-created_at")
 
         if external_id:
             episode = episodes.filter(external_id=external_id).first()
@@ -2133,10 +2135,9 @@ class Episode(models.Model):
             "score",
             "watch_operation_id",
             "external_id",
-            # `status` stays excluded: every episode row is a watch, so its
-            # status is inert noise in the timeline. `start_date` is tracked so
-            # the history modal can show "Started on …" (issue #377).
-            "status",
+            # `start_date` and `status` are tracked: a play can be left in
+            # progress, and the history modal must tell it apart from a finish
+            # without a date (issues #377, #1278).
             "notes",
             "entry_source",
         ],

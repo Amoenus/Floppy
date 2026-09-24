@@ -8,6 +8,10 @@ import requests
 logger = logging.getLogger(__name__)
 
 LIBRARY_PAGE_SIZE = 500
+REQUEST_TIMEOUT = 15
+# A recursive 500-item library page is the slowest call a busy server answers,
+# so it gets a longer read timeout than the point lookups.
+LIBRARY_TIMEOUT = (10, 60)
 
 
 class JellyfinClientError(Exception):
@@ -34,12 +38,13 @@ class JellyfinClient:
         }
 
     def _request(self, method: str, path: str, **kwargs):
+        timeout = kwargs.pop("timeout", REQUEST_TIMEOUT)
         try:
             response = requests.request(
                 method,
                 f"{self.base_url}{path}",
                 headers=self._headers(),
-                timeout=15,
+                timeout=timeout,
                 **kwargs,
             )
         except requests.RequestException as exc:
@@ -111,6 +116,7 @@ class JellyfinClient:
                     "StartIndex": start_index,
                     "Limit": LIBRARY_PAGE_SIZE,
                 },
+                timeout=LIBRARY_TIMEOUT,
             ).json()
 
             items = payload.get("Items") or []

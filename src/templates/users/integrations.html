@@ -413,6 +413,11 @@
               <span>{% blocktranslate with value1=jellyfin_account.last_sync_at|user_datetime_format:user %}Last sync: {{ value1 }}{% endblocktranslate %}</span>
             {% endif %}
           </div>
+          {% if jellyfin_account.connection_broken %}
+            <p class="text-xs text-[var(--color-text-muted)]">
+              {% translate "Jellyfin rejected the API key. Floppy re-checks it on every scheduled run; reconnect if the key was changed or revoked." %}
+            </p>
+          {% endif %}
           {% if jellyfin_account.last_error_message %}
             <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
               <strong>{% translate "Error:" %}</strong> {{ jellyfin_account.last_error_message }}

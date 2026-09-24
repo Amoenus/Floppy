@@ -789,30 +789,54 @@ class ArrImporterTests(TestCase):
         )
 
     @patch("integrations.imports.radarr.requests.get")
-    def test_radarr_import_marks_connection_broken_on_timeout(self, mock_get):
-        """Radarr timeouts should become handled import errors with account state."""
+    def test_radarr_import_records_timeout_without_marking_broken(self, mock_get):
+        """A Radarr timeout is recorded but says nothing about the API key."""
         mock_get.side_effect = requests.exceptions.ConnectTimeout("connect timed out")
 
         with self.assertRaises(helpers.MediaImportError) as cm:
             radarr.importer(None, self.user, "new")
 
         self.radarr_instance.refresh_from_db()
-        self.assertTrue(self.radarr_instance.connection_broken)
+        self.assertFalse(self.radarr_instance.connection_broken)
         self.assertIn("Could not reach Radarr", str(cm.exception))
         self.assertIn("Could not reach Radarr", self.radarr_instance.last_error_message)
 
     @patch("integrations.imports.sonarr.requests.get")
-    def test_sonarr_import_marks_connection_broken_on_timeout(self, mock_get):
-        """Sonarr timeouts should become handled import errors with account state."""
+    def test_sonarr_import_records_timeout_without_marking_broken(self, mock_get):
+        """A Sonarr timeout is recorded but says nothing about the API key."""
         mock_get.side_effect = requests.exceptions.ConnectTimeout("connect timed out")
 
         with self.assertRaises(helpers.MediaImportError) as cm:
             sonarr.importer(None, self.user, "new")
 
         self.sonarr_instance.refresh_from_db()
-        self.assertTrue(self.sonarr_instance.connection_broken)
+        self.assertFalse(self.sonarr_instance.connection_broken)
         self.assertIn("Could not reach Sonarr", str(cm.exception))
         self.assertIn("Could not reach Sonarr", self.sonarr_instance.last_error_message)
+
+
+    @patch("integrations.imports.radarr.requests.get")
+    def test_radarr_import_marks_connection_broken_on_rejected_key(self, mock_get):
+        """Only a rejected Radarr API key marks the instance broken."""
+        mock_get.return_value.status_code = 401
+
+        with self.assertRaises(helpers.ConnectionAuthError):
+            radarr.importer(None, self.user, "new")
+
+        self.radarr_instance.refresh_from_db()
+        self.assertTrue(self.radarr_instance.connection_broken)
+
+
+    @patch("integrations.imports.sonarr.requests.get")
+    def test_sonarr_import_marks_connection_broken_on_rejected_key(self, mock_get):
+        """Only a rejected Sonarr API key marks the instance broken."""
+        mock_get.return_value.status_code = 401
+
+        with self.assertRaises(helpers.ConnectionAuthError):
+            sonarr.importer(None, self.user, "new")
+
+        self.sonarr_instance.refresh_from_db()
+        self.assertTrue(self.sonarr_instance.connection_broken)
 
 
 class ArrImportTaskTests(TestCase):

@@ -1385,29 +1385,29 @@ def history_modal(
             episode_number=episode_number,
         )
 
+    if hasattr(user_medias, "order_by"):
+        # Number instances in the order they were added: date order puts an
+        # entry without an end date first or last depending on the database.
+        user_medias = user_medias.order_by("created_at", "pk")
     try:
         total_medias = user_medias.count()
     except TypeError:
         total_medias = len(user_medias)
     timeline_entries = []
-    for index, media in enumerate(user_medias, start=1):
-        # Filter history to only include records with end_date (completed plays)
-        # This prevents showing invalid history records from in-progress episodes
-        history = (
-            media.history.filter(end_date__isnull=False)
-            if hasattr(media.history, "filter")
-            else [h for h in media.history.all() if h.end_date]
+    for media_entry_number, media in enumerate(user_medias, start=1):
+        history = media.history.all()
+        if media_type == MediaTypes.PODCAST.value:
+            # Pocket Casts sync writes a record for every partial listen; only
+            # records with an end date describe a listen.
+            history = history.filter(end_date__isnull=False)
+        timeline_entries.extend(
+            history_processor.process_history_entries(
+                history,
+                media_type,
+                media_entry_number,
+                request.user,
+            ),
         )
-        if history:
-            media_entry_number = total_medias - index + 1
-            timeline_entries.extend(
-                history_processor.process_history_entries(
-                    history,
-                    media_type,
-                    media_entry_number,
-                    request.user,
-                ),
-            )
     return render(
         request,
         "app/components/fill_history.html",

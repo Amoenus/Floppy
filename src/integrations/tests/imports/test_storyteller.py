@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from unittest.mock import patch
 
+import requests
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
@@ -453,3 +454,18 @@ class StorytellerImporterTests(TestCase):
             "invalid or expired",
             self.user.storyteller_account.last_error_message,
         )
+
+    @patch("integrations.imports.storyteller.requests.get")
+    def test_server_error_and_timeout_do_not_mark_broken(self, mock_get):
+        """A 5xx or a timeout is recorded but says nothing about the token."""
+        mock_get.return_value.status_code = 503
+        for failure in (None, requests.ReadTimeout("Read timed out")):
+            mock_get.side_effect = failure
+
+            with self.assertRaises(MediaImportError):
+                StorytellerImporter(self.user).import_data()
+
+            account = self.user.storyteller_account
+            account.refresh_from_db()
+            self.assertFalse(account.connection_broken)
+            self.assertTrue(account.last_error_message)
