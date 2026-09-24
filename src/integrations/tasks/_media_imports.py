@@ -7,7 +7,7 @@ from django.utils import timezone
 import events
 from app import cache_safety, history_cache
 from app.mixins import disable_fetch_releases
-from integrations import import_progress
+from integrations import connection_health, import_progress
 from integrations.imports import (
     anilist,
     audiobookshelf,
@@ -40,6 +40,7 @@ from integrations.imports import (
     xbox,
     yamtrack,
 )
+from integrations.jellyfin_client import JellyfinClientError
 from integrations.jellyfin_sync import (
     JELLYFIN_PUSH_TASK_NAME,
     JellyfinPushSyncService,
@@ -47,6 +48,7 @@ from integrations.jellyfin_sync import (
 )
 from integrations.models import ImportRun
 from integrations.plex_watchlist import PlexWatchlistSyncService
+from integrations.tasks import _jellyfin_health
 from integrations.tasks._import_helpers import (
     GOODREADS_IMPORT_TASK_NAME,
     LEGACY_GOODREADS_IMPORT_TASK_NAMES,
@@ -468,31 +470,37 @@ def sync_plex_watchlist(user_id, mode="watchlist"):
     return format_watchlist_sync_message(sync_counts, warnings)
 
 
-@shared_task(name=JELLYFIN_PUSH_TASK_NAME)
-def push_jellyfin_watched(user_id):
+@shared_task(bind=True, name=JELLYFIN_PUSH_TASK_NAME)
+def push_jellyfin_watched(self, user_id):
     """Celery task for pushing Floppy watched state to Jellyfin."""
-    from integrations.models import JellyfinAccount
+    # Events arriving from here on need a push of their own, so let the next
+    # webhook queue one.
+    cache_safety.release_lock(_jellyfin_health.instant_push_lock_key(user_id))
 
     user = get_user_model().objects.get(id=user_id)
     account = getattr(user, "jellyfin_account", None)
-    if not account:
+    if not _jellyfin_health.has_credentials(account):
         msg = "Connect Jellyfin before syncing."
         raise helpers.MediaImportError(msg)
 
     try:
+        if not _jellyfin_health.reprobe_if_broken(
+            account,
+            error_field="last_error_message",
+        ):
+            return "Skipped: Jellyfin rejected the API key. Reconnect Jellyfin."
         push_counts, warnings = JellyfinPushSyncService(user, account).sync()
-    except helpers.MediaImportError as exc:
-        JellyfinAccount.objects.filter(user=user).update(
-            connection_broken=True,
-            last_error_message=str(exc),
+    except (JellyfinClientError, helpers.MediaImportError) as exc:
+        _jellyfin_health.handle_failure(
+            self,
+            account,
+            exc,
+            error_field="last_error_message",
         )
         raise
 
-    JellyfinAccount.objects.filter(user=user).update(
-        last_sync_at=timezone.now(),
-        connection_broken=False,
-        last_error_message="",
-    )
+    account.last_sync_at = timezone.now()
+    connection_health.record_success(account, extra_fields=["last_sync_at"])
 
     return format_jellyfin_push_message(push_counts, warnings)
 

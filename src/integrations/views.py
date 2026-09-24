@@ -1871,6 +1871,7 @@ def jellyfin_connect(request):
         "jellyfin_username": current_user.get("Name", ""),
         "connection_broken": False,
         "last_error_message": "",
+        "last_pull_error_message": "",
     }
     if existing_account is None or identity_changed:
         # A different server/user invalidates any cached pull state: a
@@ -1974,7 +1975,9 @@ def jellyfin_push_now(request):
 def jellyfin_pull_now(request):
     """Queue an immediate automatic Jellyfin history pull."""
     account = getattr(request.user, "jellyfin_account", None)
-    if not account or not account.is_connected:
+    # A broken account is still queued: the pull re-probes the key and clears
+    # the flag when it works again.
+    if not account or not account.base_url or not account.api_key:
         messages.error(request, "Connect Jellyfin before importing history.")
         return redirect("integrations")
 
