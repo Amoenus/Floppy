@@ -120,7 +120,15 @@ def import_media(
     # landed. Recurring importers poll on a 2-hour schedule and usually import
     # nothing; firing an unscoped global reload each time was re-walking the whole
     # library (and holding the single celery-queue worker) for no reason.
-    if has_imported_media(imported_counts):
+    if has_imported_media(imported_counts) and importer_func == gpodder.importer:
+        # GPodder saves each play through the ORM, so post_save already marked
+        # the touched history and statistics days. It polls every 15 minutes;
+        # a library-wide rebuild per imported play kept a small host busy (#1158).
+        logger.info(
+            "import_catchup_skipped reason=signal_writes importer=gpodder user_id=%s",
+            user_id,
+        )
+    elif has_imported_media(imported_counts):
         events.tasks.reload_calendar.delay()
 
         # Importers rely heavily on bulk_create_with_history, which bypasses model signals.
