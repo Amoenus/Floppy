@@ -341,6 +341,7 @@
           {% endfor %}
         {% endif %}
       </div>
+      </div>
     {% endif %}
 
     {% if data.results %}
@@ -405,6 +406,7 @@
           {% blocktranslate trimmed with value_1=data.page value_2=data.total_pages value_3=data.total_results %}Page {{ value_1 }} of {{ value_2 }} ({{ value_3 }} results){% endblocktranslate %}
         </div>
       {% endif %}
+      </div>
     {% endif %}
 
     {% if not local_results and not data.results %}
