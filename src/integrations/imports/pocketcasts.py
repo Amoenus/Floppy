@@ -867,8 +867,10 @@ class PocketCastsImporter:
                 except requests.HTTPError as e:
                     # If refresh fails with 401, _refresh_token will handle fallback to login if credentials exist
                     # For legacy accounts without credentials, disconnect
+                    # ``Response.__bool__`` is ``response.ok``, so an error
+                    # response is falsy: compare against None, not truthiness.
                     if (
-                        e.response
+                        e.response is not None
                         and e.response.status_code == requests.codes.unauthorized
                     ) and not has_credentials:
                         self._disconnect_account("Refresh token is invalid or expired")
