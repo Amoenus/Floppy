@@ -7,6 +7,7 @@ that is not listed is drift. See docs/architecture/media-card.md.
 """
 
 from dataclasses import asdict, dataclass
+from uuid import uuid4
 
 
 @dataclass(frozen=True)
@@ -117,5 +118,8 @@ def card_context(page_context, surface, values):
         **dict.fromkeys(CARD_VALUES),
         **asdict(SURFACES[surface]),
         "from_grid": True,
+        # Two cards for one item (two copies in a Collection, a detail page's
+        # own item in its related grid) must not share their modal targets.
+        "card_uid": uuid4().hex[:8],
         **values,
     }

@@ -105,6 +105,15 @@ class MediaCardSurfaceContractTest(TestCase):
         content = self.render_card("related", public_view=True)
         self.assertNotIn("media-card-overlay absolute", content)
 
+    def test_two_cards_for_one_item_do_not_share_modal_targets(self):
+        """A second copy of an item opens its own modal, not the first card's."""
+        content = self.render_card("collection") + self.render_card("collection")
+        track_ids = re.findall(r'<div id="(track-movie-[^"]+)"></div>', content)
+        self.assertEqual(len(track_ids), 2)
+        self.assertNotEqual(track_ids[0], track_ids[1])
+        for track_id in track_ids:
+            self.assertIn(f'hx-target="#{track_id}"', content)
+
     def test_unknown_value_is_rejected(self):
         """An ad-hoc flag must be declared in app.card_surfaces first."""
         with self.assertRaises(TypeError):
