@@ -82,4 +82,3 @@ Known remaining duplication:
   loads episodes' seasons and annotates `max_progress`, and serves the owner's data on
   public lists.
 - Moving either onto the shared lookup needs its own change, with query-count checks.
-- Episode rows have no `formatted_score`, so episode cards show no rating on any surface.

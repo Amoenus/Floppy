@@ -2311,6 +2311,10 @@ class Episode(models.Model):
                 default_change_reason=EPISODE_PLAYED_REASON,
             )
 
+    # Episode is not a Media subclass; share its score formatting so an episode
+    # card shows its rating like every other card.
+    formatted_score = Media.formatted_score
+
     @property
     def progress(self):
         """Expose episode number as progress for list rendering/sorting fallbacks."""

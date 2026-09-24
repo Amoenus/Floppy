@@ -2573,6 +2573,59 @@ class ListDetailViewTests(TestCase):
         self.assertNotContains(response, "hero_track_button")
         self.assertNotContains(response, "empty overlay")
 
+    @patch.object(get_user_model(), "update_preference")
+    @patch.object(CustomList, "user_can_view")
+    def test_list_detail_episode_card_shows_rating(
+        self,
+        mock_user_can_view,
+        mock_update_preference,
+    ):
+        """A rated episode's card shows its rating, like every other card."""
+        mock_update_preference.side_effect = ["date_added", None]
+        mock_user_can_view.return_value = True
+
+        episode_item = Item.objects.create(
+            media_id="9002",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="The Rated One",
+            season_number=1,
+            episode_number=1,
+            image=settings.IMG_NONE,
+        )
+        season_item = Item.objects.create(
+            media_id="9002",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            image=settings.IMG_NONE,
+        )
+        tv_item = Item.objects.create(
+            media_id="9002",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            image=settings.IMG_NONE,
+        )
+        tv = TV.objects.create(item=tv_item, user=self.user, status=Status.IN_PROGRESS.value)
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        episode = Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            score=7.5,
+        )
+        episode_list = CustomList.objects.create(name="Rated Episodes", owner=self.user)
+        CustomListItem.objects.create(custom_list=episode_list, item=episode_item)
+
+        response = self.client.get(reverse("list_detail", args=[episode_list.id]))
+
+        self.assertContains(response, f'id="media-card-rating-{episode.id}"')
+        self.assertContains(response, ">7.5</span>")
+
     @patch("lists.views.services.get_media_metadata")
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
