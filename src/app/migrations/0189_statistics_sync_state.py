@@ -9,7 +9,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("app", "0187_anime_entry_source_basicmedia_entry_source_and_more"),
+        ("app", "0188_historicalepisode_status"),
         ("users", "0135_merge_20260918_0021"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
