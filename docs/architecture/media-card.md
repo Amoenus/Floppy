@@ -68,9 +68,18 @@ thing or use a different layout: list tiles (`lists/components/list_grid.html`),
 history day cards, the Now Playing card, person and cast cards, and statistics highlights.
 Do not copy the `media-card-*` classes into a new tile for a media item; use the tag.
 
+The library's album and artist grids (`artist_grid_items.html`,
+`album_list_grid_items.html`) are also separate. The card needs an `Item`, and albums
+and artists only get one through Home's placeholder rows, which are written to the
+database. The library does not write while it reads, so these tiles stay separate. They
+use the shared rating partial, `media_card_rating.html`, so a rating reads the same.
+
 Known remaining duplication:
 
 - Home builds its tracking rows in `users/home_screen._media_lookup_for_items`, which has
-  season-status and artwork fix-ups the shared lookup lacks. Moving it onto the shared
-  lookup needs its own change.
+  season-status and artwork fix-ups the shared lookup lacks.
+- Lists build theirs in `lists/views_helpers._attach_media_with_aggregation`, which also
+  loads episodes' seasons and annotates `max_progress`, and serves the owner's data on
+  public lists.
+- Moving either onto the shared lookup needs its own change, with query-count checks.
 - Episode rows have no `formatted_score`, so episode cards show no rating on any surface.
