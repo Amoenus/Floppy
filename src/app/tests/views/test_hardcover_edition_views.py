@@ -163,11 +163,11 @@ class HardcoverEditionViewTests(TestCase):
         )
 
     @patch("app.media_details_views.services.get_media_metadata")
-    def test_media_details_persists_selected_edition_cover(
+    def test_media_details_displays_selected_edition_cover(
         self,
         mock_get_media_metadata,
     ):
-        """Viewing an item with a picked edition updates the stored cover (#1251)."""
+        """The detail page shows the picked edition's cover, not the stored one (#1251)."""
         HardcoverEditionPreference.objects.create(
             user=self.user,
             item=self.item,
@@ -184,7 +184,7 @@ class HardcoverEditionViewTests(TestCase):
             "related": {},
         }
 
-        self.client.get(
+        response = self.client.get(
             reverse(
                 "media_details",
                 kwargs={
@@ -196,8 +196,12 @@ class HardcoverEditionViewTests(TestCase):
             ),
         )
 
+        self.assertContains(response, "http://example.com/de.jpg")
+
+        # The edition choice is per-viewer display only: the shared Item record
+        # (and thus every other user's gallery/fallback cover) must not change (#1283).
         self.item.refresh_from_db()
-        self.assertEqual(self.item.image, "http://example.com/de.jpg")
+        self.assertEqual(self.item.image, "http://example.com/en.jpg")
 
     @patch("app.track_modal_views.hardcover.editions")
     def test_track_modal_shows_selected_edition_row(self, mock_editions):

@@ -877,24 +877,6 @@ def media_details(
     if isinstance(media_metadata, dict):
         media_metadata.update(Item.title_fields_from_metadata(media_metadata))
 
-    # An explicit Hardcover edition (query param or saved preference) means the
-    # live fetch above already returned that edition's cover. Persist it on the
-    # Item so the gallery, and any future stored-metadata fallback, show the
-    # selected edition too instead of the cover the item was first tracked
-    # with (#1251).
-    if (
-        hardcover_edition_id
-        and detail_item is not None
-        and isinstance(media_metadata, dict)
-        and media_metadata.get("image")
-        and detail_item.image != media_metadata["image"]
-    ):
-        detail_item.image = media_metadata["image"]
-        _best_effort_detail_db_work(
-            lambda: detail_item.save(update_fields=["image"]),
-            operation_name="detail item edition cover sync",
-        )
-
     if media_type == MediaTypes.COMIC.value and isinstance(media_metadata, dict):
         raw_issues = media_metadata.pop("issues", None)
         if raw_issues:
@@ -1382,12 +1364,19 @@ def media_details(
     if render_secondary_only and isinstance(media_metadata, dict):
         studios_linked = _collect_studios_linked(media_metadata)
 
-    # Prefer a stored poster/cover override when the tracked item has one.
+    # Prefer a stored poster/cover override when the tracked item has one -
+    # unless this request just fetched a specific Hardcover edition (query
+    # param preview or the viewer's saved preference), whose cover the live
+    # fetch above already resolved and which would otherwise be immediately
+    # discarded in favor of the item's default-edition cover (#1251). This is
+    # display-only: the shared Item is never written here, since the edition
+    # choice is per-viewer, not the item's own record (#1283 review).
     if (
         detail_item
         and isinstance(media_metadata, dict)
         and detail_item.image
         and detail_item.image != settings.IMG_NONE
+        and not hardcover_edition_id
     ):
         media_metadata["image"] = detail_item.image
 
