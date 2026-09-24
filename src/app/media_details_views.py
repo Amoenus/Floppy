@@ -1364,12 +1364,19 @@ def media_details(
     if render_secondary_only and isinstance(media_metadata, dict):
         studios_linked = _collect_studios_linked(media_metadata)
 
-    # Prefer a stored poster/cover override when the tracked item has one.
+    # Prefer a stored poster/cover override when the tracked item has one -
+    # unless this request just fetched a specific Hardcover edition (query
+    # param preview or the viewer's saved preference), whose cover the live
+    # fetch above already resolved and which would otherwise be immediately
+    # discarded in favor of the item's default-edition cover (#1251). This is
+    # display-only: the shared Item is never written here, since the edition
+    # choice is per-viewer, not the item's own record (#1283 review).
     if (
         detail_item
         and isinstance(media_metadata, dict)
         and detail_item.image
         and detail_item.image != settings.IMG_NONE
+        and not hardcover_edition_id
     ):
         media_metadata["image"] = detail_item.image
 
