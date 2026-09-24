@@ -296,10 +296,10 @@ class PocketCastsImporter:
                     self.user.username,
                 )
             except Exception:
+                # Don't fail yet - let _ensure_valid_token handle it. A rejected
+                # login already marked the account broken; anything else (a
+                # timeout, a 5xx) says nothing about the credentials.
                 logger.exception("Failed to login when access token was missing")
-                # Mark as broken but don't fail yet - let _ensure_valid_token handle it
-                self.account.connection_broken = True
-                self.account.save()
         # If we have a refresh token but no access token (and no credentials), try to refresh immediately
         elif not has_access_token and has_refresh_token:
             logger.info(
@@ -313,12 +313,11 @@ class PocketCastsImporter:
                     self.user.username,
                 )
             except Exception:
+                # Don't fail yet - let _ensure_valid_token handle it. A rejected
+                # refresh already marked the account broken.
                 logger.exception(
                     "Failed to refresh token when access token was missing"
                 )
-                # Mark as broken but don't fail yet - let _ensure_valid_token handle it
-                self.account.connection_broken = True
-                self.account.save()
 
         # Allow import even if connection_broken - we'll attempt refresh/login in _ensure_valid_token
 

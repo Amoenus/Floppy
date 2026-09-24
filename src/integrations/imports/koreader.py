@@ -21,7 +21,7 @@ from app import helpers as app_helpers
 from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
-from integrations import import_progress
+from integrations import connection_health, import_progress
 from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 from integrations.models import KoreaderAccount, KoreaderDocumentLink
 
@@ -318,15 +318,7 @@ class KoreaderImporter:
         return dict(imported_counts), "\n".join(dict.fromkeys(self.warnings))
 
     def _mark_broken(self, message: str):
-        self.account.connection_broken = True
-        self.account.last_error_message = message
-        self.account.save(
-            update_fields=[
-                "connection_broken",
-                "last_error_message",
-                "updated_at",
-            ],
-        )
+        connection_health.record_failure(self.account, message, auth=True)
 
     def _should_skip_finished_link(self, link: KoreaderDocumentLink) -> bool:
         if not self.account.skip_finished_books:

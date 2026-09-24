@@ -22,7 +22,7 @@ from app.models import (
     Sources,
     Status,
 )
-from integrations import gpodder_api, import_progress, podcast_rss
+from integrations import connection_health, gpodder_api, import_progress, podcast_rss
 from integrations import models as integration_models
 from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 
@@ -60,11 +60,7 @@ class GPodderImporter:
                 password=decrypt_or_raise(self.account.password),
             )
         except MediaImportError as error:
-            self.account.connection_broken = True
-            self.account.last_error_message = str(error)
-            self.account.save(
-                update_fields=["connection_broken", "last_error_message", "updated_at"],
-            )
+            connection_health.record_failure(self.account, str(error), auth=True)
             raise
         self._seen_fingerprints = set()
         self._episode_cache = {}
@@ -80,11 +76,7 @@ class GPodderImporter:
                 update_fields=["connection_broken", "last_error_message", "updated_at"]
             )
         except gpodder_api.GPodderAuthError as exc:
-            self.account.connection_broken = True
-            self.account.last_error_message = str(exc)[:500]
-            self.account.save(
-                update_fields=["connection_broken", "last_error_message", "updated_at"]
-            )
+            connection_health.record_failure(self.account, str(exc), auth=True)
             raise MediaImportError(str(exc)) from exc
         except gpodder_api.GPodderClientError as exc:
             self.account.last_error_message = str(exc)[:500]

@@ -29,7 +29,7 @@ from app.models import (
     Status,
 )
 from app.providers import services
-from integrations import audiobookshelf_cover, import_progress
+from integrations import audiobookshelf_cover, connection_health, import_progress
 from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 from integrations.models import AudiobookshelfAccount
 
@@ -142,11 +142,7 @@ class AudiobookshelfImporter:
         try:
             token = decrypt_or_raise(self.account.api_token)
         except MediaImportError as error:
-            self.account.connection_broken = True
-            self.account.last_error_message = str(error)
-            self.account.save(
-                update_fields=["connection_broken", "last_error_message", "updated_at"],
-            )
+            connection_health.record_failure(self.account, str(error), auth=True)
             raise
 
         self.client = AudiobookshelfClient(self.account.base_url, token)
@@ -159,15 +155,7 @@ class AudiobookshelfImporter:
         try:
             me = self.client.get_me()
         except AudiobookshelfAuthError as error:
-            self.account.connection_broken = True
-            self.account.last_error_message = str(error)
-            self.account.save(
-                update_fields=[
-                    "connection_broken",
-                    "last_error_message",
-                    "updated_at",
-                ],
-            )
+            connection_health.record_failure(self.account, str(error), auth=True)
             raise MediaImportError(str(error)) from error
 
         progress_entries = me.get("mediaProgress") or []
