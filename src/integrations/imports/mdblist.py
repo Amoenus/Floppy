@@ -24,7 +24,7 @@ from app.models import MediaTypes, Sources, Status
 from app.providers import services, tmdb
 from integrations import import_progress
 from integrations.imports import helpers
-from integrations.imports.helpers import MediaImportError
+from integrations.imports.helpers import ConnectionAuthError, MediaImportError
 from integrations.imports.trakt import TraktMetadataResolverMixin
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ def request(api_key, path, params=None):
         status_code = getattr(error.response, "status_code", None)
         if status_code in (401, 403):
             msg = "MDBList API key is invalid or revoked."
-            raise MediaImportError(msg) from error
+            raise ConnectionAuthError(msg) from error
         raise
 
 

@@ -10,11 +10,16 @@ next good run instead of waiting for a person to reconnect.
 See docs/architecture/connection-health.md.
 """
 
+from datetime import timedelta
+
 from django.utils import timezone
 
 from integrations.imports.helpers import retry_on_lock
 
 MAX_ERROR_LENGTH = 500
+# How often scheduled work re-probes an account whose credentials were
+# rejected. Cheap, but a revoked key should not cost a request every poll.
+PROBE_INTERVAL = timedelta(hours=1)
 
 
 def caused_by(exc, error_types) -> bool:
@@ -26,6 +31,18 @@ def caused_by(exc, error_types) -> bool:
         seen.add(id(exc))
         exc = exc.__cause__ or exc.__context__
     return False
+
+
+def due_for_probe(account, interval=PROBE_INTERVAL) -> bool:
+    """Return whether scheduled work should run for this account now.
+
+    Healthy accounts always run. A broken one runs again once ``interval``
+    has passed since its last recorded failure, so it can heal on its own.
+    """
+    if not account.connection_broken:
+        return True
+    last_failed_at = getattr(account, "last_failed_at", None)
+    return last_failed_at is None or timezone.now() - last_failed_at >= interval
 
 
 def _save(account, fields):
