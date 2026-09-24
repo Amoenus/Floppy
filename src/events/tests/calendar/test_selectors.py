@@ -382,8 +382,7 @@ class CalendarStalenessGateTests(CalendarFixturesMixin, TestCase):
     @patch("events.calendar.selectors.tmdb.tv_changes", return_value=set())
     @override_settings(CALENDAR_ITEM_STALE_AFTER_HOURS=12)
     def test_show_without_season_events_follows_the_window(self, _tv, _movie):
-        """An ended show never gains season events; it must not be re-fetched
-        on every reload (#1158). Never-checked and stale shows stay due."""
+        """A show without season events is not re-fetched on every reload (#1158)."""
         self.assertIn(self.tv_item, get_items_to_process(self.user))
 
         Item.objects.filter(id=self.tv_item.id).update(
