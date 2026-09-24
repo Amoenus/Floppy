@@ -1831,6 +1831,15 @@ class MediaManager(models.Manager):
             if media.item.id in manual_item_ids:
                 continue
             media.max_progress = max_progress_dict.get(media.item.id)
+            # AniList returns no airing schedule for many finished series, and a
+            # new entry has no events until its calendar task runs, so a finished
+            # anime falls back to the provider's episode count (#1254).
+            if (
+                media.max_progress is None
+                and media_type == MediaTypes.ANIME.value
+                and media.item.status == "Finished"
+            ):
+                media.max_progress = media.item.provider_episode_count
 
     def annotate_episode_progress(self, media_list, media_type=None):
         """Annotate released and provider-total episode counts in bulk.
