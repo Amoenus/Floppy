@@ -12,6 +12,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.text import slugify
 
+import events
 from app.models import (
     Item,
     MediaTypes,
@@ -47,6 +48,7 @@ class GPodderImporter:
         self.user = user
         self.mode = mode
         self.warnings = []
+        self.created_item_ids = []
         try:
             self.account = user.gpodder_account
         except integration_models.GPodderAccount.DoesNotExist as exc:
@@ -148,10 +150,15 @@ class GPodderImporter:
             ],
         )
 
-        # History and statistics invalidation is left to import_media, which
-        # does it only when this run actually changed rows. Doing it here
-        # unconditionally wiped the whole history day cache on every empty
-        # 15-minute poll, and the coverage repair never caught up (#1158).
+        # Each play is saved through the ORM, so its post_save signal marks the
+        # touched history and statistics days, and import_media skips its
+        # library-wide catch-up for this importer (#1158). New episode items
+        # still need calendar events; imports suppress the per-item trigger.
+        if self.created_item_ids:
+            events.tasks.reload_calendar.apply_async(
+                kwargs={"item_ids": self.created_item_ids},
+                countdown=3,
+            )
         return dict(imported_counts), self.warnings
 
     def _load_subscriptions(self):
@@ -440,12 +447,14 @@ class GPodderImporter:
         if episode.published:
             defaults["release_datetime"] = episode.published
 
-        item, _ = Item.objects.get_or_create(
+        item, created = Item.objects.get_or_create(
             media_id=episode.episode_uuid,
             source=Sources.GPODDER.value,
             media_type=MediaTypes.PODCAST.value,
             defaults=defaults,
         )
+        if created:
+            self.created_item_ids.append(item.id)
         update_fields = []
         if item.title != episode.title:
             item.title = episode.title

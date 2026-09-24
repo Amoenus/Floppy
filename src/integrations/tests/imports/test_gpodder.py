@@ -785,7 +785,10 @@ class GPodderRecurringPollCostTests(TestCase):
             11,
         )
 
-        with patch("events.tasks.reload_calendar.delay") as mock_calendar:
+        with (
+            patch("events.tasks.reload_calendar.delay") as mock_calendar,
+            patch("events.tasks.reload_calendar.apply_async") as mock_scoped,
+        ):
             from integrations import tasks
 
             result = tasks.import_gpodder_recurring(self.user.id)
@@ -801,6 +804,11 @@ class GPodderRecurringPollCostTests(TestCase):
         ]
         self.assertIn("20260101", [str(day) for day in marked_days])
         mock_calendar.assert_not_called()
+        # The new episode still gets its calendar event, scoped to that item.
+        new_item = Item.objects.get(source=Sources.GPODDER.value)
+        mock_scoped.assert_called_once_with(
+            kwargs={"item_ids": [new_item.id]}, countdown=3
+        )
         self.assertNotIn(
             ((self.user.id,), {"force": True}),
             [(c.args, c.kwargs) for c in mock_invalidate.call_args_list],

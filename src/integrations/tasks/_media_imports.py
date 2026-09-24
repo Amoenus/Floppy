@@ -122,8 +122,10 @@ def import_media(
     # library (and holding the single celery-queue worker) for no reason.
     if has_imported_media(imported_counts) and importer_func == gpodder.importer:
         # GPodder saves each play through the ORM, so post_save already marked
-        # the touched history and statistics days. It polls every 15 minutes;
-        # a library-wide rebuild per imported play kept a small host busy (#1158).
+        # the touched history and statistics days, and the importer queues a
+        # calendar reload for just the items it created. It polls every 15
+        # minutes; a library-wide rebuild per imported play kept a small host
+        # busy (#1158).
         logger.info(
             "import_catchup_skipped reason=signal_writes importer=gpodder user_id=%s",
             user_id,
