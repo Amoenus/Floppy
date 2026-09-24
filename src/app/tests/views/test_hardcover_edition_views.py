@@ -162,6 +162,43 @@ class HardcoverEditionViewTests(TestCase):
             "24008419",
         )
 
+    @patch("app.media_details_views.services.get_media_metadata")
+    def test_media_details_persists_selected_edition_cover(
+        self,
+        mock_get_media_metadata,
+    ):
+        """Viewing an item with a picked edition updates the stored cover (#1251)."""
+        HardcoverEditionPreference.objects.create(
+            user=self.user,
+            item=self.item,
+            edition_id="24008419",
+        )
+        mock_get_media_metadata.return_value = {
+            "media_id": "778812",
+            "source": Sources.HARDCOVER.value,
+            "media_type": MediaTypes.BOOK.value,
+            "title": "Die Nadel",
+            "image": "http://example.com/de.jpg",
+            "synopsis": "A spy thriller.",
+            "details": {},
+            "related": {},
+        }
+
+        self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.HARDCOVER.value,
+                    "media_type": MediaTypes.BOOK.value,
+                    "media_id": "778812",
+                    "title": "eye-of-the-needle",
+                },
+            ),
+        )
+
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.image, "http://example.com/de.jpg")
+
     @patch("app.track_modal_views.hardcover.editions")
     def test_track_modal_shows_selected_edition_row(self, mock_editions):
         Book.objects.create(

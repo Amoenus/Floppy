@@ -877,6 +877,24 @@ def media_details(
     if isinstance(media_metadata, dict):
         media_metadata.update(Item.title_fields_from_metadata(media_metadata))
 
+    # An explicit Hardcover edition (query param or saved preference) means the
+    # live fetch above already returned that edition's cover. Persist it on the
+    # Item so the gallery, and any future stored-metadata fallback, show the
+    # selected edition too instead of the cover the item was first tracked
+    # with (#1251).
+    if (
+        hardcover_edition_id
+        and detail_item is not None
+        and isinstance(media_metadata, dict)
+        and media_metadata.get("image")
+        and detail_item.image != media_metadata["image"]
+    ):
+        detail_item.image = media_metadata["image"]
+        _best_effort_detail_db_work(
+            lambda: detail_item.save(update_fields=["image"]),
+            operation_name="detail item edition cover sync",
+        )
+
     if media_type == MediaTypes.COMIC.value and isinstance(media_metadata, dict):
         raw_issues = media_metadata.pop("issues", None)
         if raw_issues:
