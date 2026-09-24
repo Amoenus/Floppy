@@ -1076,11 +1076,22 @@ def refresh_history_cache_on_podcast_change(sender, instance, **kwargs):
         return
     user_id = getattr(instance, "user_id", None)
     day_key = history_cache.history_day_key(getattr(instance, "end_date", None))
+    history_specs = [([day_key] if day_key else [], ("sessions", "repeats"))]
+    update_fields = kwargs.get("update_fields")
+    if not day_key and (
+        kwargs.get("created")
+        or (update_fields is not None and "end_date" not in update_fields)
+    ):
+        # History places podcasts by end date only. An undated save that
+        # cannot have cleared one touches no history day, so skip the
+        # whole-cache clear an undated change otherwise falls back to; GPodder
+        # progress polls made exactly these saves (#1158).
+        history_specs = None
     _handle_media_cache_change(
         user_id,
         MediaTypes.PODCAST.value,
         reason="podcast_change",
-        history_specs=[([day_key] if day_key else [], ("sessions", "repeats"))],
+        history_specs=history_specs,
         statistics_day_values=[day_key] if day_key else [],
     )
 

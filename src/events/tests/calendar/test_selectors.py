@@ -380,6 +380,23 @@ class CalendarStalenessGateTests(CalendarFixturesMixin, TestCase):
 
     @patch("events.calendar.selectors.tmdb.movie_changes", return_value=set())
     @patch("events.calendar.selectors.tmdb.tv_changes", return_value=set())
+    @override_settings(CALENDAR_ITEM_STALE_AFTER_HOURS=12)
+    def test_show_without_season_events_follows_the_window(self, _tv, _movie):
+        """A show without season events is not re-fetched on every reload (#1158)."""
+        self.assertIn(self.tv_item, get_items_to_process(self.user))
+
+        Item.objects.filter(id=self.tv_item.id).update(
+            calendar_checked_at=timezone.now() - timezone.timedelta(hours=1),
+        )
+        self.assertNotIn(self.tv_item, get_items_to_process(self.user))
+
+        Item.objects.filter(id=self.tv_item.id).update(
+            calendar_checked_at=timezone.now() - timezone.timedelta(hours=13),
+        )
+        self.assertIn(self.tv_item, get_items_to_process(self.user))
+
+    @patch("events.calendar.selectors.tmdb.movie_changes", return_value=set())
+    @patch("events.calendar.selectors.tmdb.tv_changes", return_value=set())
     @override_settings(CALENDAR_ITEM_STALE_AFTER_HOURS=0)
     def test_zero_disables_the_gate(self, _tv, _movie):
         """0 restores the previous always-refresh behaviour."""

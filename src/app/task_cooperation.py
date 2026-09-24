@@ -7,9 +7,16 @@ log the deferral, and let the caller re-enqueue the remainder.
 
 import logging
 
-from app.interactive_requests import interactive_request_active
+from app.interactive_requests import (
+    INTERACTIVE_REQUEST_TTL_SECONDS,
+    interactive_request_active,
+)
 
 logger = logging.getLogger(__name__)
+
+# The interactive flag outlives the last request by its TTL, so a sooner retry
+# only finds it still set, does one item and defers again (#1158).
+DEFERRED_RETRY_SECONDS = INTERACTIVE_REQUEST_TTL_SECONDS
 
 
 class CooperativeRun:
@@ -65,4 +72,4 @@ class CooperativeRun:
     def reenqueue_if_deferred(self, enqueue):
         """Hand unprocessed item ids back to the given enqueue callable."""
         if self.deferred and self.remaining:
-            enqueue(self.remaining_ids)
+            enqueue(self.remaining_ids, countdown=DEFERRED_RETRY_SECONDS)
