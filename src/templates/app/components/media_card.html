@@ -73,52 +73,6 @@
           {% endif %}
 
           {% if media %}
-            {% if show_progress_chip|default_if_none:True %}
-              {% with aggregated_progress=media|safe_attr:"aggregated_progress" %}
-                {% if aggregated_progress and resolved_media_type != MediaTypes.MOVIE.value and resolved_media_type != MediaTypes.GAME.value %}
-                  {# Don't show progress chip for Seasons - progress is shown in hover subtitle #}
-                  {% if resolved_media_type != MediaTypes.SEASON.value %}
-                    <div class="absolute top-2 right-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md">
-                      <span class="text-sm text-[var(--color-text)]">
-                        {{ media.formatted_aggregated_progress }}
-                        {% if media.max_progress and not media.progress_is_percentage %}/ {{ media.formatted_max_progress }}{% endif %}
-                      </span>
-                    </div>
-                  {% endif %}
-                {% elif media.progress and resolved_media_type != MediaTypes.MOVIE.value %}
-                  {% if resolved_media_type != MediaTypes.GAME.value or not aggregated_progress %}
-                    {# Don't show progress chip for Seasons - progress is shown in hover subtitle #}
-                    {% if resolved_media_type != MediaTypes.SEASON.value %}
-                      <div class="media-progress-chip absolute top-2 right-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md"
-                           data-progress-chip-mode="{{ progress_chip_mode|default:'always' }}"
-                           data-mobile-show="{% if current_sort_value == 'progress' %}true{% else %}false{% endif %}">
-                        <span class="text-sm text-[var(--color-text)]">
-                          {{ media.formatted_progress }}
-                          {% if media.max_progress and not media.progress_is_percentage %}/ {{ media.formatted_max_progress }}{% endif %}
-                        </span>
-                      </div>
-                    {% endif %}
-                  {% endif %}
-                {% endif %}
-              {% endwith %}
-            {% endif %}
-
-            {# Time Left display for time_left sort #}
-            {# Hide chip in media grid (shown in context row instead when sorted by time_left) #}
-            {% if media and media.episodes_left > 0 %}
-              {% if resolved_media_type == MediaTypes.TV.value or resolved_media_type == MediaTypes.SEASON.value %}
-                {% if not from_grid %}
-                  <div class="media-time-left-chip absolute top-2 right-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md"
-                       data-time-left-mode="{{ time_left_chip_mode|default:'always' }}"
-                       data-mobile-show="{% if current_sort_value == 'time_left' %}true{% else %}false{% endif %}">
-                    <span class="text-sm text-[var(--color-text)]">{{ media.time_left_display|default:media.formatted_time_left }}</span>
-                  </div>
-                {% endif %}
-              {% endif %}
-            {% endif %}
-
-            {# Repeat chip removed from poster grid cards to reduce crowding. #}
-
             {# Next-episode quick-link — shown when preference includes "next_episode" or "both" #}
             {% if not recommend_mode and not public_view|default:False and user.is_authenticated %}
               {% if user.quick_season_update_mobile == 'next_episode' or user.quick_season_update_mobile == 'both' %}
@@ -665,7 +619,6 @@
               {% endif %}
             {% endif %}
           {% endwith %}
-          {% if duration %}<p class="text-xs text-[var(--color-text-muted)] mt-1">{{ duration }}</p>{% endif %}
 
           {# Aggregated chips already cover repeats; no extra text block. #}
         </div>
