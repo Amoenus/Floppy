@@ -102,6 +102,10 @@ still finds the same copy. Versions before issue #809 did hash the item in;
 `_find_link` recognises those links by recomputing the old id and re-keys
 them on first sight.
 
+Wishlist rows have no source identity, so an Overwrite run never deletes
+one. A same-titled manual entry of the type an older version would have
+detected is reported in the import result for the user to remove.
+
 Wishlist rows (`Collection Status`) go to a dedicated **CLZ Wishlist** list.
 No copy is created and no reading progress is inferred; their columns are
 still preserved through the custom fields.

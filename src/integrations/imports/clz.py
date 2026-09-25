@@ -329,6 +329,7 @@ class CLZImporter:
         self._wishlist = None
         self._legacy_links = None
         self._legacy_items = ()
+        self._legacy_media_type = None
 
     def _import_run(self):
         """Return the ImportRun this task is running under, if any."""
@@ -351,6 +352,7 @@ class CLZImporter:
             return dict(self.counts), "The CLZ export contained no records."
 
         media_type = self.requested_media_type or self._detect_media_type(columns)
+        self._legacy_media_type = _legacy_detect_media_type(columns)
         self._build_column_index(columns)
         self._prepare_fields(records, media_type)
 
@@ -890,29 +892,49 @@ class CLZImporter:
             defaults={"added_by": self.user},
         )
         if self.mode == "overwrite":
-            self._drop_mistyped_wishlist_item(item, record, media_type)
+            self._note_mistyped_wishlist_item(item, record, media_type)
         logger.debug("CLZ wishlist row kept for %s", self._describe(record))
 
-    def _drop_mistyped_wishlist_item(self, item, record, media_type):
-        """Remove the manual item an earlier run wishlisted as another type.
+    def _note_mistyped_wishlist_item(self, item, record, media_type):
+        """Report a wishlist entry an earlier run may have added as another type.
 
         Versions before issue #809 could import a comics export as movies.
-        The corrected item replaces that one in the wishlist.
+        Wishlist rows carry no source identity, so an entry of that old type
+        with the same title cannot be told apart from one the user added by
+        hand. It is reported for the user to remove, never deleted.
         """
         from lists.models import CustomListItem
 
-        stale = CustomListItem.objects.filter(
-            custom_list=self._wishlist,
-            item__source=Sources.MANUAL.value,
-            item__title__in={
-                self._title(record),
-                self._title(record, LEGACY_ISSUE_COLUMNS),
-            },
-        ).exclude(item__media_type=media_type).exclude(item=item)
-        for list_item in stale.select_related("item"):
-            old_item = list_item.item
-            list_item.delete()
-            _delete_if_unused(old_item)
+        if self._legacy_media_type == media_type:
+            return
+        stale = (
+            CustomListItem.objects.filter(
+                custom_list=self._wishlist,
+                item__source=Sources.MANUAL.value,
+                item__media_type=self._legacy_media_type,
+                item__title=self._title(record, LEGACY_ISSUE_COLUMNS),
+            )
+            .exclude(item=item)
+            .select_related("item")
+        )
+        for list_item in stale:
+            self.warnings.append(
+                f"{list_item.item.title}: the {WISHLIST_LIST_NAME} list also "
+                f"has a {list_item.item.get_media_type_display()} entry with "
+                "this title. Remove it if an earlier import added it.",
+            )
+
+
+def _legacy_detect_media_type(columns):
+    """Return the media type versions before issue #809 detected."""
+    present = {column_key(column) for column in columns}
+    if present & {"issuenr", "issuenumber", "storyarc"}:
+        return MediaTypes.COMIC_ISSUE.value
+    if "platform" in present:
+        return MediaTypes.GAME.value
+    if present & {"isbn", "author", "authors", "pages"}:
+        return MediaTypes.BOOK.value
+    return MediaTypes.MOVIE.value
 
 
 def _digest(parts):

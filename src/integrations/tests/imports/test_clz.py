@@ -459,19 +459,51 @@ class CLZMediaTypeTests(TestCase):
         self.assertTrue(
             all(e.item.media_type == MediaTypes.COMIC_ISSUE.value for e in moved),
         )
-        self.assertFalse(Item.objects.filter(id=old_item.id).exists())
 
-    def test_overwrite_moves_wishlist_rows_imported_as_movies(self):
-        """The old Movie wishlist entry is replaced by the corrected item."""
+    def test_overwrite_deletes_the_emptied_placeholder(self):
+        """The old Movie placeholder goes once nothing references it."""
         old_item, _, wishlist = self.legacy_movie_import()
+        wishlist.customlistitem_set.all().delete()
 
         self.run_import(CLZ_COMICS_EXPORT_CSV, mode="overwrite")
 
-        titles = list(
+        self.assertFalse(Item.objects.filter(id=old_item.id).exists())
+
+    def test_overwrite_reports_old_wishlist_rows_without_deleting(self):
+        """A same-titled Movie wishlist entry is reported, never removed.
+
+        Wishlist rows carry no source identity, so the old entry cannot be
+        told apart from a Movie the user added to the list by hand.
+        """
+        old_item, _, wishlist = self.legacy_movie_import()
+
+        _, warnings = self.run_import(CLZ_COMICS_EXPORT_CSV, mode="overwrite")
+
+        titles = set(
             wishlist.customlistitem_set.values_list("item__title", flat=True),
         )
-        self.assertEqual(titles, ["Death Note [GER] #3"])
-        self.assertFalse(Item.objects.filter(id=old_item.id).exists())
+        self.assertEqual(titles, {"Death Note [GER]", "Death Note [GER] #3"})
+        self.assertTrue(Item.objects.filter(id=old_item.id).exists())
+        self.assertIn("Death Note [GER]: the CLZ Wishlist list also has", warnings)
+
+    def test_wishlist_rows_of_other_types_are_not_reported(self):
+        """Only the type an earlier run could have used is flagged."""
+        wishlist = CustomList.objects.create(
+            owner=self.user,
+            name=clz.WISHLIST_LIST_NAME,
+        )
+        book = Item.objects.create(
+            media_id=Item.generate_manual_id(),
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.BOOK.value,
+            library_media_type=MediaTypes.BOOK.value,
+            title="Death Note [GER]",
+        )
+        CustomListItem.objects.create(custom_list=wishlist, item=book)
+
+        _, warnings = self.run_import(CLZ_COMICS_EXPORT_CSV, mode="overwrite")
+
+        self.assertNotIn("also has", warnings)
 
     def test_new_mode_recognises_old_copies_without_duplicating(self):
         """A repeat import in the default mode skips the old copies."""
@@ -484,7 +516,8 @@ class CLZMediaTypeTests(TestCase):
 
     def test_overwrite_keeps_an_old_item_still_in_use(self):
         """The old item survives if anything else still points at it."""
-        old_item, _, _ = self.legacy_movie_import()
+        old_item, _, wishlist = self.legacy_movie_import()
+        wishlist.customlistitem_set.all().delete()
         other = get_user_model().objects.create_user(username="other")
         CollectionEntry.objects.create(user=other, item=old_item)
 
