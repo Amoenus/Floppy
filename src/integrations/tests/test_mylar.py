@@ -101,6 +101,7 @@ class MylarImporterTests(TestCase):
         self.assertEqual(
             issue.image, "https://comicvine.gamespot.com/a/uploads/saga1.jpg"
         )
+        self.assertEqual(Item.objects.get(media_id="401").title, "Saga Annual #1")
         first_call = mock_get.call_args_list[0]
         self.assertEqual(first_call.args[0], "https://mylar.local:8090/api")
         self.assertEqual(first_call.kwargs["params"]["apikey"], "mylar-key")

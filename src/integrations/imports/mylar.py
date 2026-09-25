@@ -141,11 +141,15 @@ class MylarImporter:
 
     def _import_series(self, series, detail, imported_counts):
         series_name = series.get("name") or ""
-        issues = [*(detail.get("issues") or []), *(detail.get("annuals") or [])]
-        for issue in issues:
+        annual_name = f"{series_name} Annual"
+        issues = [
+            *((issue, series_name) for issue in detail.get("issues") or []),
+            *((issue, annual_name) for issue in detail.get("annuals") or []),
+        ]
+        for issue, name in issues:
             if str(issue.get("status") or "").strip().lower() not in OWNED_STATUSES:
                 continue
-            item = self._resolve_issue_item(issue, series_name)
+            item = self._resolve_issue_item(issue, name)
             if item is None:
                 imported_counts["skipped_missing_ids"] += 1
                 continue
@@ -177,7 +181,7 @@ class MylarImporter:
         if existing:
             return existing
 
-        title = f"{issue.get('comicName') or series_name} #{issue.get('number') or '?'}"
+        title = f"{series_name} #{issue.get('number') or '?'}"
         if issue.get("name"):
             title = f"{title}: {issue['name']}"
         image = str(issue.get("imageURL") or "")
