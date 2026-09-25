@@ -1272,6 +1272,13 @@ GOOGLE_BOOKS_API_KEY = config(
     default=secret("GOOGLE_BOOKS_API_KEY_FILE", ""),
 )
 
+# RapidAPI key for OpenCritic game scores. No default: the free plan's daily
+# quota belongs to one account, so every install brings its own key.
+OPENCRITIC_API_KEY = config(
+    "OPENCRITIC_API_KEY",
+    default=secret("OPENCRITIC_API_KEY_FILE", ""),
+)
+
 COMICVINE_API = config(
     "COMICVINE_API",
     default=secret(
@@ -1940,6 +1947,11 @@ CELERY_BEAT_SCHEDULE = {
     "sync_mal_ratings": {
         "task": "Sync MAL ratings from API",
         "schedule": crontab(hour=5, minute=15),  # every day at 5:15 AM
+    },
+    "backfill_opencritic_scores": {
+        "task": "Backfill OpenCritic scores",
+        # Only spends quota in the hour before the daily reset; other runs no-op.
+        "schedule": crontab(minute="*/20"),
     },
 }
 

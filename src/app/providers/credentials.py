@@ -297,6 +297,14 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
             ),
         ),
         ProviderCredentialSpec(
+            slug="opencritic",
+            user_scope=True,
+            label="OpenCritic",
+            description="Critic scores for games. The free RapidAPI plan is enough.",
+            docs_url="https://rapidapi.com/opencritic-opencritic-default/api/opencritic-api",
+            fields=(CredentialField("api_key", "RapidAPI key", "OPENCRITIC_API_KEY"),),
+        ),
+        ProviderCredentialSpec(
             slug="bgg",
             user_scope=True,
             label="BoardGameGeek",
