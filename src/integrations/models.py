@@ -53,6 +53,18 @@ class PlexAccount(models.Model):
         help_text="Last Plex watchlist sync error",
     )
     watchlist_last_error_at = models.DateTimeField(blank=True, null=True)
+    mark_watched_sync_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Whether recurring Plex history polling for manually marked "
+            "watched items is enabled"
+        ),
+    )
+    mark_watched_checkpoint = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="Newest Plex history viewedAt already polled",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

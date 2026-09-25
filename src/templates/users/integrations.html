@@ -734,6 +734,46 @@
       </div>
 
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4">
+        <h4 class="text-sm font-medium mb-3">{% translate "Manual Watched Changes" %}</h4>
+        <p class="text-[var(--color-text-muted)] mb-4 text-sm">
+          {% translate "The webhook records what you watch, but Plex sends nothing when you mark an item watched by hand. Enable this to check your Plex history every 15 minutes and add those marks. It uses the libraries selected above. Marking an item unwatched in Plex is not synced." %}
+        </p>
+        {% if plex_connected %}
+          <form method="post"
+                action="{% url 'update_plex_mark_watched' %}"
+                class="space-y-3">
+            {% csrf_token %}
+            <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
+              <div class="flex-1">
+                <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
+                  {% include "app/icons/circle-check.svg" with classes="w-5 h-5 mr-2" %}
+                  <span class="text-sm font-medium">{% translate "Sync items marked watched" %}</span>
+                </div>
+                <p class="text-xs text-[var(--color-text-muted)] ml-7">{% translate "Mark media as watched when it is manually marked watched in Plex." %}</p>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer ml-4">
+                <input class="sr-only peer"
+                       type="checkbox"
+                       name="plex_mark_watched_enabled"
+                       {% if user.plex_account.mark_watched_sync_enabled %}checked{% endif %}>
+                <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
+                </div>
+              </label>
+            </div>
+            <div class="pt-1">
+              <button type="submit"
+                      class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
+                {% include "app/icons/save.svg" with classes="w-4 h-4 mr-2" %}
+                {% translate "Save Changes" %}
+              </button>
+            </div>
+          </form>
+        {% else %}
+          <p class="text-sm text-[var(--color-warning-text)]">{% translate "Connect Plex from the Import page to use this." %}</p>
+        {% endif %}
+      </div>
+
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4">
         <h4 class="text-sm font-medium mb-3">{% translate "Share Plex Webhook" %}</h4>
         <p class="text-[var(--color-text-muted)] mb-4 text-sm">
           {% translate "Share this server's webhook with another Floppy user without sharing your Plex token. The recipient must enable the share before events are recorded." %}

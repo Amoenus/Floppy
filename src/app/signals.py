@@ -82,6 +82,7 @@ TRACKED_TASK_NAMES = frozenset(
         "Import MDBList Lists",
         "Import from Plex",
         "Sync Plex Watchlist",
+        "Sync Plex Watched Marks",
         "Import from Radarr",
         "Import from Radarr (Recurring)",
         "Import from Sonarr",

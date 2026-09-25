@@ -50,6 +50,7 @@ from app.models import (
 from app.providers import credentials, tmdb
 from app.templatetags import app_tags
 from integrations import exports, plex, stremio_catalog, tasks
+from integrations.imports import plex as plex_import
 from integrations.imports import trakt as trakt_imports
 from integrations.models import (
     DEFAULT_INTEGRATION_SCOPES,
@@ -2427,6 +2428,10 @@ def delete_import_schedule(request):
         PlexAccount.objects.filter(user=request.user).update(
             watchlist_sync_enabled=False,
         )
+    if task.task == plex_import.MARK_WATCHED_TASK_NAME:
+        PlexAccount.objects.filter(user=request.user).update(
+            mark_watched_sync_enabled=False,
+        )
     task.delete()
     messages.success(request, "Import schedule deleted.")
     return redirect("import_data")
@@ -2718,6 +2723,22 @@ def update_plex_usernames(request):
         messages.success(request, "Plex usernames updated successfully")
 
     return redirect(redirect_target)
+
+
+@require_POST
+def update_plex_mark_watched(request):
+    """Turn the Plex manual watched-mark sync on or off for the user."""
+    account = getattr(request.user, "plex_account", None)
+    if not account:
+        messages.error(request, "Connect Plex before changing this setting.")
+        return redirect("integrations")
+
+    plex_import.set_mark_watched_sync(
+        account,
+        enabled="plex_mark_watched_enabled" in request.POST,
+    )
+    messages.success(request, "Plex watched settings updated successfully")
+    return redirect("integrations")
 
 
 @require_POST
