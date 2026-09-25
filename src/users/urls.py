@@ -75,6 +75,13 @@ urlpatterns = [
         views.toggle_home_screen_row_direction,
         name="toggle_home_screen_row_direction",
     ),
+    path("saved-views/create", views.saved_view_create, name="saved_view_create"),
+    path(
+        "saved-views/<int:view_id>/delete",
+        views.saved_view_delete,
+        name="saved_view_delete",
+    ),
+    path("saved-views/reorder", views.saved_view_reorder, name="saved_view_reorder"),
     path(
         "settings/toggle-obfuscate-episodes",
         views.toggle_obfuscate_episodes,

@@ -9,6 +9,7 @@ from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.models import UserManager as DjangoUserManager
 from django.db import models
 from django.db.models import Q
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django_celery_beat.models import PeriodicTask
@@ -2393,3 +2394,34 @@ class HomeScreenRow(models.Model):
     def __str__(self):
         """Return a compact label for admin/debug use."""
         return f"{self.user_id}:{self.media_type}:{self.row_type}:{self.position}"
+
+
+class SavedView(models.Model):
+    """A named media list view (filters, sort, layout) pinned under the sidebar."""
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="saved_views",
+    )
+    media_type = models.CharField(max_length=16, choices=MediaTypes.choices)
+    name = models.CharField(max_length=100)
+    # The media list query string, e.g. "sort=score&direction=desc&status=Completed".
+    query = models.TextField(blank=True, default="")
+    position = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Model and field configuration."""
+
+        ordering = ["media_type", "position", "id"]
+        indexes = [models.Index(fields=["user", "media_type", "position"])]
+
+    def __str__(self):
+        """Return a compact label for admin/debug use."""
+        return f"{self.user_id}:{self.media_type}:{self.name}"
+
+    def get_absolute_url(self):
+        """Return the media list URL that reproduces this view."""
+        base = reverse("medialist", args=[self.media_type])
+        return f"{base}?{self.query}" if self.query else base
