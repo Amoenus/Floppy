@@ -1724,9 +1724,16 @@ def radarr_disconnect(request):
             _periodic_task_filter_for_instance(instance.id),
             task=RADARR_RECURRING_TASK_NAME,
         ).delete()
-        CollectionSourceState.objects.filter(
+        states = CollectionSourceState.objects.filter(
             user=request.user, source="radarr", source_instance_id=instance.id
-        ).delete()
+        ).select_related("item")
+        for state in states:
+            remove_collection_source_state(
+                user=request.user,
+                item=state.item,
+                source="radarr",
+                source_instance_id=instance.id,
+            )
         instance.delete()
 
     _run_with_lock_retry("disconnect Radarr", _disconnect)
@@ -1898,9 +1905,16 @@ def sonarr_disconnect(request):
             _periodic_task_filter_for_instance(instance.id),
             task=SONARR_RECURRING_TASK_NAME,
         ).delete()
-        CollectionSourceState.objects.filter(
+        states = CollectionSourceState.objects.filter(
             user=request.user, source="sonarr", source_instance_id=instance.id
-        ).delete()
+        ).select_related("item")
+        for state in states:
+            remove_collection_source_state(
+                user=request.user,
+                item=state.item,
+                source="sonarr",
+                source_instance_id=instance.id,
+            )
         instance.delete()
 
     _run_with_lock_retry("disconnect Sonarr", _disconnect)
