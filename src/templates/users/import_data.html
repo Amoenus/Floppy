@@ -418,7 +418,7 @@
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">
             {% source_display "radarr" %}
-            {% if radarr_account and radarr_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+            {% if radarr_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
           <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import owned movies from Radarr." %}</p>
         </button>
@@ -430,7 +430,7 @@
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">
             {% source_display "sonarr" %}
-            {% if sonarr_account and sonarr_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+            {% if sonarr_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
           <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import owned TV shows from Sonarr." %}</p>
         </button>
@@ -490,7 +490,7 @@
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">
             {% source_display "mylar" %}
-            {% if mylar_instances %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+            {% if mylar_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
           <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import owned comics from Mylar3." %}</p>
         </button>
