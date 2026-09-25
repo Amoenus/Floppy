@@ -461,3 +461,67 @@ class CollectedItemSearchTests(TestCase):
         suggestions = get_saved_suggestions(self.user, MediaTypes.MOVIE.value, "matrix")
 
         self.assertEqual([s["title"] for s in suggestions], ["The Matrix"])
+
+    def test_collected_match_sorts_ahead_of_tracked_before_the_limit(self):
+        tracked = Item.objects.create(
+            media_id="604",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Matrix Reloaded",
+            image="http://example.com/i.jpg",
+        )
+        Movie.objects.create(
+            user=self.user, item=tracked, status=Status.COMPLETED.value
+        )
+        self._collect(
+            media_id="603",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Matrix",
+        )
+
+        suggestions = get_saved_suggestions(
+            self.user, MediaTypes.MOVIE.value, "matrix", limit=1
+        )
+
+        self.assertEqual([s["title"] for s in suggestions], ["The Matrix"])
+
+    @patch("app.providers.services.search")
+    def test_large_episode_collection_still_returns_results(self, mock_search):
+        """Many collected series must not blow SQLite's expression limits."""
+        mock_search.return_value = {
+            "page": 1,
+            "total_results": 0,
+            "total_pages": 0,
+            "results": [],
+        }
+        shows = Item.objects.bulk_create(
+            Item(
+                media_id=str(1000 + n),
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+                title=f"Show {n}",
+                image="http://example.com/i.jpg",
+            )
+            for n in range(1200)
+        )
+        episodes = Item.objects.bulk_create(
+            Item(
+                media_id=show.media_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                title=show.title,
+                image="http://example.com/i.jpg",
+                season_number=1,
+                episode_number=1,
+            )
+            for show in shows
+        )
+        CollectionEntry.objects.bulk_create(
+            CollectionEntry(user=self.user, item=episode) for episode in episodes
+        )
+
+        response = self.client.get(reverse("search") + "?media_type=tv&q=Show 11")
+
+        self.assertEqual(response.context["local_results_total"], 111)
+        self.assertEqual(len(response.context["local_results"]), 24)
