@@ -437,7 +437,16 @@ class OpenAPIArtifactTests(SimpleTestCase):
         )
         self.assertEqual(
             set(schemas["NextEpisode"]["properties"]),
-            {"season_number", "episode_number", "air_date"},
+            {
+                "season_number",
+                "episode_number",
+                "air_date",
+                "title",
+                "episode_code",
+                "image",
+                "ids",
+                "url",
+            },
         )
         self.assertEqual(
             set(schemas["Show"]["properties"]),

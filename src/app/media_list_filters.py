@@ -6,6 +6,7 @@ import datetime
 from dataclasses import dataclass, replace
 
 from django.apps import apps
+from django.core.cache import cache
 from django.utils import timezone
 
 from app import helpers
@@ -15,6 +16,7 @@ from app.models import (
     Item,
     MediaTypes,
     Season,
+    Sources,
     Status,
 )
 from app.templatetags.app_tags import media_url
@@ -512,22 +514,69 @@ def _episode_air_date(season, episode_number):
     return None
 
 
-def _enrich_next_episode(base, *, source, media_id):
-    """Attach title/image/ids/url to a next_episode dict from a matching Item."""
+def _cached_episode_title(source, media_id, season_number, episode_number):
+    """Return an episode name from the cached TMDB season, without a request."""
+    if source != Sources.TMDB.value or season_number is None:
+        return None
+    from app.providers.tmdb import _season_cache_key
+
+    season_data = cache.get(_season_cache_key(media_id, season_number))
+    if not isinstance(season_data, dict):
+        return None
+    for episode in season_data.get("episodes") or []:
+        if episode.get("episode_number") == episode_number:
+            title = Item.title_fields_from_episode_metadata(episode)["title"]
+            return title or None
+    return None
+
+
+def _enrich_next_episode(base, item):
+    """Attach title/code/image/ids/url to a next_episode dict.
+
+    Several write paths store an unwatched episode's Item under the show's
+    title as a placeholder, so a title equal to the show's is not an episode
+    name. The cached season payload is the fallback; ``title`` is ``None``
+    rather than the show name when neither knows the episode's name.
+    """
     if base is None:
         return None
-    episode_item = None
-    if base.get("episode_number") is not None:
-        episode_item = Item.objects.filter(
-            source=source,
-            media_id=media_id,
-            media_type=MediaTypes.EPISODE.value,
-            season_number=base.get("season_number"),
-            episode_number=base.get("episode_number"),
-        ).first()
+    season_number = base.get("season_number")
+    episode_number = base.get("episode_number")
+    episode_items = []
+    if episode_number is not None:
+        episode_items = list(
+            Item.objects.filter(
+                source=item.source,
+                media_id=item.media_id,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=season_number,
+                episode_number=episode_number,
+            ).order_by("id")
+        )
+    named_item = next(
+        (
+            episode_item
+            for episode_item in episode_items
+            if episode_item.title and episode_item.title != item.title
+        ),
+        None,
+    )
+    episode_item = named_item or next(iter(episode_items), None)
+    title = named_item.title if named_item else None
+    if title is None and episode_number is not None:
+        title = _cached_episode_title(
+            item.source,
+            item.media_id,
+            season_number,
+            episode_number,
+        )
+    episode_code = None
+    if season_number is not None and episode_number is not None:
+        episode_code = f"S{season_number:02d}E{episode_number:02d}"
     return {
         **base,
-        "title": episode_item.title if episode_item else None,
+        "title": title,
+        "episode_code": episode_code,
         "image": episode_item.image if episode_item else None,
         "ids": helpers.build_provider_ids(episode_item) if episode_item else {},
         "url": (media_url(episode_item) or None) if episode_item else None,
@@ -569,8 +618,7 @@ def next_episode_for_media(media):
                         "episode_number": episode_number,
                         "air_date": _episode_air_date(season, episode_number),
                     },
-                    source=item.source,
-                    media_id=item.media_id,
+                    item,
                 )
         from events.models import Event
 
@@ -594,8 +642,7 @@ def next_episode_for_media(media):
                     "episode_number": event.content_number,
                     "air_date": event.datetime,
                 },
-                source=item.source,
-                media_id=item.media_id,
+                item,
             )
         return None
     if media_type == MediaTypes.SEASON.value and hasattr(media, "next_episode_number"):
@@ -608,8 +655,7 @@ def next_episode_for_media(media):
                 "episode_number": episode_number,
                 "air_date": _episode_air_date(media, episode_number),
             },
-            source=item.source,
-            media_id=item.media_id,
+            item,
         )
     if media_type == MediaTypes.ANIME.value:
         from events.models import Event
@@ -632,8 +678,7 @@ def next_episode_for_media(media):
                     "episode_number": event.content_number,
                     "air_date": event.datetime,
                 },
-                source=item.source,
-                media_id=item.media_id,
+                item,
             )
     return None
 

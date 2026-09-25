@@ -121,10 +121,62 @@ class MediaListFilterParityTests(FloppyApiTestCase):
         # The base fixture has a real S01E02 Item (episode_medias), so
         # next_episode enriches from it instead of only carrying numbers.
         next_episode = results["1001"]["next_episode"]
-        self.assertEqual(next_episode["title"], "TV Show 1")
         self.assertEqual(next_episode["image"], "https://example.com/episode-2.jpg")
         self.assertIn("ids", next_episode)
         self.assertIsNotNone(next_episode["url"])
+        self.assertEqual(next_episode["episode_code"], "S01E02")
+        # That Item carries the show's title as a placeholder, which is not
+        # the episode's name, and nothing else knows the name (#1281).
+        self.assertIsNone(next_episode["title"])
+
+    def _next_episode_1001(self):
+        response = self._get_tv(
+            status="1",
+            progress="not_caught_up",
+            sort="next_episode_air_date",
+            direction="asc",
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        results = {entry["item"]["media_id"]: entry for entry in response.json()["results"]}
+        return results["1001"]["next_episode"]
+
+    def test_next_episode_title_is_the_stored_episode_name(self):
+        """A stored episode name is returned as the next episode's title."""
+        Item.objects.filter(
+            media_id="1001",
+            media_type="episode",
+            season_number=1,
+            episode_number=2,
+        ).update(title="The Second One")
+        self.assertEqual(self._next_episode_1001()["title"], "The Second One")
+
+    def test_next_episode_title_prefers_a_named_duplicate_item(self):
+        """A duplicate Item with the real name wins over the show-title placeholder."""
+        Item.objects.create(
+            media_id="1001",
+            source=Sources.TMDB.value,
+            media_type="episode",
+            library_media_type="tv",
+            title="The Second One",
+            season_number=1,
+            episode_number=2,
+        )
+        self.assertEqual(self._next_episode_1001()["title"], "The Second One")
+
+    def test_next_episode_title_falls_back_to_cached_season(self):
+        """The cached TMDB season names the episode when no Item does."""
+        from django.core.cache import cache
+
+        from app.providers.tmdb import _season_cache_key
+
+        cache.set(
+            _season_cache_key("1001", 1),
+            {"episodes": [{"episode_number": 2, "name": "Cached Name"}]},
+        )
+        self.addCleanup(cache.delete, _season_cache_key("1001", 1))
+        with mock.patch("app.providers.services.api_request") as api_request:
+            self.assertEqual(self._next_episode_1001()["title"], "Cached Name")
+        api_request.assert_not_called()
 
     def test_next_episode_missing_item_degrades_gracefully(self):
         """No matching local Item leaves enrichment fields None/empty, not a 500."""

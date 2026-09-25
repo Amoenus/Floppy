@@ -3388,10 +3388,34 @@ components:
           type: string
           format: date-time
           nullable: true
+        title:
+          type: string
+          nullable: true
+          description: The episode's own name; null when unknown, never the show's
+            title.
+        episode_code:
+          type: string
+          nullable: true
+          description: SxxEyy code, as in history entries; null without a season number.
+        image:
+          type: string
+          nullable: true
+        ids:
+          type: object
+          additionalProperties:
+            type: string
+        url:
+          type: string
+          nullable: true
       required:
       - air_date
+      - episode_code
       - episode_number
+      - ids
+      - image
       - season_number
+      - title
+      - url
     Pagination:
       type: object
       description: Stable limit/offset response metadata.

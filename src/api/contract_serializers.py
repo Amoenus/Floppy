@@ -161,6 +161,17 @@ class NextEpisodeSerializer(serializers.Serializer):
     season_number = serializers.IntegerField(allow_null=True)
     episode_number = serializers.IntegerField()
     air_date = serializers.DateTimeField(allow_null=True)
+    title = serializers.CharField(
+        allow_null=True,
+        help_text="The episode's own name; null when unknown, never the show's title.",
+    )
+    episode_code = serializers.CharField(
+        allow_null=True,
+        help_text="SxxEyy code, as in history entries; null without a season number.",
+    )
+    image = serializers.CharField(allow_null=True, allow_blank=True)
+    ids = serializers.DictField(child=serializers.CharField())
+    url = serializers.CharField(allow_null=True)
 
 
 class ShowSerializer(serializers.Serializer):
