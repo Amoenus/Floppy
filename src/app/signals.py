@@ -86,6 +86,8 @@ TRACKED_TASK_NAMES = frozenset(
         "Import from Radarr (Recurring)",
         "Import from Sonarr",
         "Import from Sonarr (Recurring)",
+        "Import from Mylar3",
+        "Import from Mylar3 (Recurring)",
         "Import from Audiobookshelf",
         "Import from Audiobookshelf (Recurring)",
         "Import from Storyteller",

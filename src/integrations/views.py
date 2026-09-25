@@ -70,6 +70,7 @@ from integrations.imports.koreader import (
     KoreaderClient,
     KoreaderClientError,
 )
+from integrations.imports.mylar import MylarClient
 from integrations.imports.radarr import RadarrClient
 from integrations.imports.sonarr import SonarrClient
 from integrations.imports.storyteller import (
@@ -109,6 +110,7 @@ from integrations.models import (
     KoreaderDocumentLink,
     LastFMAccount,
     MDBListAccount,
+    MylarInstance,
     PlexAccount,
     PlexWebhookShare,
     PocketCastsAccount,
@@ -127,6 +129,7 @@ from integrations.plex_watchlist import (
     WATCHLIST_TASK_NAME,
 )
 from integrations.pocketcasts_api import PocketCastsAuthError
+from integrations.source_sync import remove_collection_source_state
 from integrations.state import outbound
 from integrations.upload_staging import (
     build_staged_zip,
@@ -142,6 +145,7 @@ ARR_SYNC_INTERVAL_HOURS = 2
 RADARR_RECURRING_TASK_NAME = "Import from Radarr (Recurring)"
 JELLYFIN_PLAYBACK_REPORTING_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 SONARR_RECURRING_TASK_NAME = "Import from Sonarr (Recurring)"
+MYLAR_RECURRING_TASK_NAME = "Import from Mylar3 (Recurring)"
 GPODDER_RECURRING_TASK_NAME = "Import from GPodder (Recurring)"
 TRAKT_DEVICE_SESSION_KEY = "trakt_device_auth"
 
@@ -1743,6 +1747,97 @@ def import_radarr(request):
     _ensure_arr_schedule(instance, RADARR_RECURRING_TASK_NAME, "Radarr")
     if queued is not False:
         messages.info(request, "Radarr import queued.")
+    return redirect("import_data")
+
+
+@require_POST
+def mylar_connect(request):
+    """Connect a new Mylar3 instance using base URL + API key."""
+    base_url = request.POST.get("base_url", "").strip()
+    api_key = request.POST.get("api_key", "").strip()
+    name = request.POST.get("name", "").strip()
+    if not base_url or not api_key:
+        messages.error(request, "Mylar3 base URL and API key are required.")
+        return _integration_redirect(request)
+
+    try:
+        MylarClient(base_url, api_key).healthcheck()
+    except helpers.MediaImportError as exc:
+        messages.error(request, f"Failed to connect to Mylar3: {exc}")
+        return _integration_redirect(request)
+
+    try:
+        instance = _run_with_lock_retry(
+            "create Mylar3 instance",
+            lambda: MylarInstance.objects.create(
+                user=request.user,
+                name=name,
+                base_url=base_url,
+                api_key=helpers.encrypt(api_key),
+            ),
+        )
+    except IntegrityError:
+        messages.error(
+            request, "You already have a Mylar3 instance connected at this URL."
+        )
+        return _integration_redirect(request)
+
+    _ensure_arr_schedule(instance, MYLAR_RECURRING_TASK_NAME, "Mylar3")
+    if _queue_task_or_message(request,
+        tasks.import_mylar, user_id=request.user.id, mode="new", instance_id=instance.id
+    ) is not False:
+        messages.success(
+            request,
+            "Connected Mylar3. Initial import queued and recurring sync enabled.",
+        )
+    return _integration_redirect(request, connected_slug="mylar")
+
+
+@require_POST
+def mylar_disconnect(request):
+    """Disconnect one Mylar3 instance."""
+    from django_celery_beat.models import PeriodicTask
+
+    instance = get_object_or_404(
+        MylarInstance, pk=request.POST.get("instance_id"), user=request.user
+    )
+
+    def _disconnect():
+        PeriodicTask.objects.filter(
+            _periodic_task_filter_for_instance(instance.id),
+            task=MYLAR_RECURRING_TASK_NAME,
+        ).delete()
+        # Through the reconciling helper, so copies only Mylar3 created go too.
+        states = CollectionSourceState.objects.filter(
+            user=request.user, source="mylar", source_instance_id=instance.id
+        ).select_related("item")
+        for state in states:
+            remove_collection_source_state(
+                user=request.user,
+                item=state.item,
+                source="mylar",
+                source_instance_id=instance.id,
+            )
+        instance.delete()
+
+    _run_with_lock_retry("disconnect Mylar3", _disconnect)
+    messages.info(request, "Disconnected Mylar3.")
+    return redirect("import_data")
+
+
+@require_POST
+def import_mylar(request):
+    """Queue Mylar3 import and ensure recurring schedule exists."""
+    instance = get_object_or_404(
+        MylarInstance, pk=request.POST.get("instance_id"), user=request.user
+    )
+
+    queued = _queue_task_or_message(request,
+        tasks.import_mylar, user_id=request.user.id, mode="new", instance_id=instance.id
+    )
+    _ensure_arr_schedule(instance, MYLAR_RECURRING_TASK_NAME, "Mylar3")
+    if queued is not False:
+        messages.info(request, "Mylar3 import queued.")
     return redirect("import_data")
 
 
