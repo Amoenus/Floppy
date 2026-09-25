@@ -8,6 +8,8 @@ so they agree on that rule and on the History refresh it needs.
 
 import logging
 
+from django.utils import timezone
+
 from app import history_cache
 from app.models import Episode
 
@@ -32,7 +34,7 @@ def set_episode_score(episodes, score, user_id):
     History cache never fires. Invalidate the affected days here instead.
     """
     end_dates = list(episodes.values_list("end_date", flat=True))
-    updated = episodes.update(score=score)
+    updated = episodes.update(score=score, scored_at=timezone.now())
 
     day_keys = [history_cache.history_day_key(end_date) for end_date in end_dates]
     day_keys = [day_key for day_key in day_keys if day_key]

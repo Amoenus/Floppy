@@ -681,6 +681,10 @@ class YamtrackImporter:
                         self.status_overrides[media_type][
                             (row["source"], row["media_id"], season_number)
                         ] = status_value
+            # Keep the backup's rating time; otherwise the insert stamps "now".
+            scored_at = parse_datetime(row.get("scored_at") or "")
+            if scored_at and form.instance.score is not None:
+                form.instance.scored_at = scored_at
             self.bulk_media[media_type].append(form.instance)
         else:
             error_msg = f"{row['title']} ({media_type}): {form.errors.as_json()}"
