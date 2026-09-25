@@ -1,5 +1,6 @@
 """Tests for the Mylar3 comic collection sync."""
 
+import copy
 from unittest.mock import MagicMock, patch
 
 import requests
@@ -119,6 +120,48 @@ class MylarImporterTests(TestCase):
         )
         self.assertEqual(CollectionSourceState.objects.count(), 3)
         self.assertEqual(CollectionEntry.objects.count(), 3)
+
+    def test_issue_no_longer_on_disk_stops_being_owned(self):
+        """An issue that goes back to Wanted drops its synced copy on the next run."""
+        with patch("integrations.imports.mylar.requests.get", side_effect=_fake_mylar):
+            mylar.importer(None, self.user, "new")
+
+        def _issue_301_wanted(url, params=None, timeout=None):
+            response = _fake_mylar(url, params=params, timeout=timeout)
+            if params["cmd"] == "getComic" and params["id"] == "18166":
+                data = copy.deepcopy(SAGA)
+                data["data"]["issues"][0]["status"] = "Wanted"
+                response.json.return_value = data
+            return response
+
+        with patch(
+            "integrations.imports.mylar.requests.get", side_effect=_issue_301_wanted
+        ):
+            counts, _ = mylar.importer(None, self.user, "new")
+
+        self.assertEqual(self._owned_issue_ids(), {"302", "401"})
+        self.assertEqual(counts["removed"], 1)
+        self.assertFalse(
+            CollectionEntry.objects.filter(user=self.user, item__media_id="301").exists()
+        )
+
+    def test_failed_sync_keeps_existing_copies(self):
+        """A run that stops part way must not treat unread series as removed."""
+        with patch("integrations.imports.mylar.requests.get", side_effect=_fake_mylar):
+            mylar.importer(None, self.user, "new")
+
+        def _comic_fails(url, params=None, timeout=None):
+            if params["cmd"] == "getComic":
+                raise requests.exceptions.ReadTimeout("read timed out")
+            return _fake_mylar(url, params=params, timeout=timeout)
+
+        with (
+            patch("integrations.imports.mylar.requests.get", side_effect=_comic_fails),
+            self.assertRaises(helpers.MediaImportError),
+        ):
+            mylar.importer(None, self.user, "new")
+
+        self.assertEqual(self._owned_issue_ids(), {"301", "302", "401"})
 
     @patch("integrations.imports.mylar.requests.get", side_effect=_fake_mylar)
     def test_existing_issue_item_is_reused(self, _mock_get):

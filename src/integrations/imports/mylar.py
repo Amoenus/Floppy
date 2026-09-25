@@ -16,8 +16,11 @@ from integrations.imports.helpers import (
     decrypt_or_raise,
     find_item_across_buckets,
 )
-from integrations.models import MylarInstance
-from integrations.source_sync import upsert_collection_source_state
+from integrations.models import CollectionSourceState, MylarInstance
+from integrations.source_sync import (
+    remove_collection_source_state,
+    upsert_collection_source_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +119,7 @@ class MylarImporter:
     def import_data(self):
         """Return the import data."""
         imported_counts = defaultdict(int)
+        owned_item_ids = set()
 
         try:
             series_rows = self.client.series()
@@ -125,7 +129,12 @@ class MylarImporter:
                 comic_id = series.get("id")
                 if not comic_id:
                     continue
-                self._import_series(series, self.client.comic(comic_id), imported_counts)
+                self._import_series(
+                    series,
+                    self.client.comic(comic_id),
+                    imported_counts,
+                    owned_item_ids,
+                )
         except MediaImportError as error:
             connection_health.record_failure(
                 self.instance,
@@ -134,12 +143,30 @@ class MylarImporter:
             )
             raise
 
+        # Only after every series was read: a partial run must not drop copies.
+        self._remove_no_longer_owned(owned_item_ids, imported_counts)
         self.instance.last_sync_at = timezone.now()
         connection_health.record_success(self.instance, extra_fields=["last_sync_at"])
 
         return dict(imported_counts), "\n".join(dict.fromkeys(self.warnings))
 
-    def _import_series(self, series, detail, imported_counts):
+    def _remove_no_longer_owned(self, owned_item_ids, imported_counts):
+        """Drop this instance's copies Mylar3 no longer has on disk."""
+        stale = CollectionSourceState.objects.filter(
+            user=self.user,
+            source="mylar",
+            source_instance_id=self.instance.pk,
+        ).exclude(item_id__in=owned_item_ids)
+        for state in stale.select_related("item"):
+            remove_collection_source_state(
+                user=self.user,
+                item=state.item,
+                source="mylar",
+                source_instance_id=self.instance.pk,
+            )
+            imported_counts["removed"] += 1
+
+    def _import_series(self, series, detail, imported_counts, owned_item_ids):
         series_name = series.get("name") or ""
         annual_name = f"{series_name} Annual"
         issues = [
@@ -153,6 +180,7 @@ class MylarImporter:
             if item is None:
                 imported_counts["skipped_missing_ids"] += 1
                 continue
+            owned_item_ids.add(item.id)
             upsert_collection_source_state(
                 user=self.user,
                 item=item,
