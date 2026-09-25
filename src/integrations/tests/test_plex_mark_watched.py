@@ -1,17 +1,20 @@
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from django_celery_beat.models import PeriodicTask
 
 from app.models import Movie
 from integrations import tasks
 from integrations.imports import plex
+from integrations.imports.helpers import MediaImportError
+from integrations.imports.plex import PlexHistoryImporter
 from integrations.models import PlexAccount
 
 CHECKPOINT_TS = 1700000000
@@ -64,10 +67,12 @@ class PlexMarkWatchedImporterTests(TestCase):
     """The poll only imports Plex history newer than its checkpoint."""
 
     def setUp(self):
-        """Connect a Plex account whose checkpoint sits at CHECKPOINT_TS."""
+        """Connect a Plex account whose checkpoint sits an hour ago."""
         self.user = get_user_model().objects.create_user(username="plexuser")
         self.user.plex_usernames = "plexuser"
         self.user.save(update_fields=["plex_usernames"])
+        self.checkpoint = timezone.now().replace(microsecond=0) - timedelta(hours=1)
+        self.checkpoint_ts = int(self.checkpoint.timestamp())
         self.account = PlexAccount.objects.create(
             user=self.user,
             plex_token="token",
@@ -75,64 +80,143 @@ class PlexMarkWatchedImporterTests(TestCase):
             plex_account_id="1",
             sections=[
                 {"id": "1", "machine_identifier": "machine", "type": "movie"},
+                {"id": "2", "machine_identifier": "machine", "type": "movie"},
             ],
-            mark_watched_checkpoint=datetime.fromtimestamp(CHECKPOINT_TS, tz=UTC),
+            mark_watched_checkpoint=self.checkpoint,
         )
+
+    def _set_checkpoint(self, value):
+        PlexAccount.objects.filter(pk=self.account.pk).update(
+            mark_watched_checkpoint=value,
+        )
+
+    def _poll(self):
+        before = timezone.now()
+        # Load the user fresh, as the Celery task does, so the account's
+        # stored checkpoint is the one read.
+        user = get_user_model().objects.get(pk=self.user.pk)
+        plex.mark_watched_importer(["all"], user, "new")
+        after = timezone.now()
+        self.account.refresh_from_db()
+        return before, after
 
     def test_imports_only_entries_after_checkpoint(self, _res, mock_fetch, *_):
         """A manual mark after the checkpoint lands; older history does not."""
         mock_fetch.return_value = (
             [
-                _movie_entry("200", CHECKPOINT_TS + 60),
-                _movie_entry("100", CHECKPOINT_TS - 60),
+                _movie_entry("200", self.checkpoint_ts + 60),
+                _movie_entry("100", self.checkpoint_ts - 60),
             ],
             2,
         )
 
-        plex.mark_watched_importer(["all"], self.user, "new")
+        self._poll()
 
         movies = Movie.objects.filter(user=self.user)
         self.assertEqual(list(movies.values_list("item__media_id", flat=True)), ["200"])
-        self.account.refresh_from_db()
+
+    def test_checkpoint_trails_poll_start_not_newest_entry(self, _res, mock_fetch, *_):
+        """The checkpoint never jumps to the newest entry seen.
+
+        Libraries are read in turn, so a mark landing on an already-read
+        library mid-poll must still be newer than the checkpoint next time.
+        """
+        mock_fetch.side_effect = [
+            ([], 0),  # library 1: nothing yet
+            ([_movie_entry("200", int(timezone.now().timestamp()))], 1),
+        ]
+
+        before, after = self._poll()
+
+        self.assertEqual(mock_fetch.call_count, 2)
+        checkpoint = self.account.mark_watched_checkpoint
+        self.assertGreaterEqual(checkpoint, before - plex.MARK_WATCHED_OVERLAP)
+        self.assertLessEqual(checkpoint, after - plex.MARK_WATCHED_OVERLAP)
+
+    def test_failed_entry_holds_checkpoint_for_retry(self, _res, mock_fetch, *_):
+        """An entry that failed to import is read again on the next poll."""
+        failed_ts = self.checkpoint_ts + 120
+        mock_fetch.return_value = (
+            [
+                _movie_entry("300", failed_ts),
+                _movie_entry("200", self.checkpoint_ts + 60),
+            ],
+            2,
+        )
+        original = PlexHistoryImporter._process_entry
+
+        def fail_300(importer, entry, *args, **kwargs):
+            if entry.get("ratingKey") == "rk300":
+                msg = "Plex metadata request timed out"
+                raise MediaImportError(msg)
+            return original(importer, entry, *args, **kwargs)
+
+        with patch.object(
+            PlexHistoryImporter, "_process_entry", autospec=True, side_effect=fail_300
+        ):
+            self._poll()
+
         self.assertEqual(
             self.account.mark_watched_checkpoint,
-            datetime.fromtimestamp(CHECKPOINT_TS + 60, tz=UTC),
+            datetime.fromtimestamp(failed_ts - 1, tz=UTC),
         )
+
+    def test_old_failure_stops_holding_checkpoint(self, _res, mock_fetch, *_):
+        """A failure older than the retry window cannot pin the checkpoint."""
+        old = self.checkpoint - timedelta(days=2)
+        self._set_checkpoint(old)
+        mock_fetch.return_value = (
+            [_movie_entry("300", int(old.timestamp()) + 60)],
+            1,
+        )
+
+        with patch.object(
+            PlexHistoryImporter,
+            "_process_entry",
+            side_effect=MediaImportError("Could not match"),
+        ):
+            before, after = self._poll()
+
+        checkpoint = self.account.mark_watched_checkpoint
+        self.assertGreaterEqual(checkpoint, before - plex.MARK_WATCHED_RETRY_WINDOW)
+        self.assertLessEqual(checkpoint, after - plex.MARK_WATCHED_RETRY_WINDOW)
+
+    def test_checkpoint_never_moves_before_enable_time(self, _res, mock_fetch, *_):
+        """A poll right after enabling does not re-read history from before it."""
+        recent = timezone.now() - timedelta(minutes=2)
+        self._set_checkpoint(recent)
+        mock_fetch.return_value = ([], 0)
+
+        self._poll()
+
+        self.assertEqual(self.account.mark_watched_checkpoint, recent)
 
     def test_stops_paging_at_checkpoint(self, _res, mock_fetch, *_):
         """Reaching an entry at or before the checkpoint ends the fetch."""
-        mock_fetch.return_value = (
-            [_movie_entry("100", CHECKPOINT_TS)],
-            5000,
-        )
+        self.account.sections = self.account.sections[:1]
+        self.account.save(update_fields=["sections"])
+        mock_fetch.return_value = ([_movie_entry("100", self.checkpoint_ts)], 5000)
 
-        plex.mark_watched_importer(["all"], self.user, "new")
+        self._poll()
 
         self.assertEqual(mock_fetch.call_count, 1)
         self.assertFalse(Movie.objects.filter(user=self.user).exists())
-        self.account.refresh_from_db()
-        self.assertEqual(
-            self.account.mark_watched_checkpoint,
-            datetime.fromtimestamp(CHECKPOINT_TS, tz=UTC),
-        )
 
     def test_skips_library_ratings_pass(self, _res, mock_fetch, _users, mock_ratings):
         """The poll never walks every library item for ratings."""
         mock_fetch.return_value = ([], 0)
 
-        plex.mark_watched_importer(["all"], self.user, "new")
+        self._poll()
 
         mock_ratings.assert_not_called()
 
     def test_replayed_entry_is_not_a_second_play(self, _res, mock_fetch, *_):
         """An entry already recorded (by a webhook or an earlier poll) is skipped."""
-        mock_fetch.return_value = ([_movie_entry("200", CHECKPOINT_TS + 60)], 1)
+        mock_fetch.return_value = ([_movie_entry("200", self.checkpoint_ts + 60)], 1)
 
-        plex.mark_watched_importer(["all"], self.user, "new")
-        PlexAccount.objects.filter(pk=self.account.pk).update(
-            mark_watched_checkpoint=datetime.fromtimestamp(CHECKPOINT_TS, tz=UTC),
-        )
-        plex.mark_watched_importer(["all"], self.user, "new")
+        self._poll()
+        self._set_checkpoint(self.checkpoint)
+        self._poll()
 
         self.assertEqual(Movie.objects.filter(user=self.user).count(), 1)
 

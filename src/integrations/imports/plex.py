@@ -3,7 +3,7 @@
 import json
 import logging
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 
 import urllib3
@@ -47,6 +47,13 @@ RATING_SCALE_MAX = 10
 RATING_PERCENTAGE_SCALE_MAX = 100
 MARK_WATCHED_TASK_NAME = "Sync Plex Watched Marks"
 MARK_WATCHED_INTERVAL_MINUTES = 15
+# Each poll re-reads this much history before it started. Libraries are read
+# one after another, so a mark landing on an already-read library mid-poll is
+# caught next time; the "new" mode dedupe drops the rows seen twice.
+MARK_WATCHED_OVERLAP = timedelta(minutes=10)
+# How long an entry that failed to import keeps the checkpoint held back, so a
+# transient failure is retried but a permanent one cannot pin it forever.
+MARK_WATCHED_RETRY_WINDOW = timedelta(days=1)
 
 # Matching an imported history record against a pre-existing row (e.g. one
 # already created by a live webhook, or by a Trakt import) is handled by the
@@ -83,17 +90,24 @@ def mark_watched_importer(library, user, mode):
         msg = "Plex is not connected for this user."
         raise MediaImportError(msg)
 
+    poll_started = timezone.now()
+    previous = account.mark_watched_checkpoint or poll_started
     plex_importer = PlexHistoryImporter(
         user=user,
         account=account,
         mode=mode,
         library=library,
-        since=account.mark_watched_checkpoint or timezone.now(),
+        since=previous,
     )
     result = plex_importer.import_data()
-    if plex_importer.newest_viewed_at:
-        account.mark_watched_checkpoint = plex_importer.newest_viewed_at
-        account.save(update_fields=["mark_watched_checkpoint"])
+
+    checkpoint = poll_started - MARK_WATCHED_OVERLAP
+    failed_at = plex_importer.oldest_failed_viewed_at
+    if failed_at:
+        checkpoint = min(checkpoint, failed_at - timedelta(seconds=1))
+    checkpoint = max(checkpoint, poll_started - MARK_WATCHED_RETRY_WINDOW, previous)
+    account.mark_watched_checkpoint = checkpoint
+    account.save(update_fields=["mark_watched_checkpoint"])
     return result
 
 
@@ -139,7 +153,7 @@ class PlexHistoryImporter:
         # When set, only history viewed after this moment is fetched, and the
         # library ratings pass is skipped (see mark_watched_importer).
         self.since_ts = int(since.timestamp()) if since else None
-        self.newest_viewed_at = None
+        self.oldest_failed_viewed_at = None
         self.account = account
         self.mode = mode
         # Accept a bare string for backward compatibility with already-scheduled
@@ -535,12 +549,14 @@ class PlexHistoryImporter:
                 self._process_entry(entry, uri_used, section_type)
             except MediaImportError as exc:
                 self.warnings.append(str(exc))
+                self._record_failed_entry(entry)
             except Exception as exc:  # pragma: no cover - defensive
                 logger.warning(
                     "Failed to import a Plex history entry: %s",
                     exception_summary(exc),
                 )
                 self.warnings.append(f"Failed to import a Plex entry: {exc}")
+                self._record_failed_entry(entry)
 
         logger.info(
             "Processed %s Plex history entries from library %s on %s "
@@ -658,10 +674,16 @@ class PlexHistoryImporter:
                 reached_checkpoint = True
                 continue
             newer.append(entry)
-            seen = datetime.fromtimestamp(viewed_at, tz=UTC)
-            if self.newest_viewed_at is None or seen > self.newest_viewed_at:
-                self.newest_viewed_at = seen
         return newer, reached_checkpoint
+
+    def _record_failed_entry(self, entry: dict):
+        """Remember the oldest entry that failed, so a poll can retry it."""
+        try:
+            failed = datetime.fromtimestamp(int(entry.get("viewedAt")), tz=UTC)
+        except (TypeError, ValueError):
+            return
+        if self.oldest_failed_viewed_at is None or failed < self.oldest_failed_viewed_at:
+            self.oldest_failed_viewed_at = failed
 
     def _is_server_owned(self, machine_identifier) -> bool:
         """Return whether the user owns the server hosting this section."""
