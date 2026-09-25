@@ -3088,6 +3088,12 @@ components:
           type: number
           format: double
           nullable: true
+        scored_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the score was last set, changed or cleared; null when
+            never scored or when the rating predates this field.
         progress:
           type: number
           format: double
@@ -3125,6 +3131,7 @@ components:
       - progress
       - progressed_at
       - score
+      - scored_at
       - source
       - start_date
       - status
@@ -3637,6 +3644,12 @@ components:
           type: number
           format: double
           nullable: true
+        scored_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the score was last set, changed or cleared; null when
+            never scored or when the rating predates this field.
         status:
           type: integer
           nullable: true
@@ -3704,6 +3717,7 @@ components:
       - progress_unit
       - progressed_at
       - score
+      - scored_at
       - show
       - source
       - start_date

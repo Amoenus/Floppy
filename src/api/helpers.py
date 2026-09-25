@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.db.models import Count, OuterRef, Subquery
+from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.utils.timezone import localdate
 from rest_framework.response import Response
@@ -1062,7 +1063,7 @@ def apply_episode_score(season, episode_number, score):
     if not episodes.exists():
         return False
 
-    episodes.update(score=score)
+    episodes.exclude(score=score).update(score=score, scored_at=timezone.now())
 
     day_keys = [
         history_cache.history_day_key(end_date)
