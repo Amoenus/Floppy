@@ -129,6 +129,7 @@ from integrations.plex_watchlist import (
     WATCHLIST_TASK_NAME,
 )
 from integrations.pocketcasts_api import PocketCastsAuthError
+from integrations.safe_fetch import send_to_self_hosted
 from integrations.source_sync import remove_collection_source_state
 from integrations.state import outbound
 from integrations.upload_staging import (
@@ -2419,7 +2420,8 @@ def audiobookshelf_cover(request, token):
 
     cover_url = f"{account.base_url.rstrip('/')}/api/items/{library_item_id}/cover"
     try:
-        upstream = requests.get(
+        upstream = send_to_self_hosted(
+            requests.get,
             cover_url,
             headers={"Authorization": f"Bearer {api_token}"},
             timeout=AUDIOBOOKSHELF_COVER_TIMEOUT,

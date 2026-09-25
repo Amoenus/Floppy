@@ -272,11 +272,15 @@ def validate_self_hosted_url(url):
     A name that does not resolve is let through: the request itself then
     fails with the ordinary connection error the user already sees today.
     """
-    parsed = urlparse(str(url or "").strip())
+    try:
+        parsed = urlparse(str(url or "").strip())
+        hostname = (parsed.hostname or "").rstrip(".")
+    except ValueError as error:
+        msg = "This server address could not be read."
+        raise SelfHostedUrlError(REASON_UNPARSABLE_URL, msg) from error
     if parsed.scheme.lower() not in ALLOWED_SCHEMES:
         msg = "Only http and https server addresses are supported."
         raise SelfHostedUrlError(REASON_FORBIDDEN_SCHEME, msg)
-    hostname = (parsed.hostname or "").rstrip(".")
     if not hostname:
         msg = "This server address has no host."
         raise SelfHostedUrlError(REASON_MISSING_HOST, msg)

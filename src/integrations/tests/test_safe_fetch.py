@@ -271,6 +271,12 @@ class SelfHostedPolicyTests(TestCase):
                     safe_fetch.validate_self_hosted_url("http://metadata.example/")
                 self.assertEqual(caught.exception.reason_code, "forbidden_address")
 
+    def test_an_unparsable_address_is_a_policy_refusal(self):
+        """Callers catch requests errors, so a bad bracketed host must not escape as ValueError."""
+        with self.assertRaises(safe_fetch.SelfHostedUrlError) as caught:
+            safe_fetch.validate_self_hosted_url("http://[bad")
+        self.assertEqual(caught.exception.reason_code, "unparsable_url")
+
     def test_refusal_is_a_requests_error_without_the_url(self):
         """Existing ``except requests.RequestException`` handlers catch it."""
         import requests
