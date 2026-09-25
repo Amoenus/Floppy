@@ -1568,6 +1568,58 @@ def import_trakt_export_file(request):
     return _integration_redirect(request, connected_slug="trakt")
 
 
+@require_POST
+def import_wetrakr(request):
+    """View for importing a WeTrakr data export: the .zip or its loose .csv files.
+
+    Loose .csv uploads are repackaged into a staged zip so the Celery task
+    always receives a single path.
+    """
+    uploads = request.FILES.getlist("wetrakr_export")
+    if not uploads:
+        messages.error(request, "A WeTrakr export file is required.")
+        return _integration_redirect(request)
+
+    staged_files = _stage_uploads_or_message(request, uploads, "WeTrakr export")
+    if staged_files is None:
+        return _integration_redirect(request)
+
+    if len(staged_files) == 1 and staged_payload_is_zip(staged_files[0]):
+        archive_path = staged_files[0]
+    else:
+        payloads = [
+            (upload.name, path)
+            for upload, path in zip(uploads, staged_files, strict=True)
+        ]
+        try:
+            archive_path = str(build_staged_zip(payloads))
+        except OSError:
+            logger.exception("Could not build staged WeTrakr export archive")
+            messages.error(
+                request,
+                "The WeTrakr export could not be prepared. Check available disk space and try again.",
+            )
+            return _integration_redirect(request)
+        finally:
+            for path in staged_files:
+                discard_staged_upload(path)
+
+    if _queue_staged_task_or_message(
+        request,
+        tasks.import_wetrakr_export,
+        user_id=request.user.id,
+        file=archive_path,
+        mode=request.POST["mode"],
+        staged_paths=(archive_path,),
+    ) is False:
+        return _integration_redirect(request, connected_slug="wetrakr")
+    messages.info(
+        request,
+        "The task to import your WeTrakr data export has been queued.",
+    )
+    return _integration_redirect(request, connected_slug="wetrakr")
+
+
 def _is_trakt_export_payload(name, path):
     """Whether an upload is part of the JSON/zip export rather than the legacy CSV."""
     return name.lower().endswith((".zip", ".json")) or staged_payload_is_zip(path)
