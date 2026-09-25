@@ -56,7 +56,7 @@ def _response(payload, status_code=200):
     return response
 
 
-def _fake_mylar(url, params=None, timeout=None):
+def _fake_mylar(url, params=None, **_kwargs):
     """Answer like a Mylar3 server holding one series, Saga."""
     if params["cmd"] == "getIndex":
         return _response(INDEX)
@@ -126,8 +126,8 @@ class MylarImporterTests(TestCase):
         with patch("integrations.imports.mylar.requests.get", side_effect=_fake_mylar):
             mylar.importer(None, self.user, "new")
 
-        def _issue_301_wanted(url, params=None, timeout=None):
-            response = _fake_mylar(url, params=params, timeout=timeout)
+        def _issue_301_wanted(url, params=None, **kwargs):
+            response = _fake_mylar(url, params=params, **kwargs)
             if params["cmd"] == "getComic" and params["id"] == "18166":
                 data = copy.deepcopy(SAGA)
                 data["data"]["issues"][0]["status"] = "Wanted"
@@ -150,10 +150,10 @@ class MylarImporterTests(TestCase):
         with patch("integrations.imports.mylar.requests.get", side_effect=_fake_mylar):
             mylar.importer(None, self.user, "new")
 
-        def _comic_fails(url, params=None, timeout=None):
+        def _comic_fails(url, params=None, **kwargs):
             if params["cmd"] == "getComic":
                 raise requests.exceptions.ReadTimeout("read timed out")
-            return _fake_mylar(url, params=params, timeout=timeout)
+            return _fake_mylar(url, params=params, **kwargs)
 
         with (
             patch("integrations.imports.mylar.requests.get", side_effect=_comic_fails),

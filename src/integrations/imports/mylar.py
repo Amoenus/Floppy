@@ -17,6 +17,7 @@ from integrations.imports.helpers import (
     find_item_across_buckets,
 )
 from integrations.models import CollectionSourceState, MylarInstance
+from integrations.safe_fetch import SelfHostedUrlError, send_to_self_hosted
 from integrations.source_sync import (
     remove_collection_source_state,
     upsert_collection_source_state,
@@ -40,11 +41,15 @@ class MylarClient:
 
     def _request(self, cmd: str, **params):
         try:
-            response = requests.get(
+            response = send_to_self_hosted(
+                requests.get,
                 f"{self.base_url}/api",
                 params={"apikey": self.api_key, "cmd": cmd, **params},
                 timeout=20,
             )
+        except SelfHostedUrlError as error:
+            msg = f"Could not reach Mylar3: {error}"
+            raise MediaImportError(msg) from error
         except requests.RequestException as error:
             # The key travels in the query string, so the exception text (which
             # repeats the URL) must not reach the stored error message.
