@@ -256,6 +256,10 @@ SOURCES_CONFIG = {
         "name": "Sonarr",
         "logo": static("img/plex-logo.svg"),
     },
+    "mylar": {
+        "name": "Mylar3",
+        "logo": static("img/mylar-logo.png"),
+    },
 }
 
 
