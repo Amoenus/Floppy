@@ -262,6 +262,30 @@ class AudiobookshelfCoverProxyTests(TestCase):
         mock_get.assert_called_once()
 
     @patch("integrations.views.requests.get")
+    def test_body_stalling_mid_stream_serves_placeholder_and_backs_off(
+        self,
+        mock_get,
+    ):
+        """Headers arrive but the body stalls: same placeholder and backoff."""
+        upstream = self._mock_upstream(headers={"Content-Type": "image/jpeg"})
+
+        def stalled(chunk_size):
+            yield b"partial"
+            raise requests.ConnectionError("Read timed out.")
+
+        upstream.iter_content = stalled
+        mock_get.return_value = upstream
+
+        with self.assertLogs("integrations.views", level="WARNING"):
+            first = self.client.get(self._cover_url("item-1"))
+        second = self.client.get(self._cover_url("item-2"))
+
+        self.assertPlaceholder(first)
+        self.assertPlaceholder(second)
+        mock_get.assert_called_once()
+        upstream.close.assert_called_once()
+
+    @patch("integrations.views.requests.get")
     def test_backoff_lapses_and_covers_load_again(self, mock_get):
         """Once the backoff expires the real cover is fetched again."""
         mock_get.side_effect = requests.ReadTimeout("Read timed out.")

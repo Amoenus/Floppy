@@ -2552,13 +2552,26 @@ def audiobookshelf_cover(request, token):
 
         body = bytearray()
         oversized = False
-        for chunk in upstream.iter_content(chunk_size=64 * 1024):
-            if not chunk:
-                continue
-            body.extend(chunk)
-            if len(body) > image_cache.MAX_IMAGE_BYTES:
-                oversized = True
-                break
+        try:
+            for chunk in upstream.iter_content(chunk_size=64 * 1024):
+                if not chunk:
+                    continue
+                body.extend(chunk)
+                if len(body) > image_cache.MAX_IMAGE_BYTES:
+                    oversized = True
+                    break
+        except requests.RequestException as error:
+            # With stream=True a server that stalls after the headers fails
+            # here rather than at send time, so it gets the same backoff.
+            cache.set(backoff_key, 1, AUDIOBOOKSHELF_COVER_BACKOFF_SECONDS)
+            logger.warning(
+                "Audiobookshelf cover unavailable: body read failed "
+                "account=%s item=%s error=%s",
+                account_id,
+                library_item_id,
+                exception_summary(error),
+            )
+            return _placeholder_image_response()
     finally:
         upstream.close()
 
