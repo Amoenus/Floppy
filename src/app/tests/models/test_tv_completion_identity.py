@@ -383,3 +383,22 @@ class SeasonCompletionEvidenceTests(TestCase):
 
         self.season.refresh_from_db()
         self.assertEqual(self.season.status, Status.COMPLETED.value)
+
+    def test_resync_of_completed_season_finishes_an_ended_show(self):
+        """A show left open by a provider outage is finished on a later re-sync."""
+        self._record_episodes(range(1, 11))
+        Season.objects.filter(pk=self.season.pk).update(status=Status.COMPLETED.value)
+        TV.objects.filter(pk=self.tv.pk).update(status=Status.IN_PROGRESS.value)
+        ended = {
+            "details": {"status": "Ended"},
+            "related": {"seasons": [{"season_number": 1}]},
+        }
+
+        with patch(
+            "app.providers.services.get_media_metadata",
+            return_value=ended,
+        ):
+            self.assertEqual(self._sync_status(), Status.COMPLETED.value)
+
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.COMPLETED.value)

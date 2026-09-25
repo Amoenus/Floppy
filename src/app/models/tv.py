@@ -1712,26 +1712,24 @@ class Season(Media):
         tv = getattr(self, "related_tv", None)
         if not tv or tv.status == Status.DROPPED.value or not desired_status:
             return
-        if desired_status == Status.COMPLETED.value:
-            if became_completed or plays_added:
-                if tv.status == Status.PLANNING.value:
-                    # Logged plays mean the show has started, whether or not
-                    # the handoff below goes on to finish it.
-                    tv.status = Status.IN_PROGRESS.value
-                    bulk_update_with_history([tv], TV, fields=["status"])
-                # Starts the next season, or completes the show only when the
-                # provider says it has ended (a returning series stays open).
-                tv._handle_completed_season(self.item.season_number)
-                return
-            has_incomplete = (
-                tv.seasons.filter(
-                    item__season_number__gt=0,
-                )
-                .exclude(status=Status.COMPLETED.value)
-                .exists()
-            )
-            if not has_incomplete:
-                return
+        if desired_status == Status.COMPLETED.value and (
+            became_completed
+            or plays_added
+            or not tv.seasons.filter(item__season_number__gt=0)
+            .exclude(status=Status.COMPLETED.value)
+            .exists()
+        ):
+            if tv.status == Status.PLANNING.value:
+                # Logged plays mean the show has started, whether or not
+                # the handoff below goes on to finish it.
+                tv.status = Status.IN_PROGRESS.value
+                bulk_update_with_history([tv], TV, fields=["status"])
+            # Starts the next season, or completes the show only when the
+            # provider says it has ended (a returning series stays open).
+            # Also runs on a re-sync with every season complete, so a show
+            # left open by a provider outage is finished once it answers.
+            tv._handle_completed_season(self.item.season_number)
+            return
         if tv.status != Status.IN_PROGRESS.value:
             tv.status = Status.IN_PROGRESS.value
             bulk_update_with_history([tv], TV, fields=["status"])
