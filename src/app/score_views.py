@@ -12,6 +12,7 @@ from django.views.decorators.http import require_POST
 
 from app import history_cache
 from app.models import Album, BasicMedia, Episode, Season
+from app.services.episode_scores import set_episode_score
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +141,7 @@ def update_episode_score(request, season_id, episode_number):
         if existing == score:
             score = None
 
-    episodes.update(score=score)
+    set_episode_score(episodes, score, request.user.id)
     logger.info(
         "Episode S%sE%s score updated to %s for user %s",
         season.item.season_number,
@@ -148,22 +149,6 @@ def update_episode_score(request, season_id, episode_number):
         score,
         request.user,
     )
-
-    # `episodes.update()` runs a raw SQL UPDATE and does not emit post_save, so
-    # the Episode signal that refreshes the history cache never fires. Invalidate
-    # the affected history day(s) here so the rating shows on the History page.
-    day_keys = [
-        history_cache.history_day_key(end_date)
-        for end_date in episodes.values_list("end_date", flat=True)
-    ]
-    day_keys = [day_key for day_key in day_keys if day_key]
-    if day_keys:
-        history_cache.invalidate_history_days(
-            request.user.id,
-            day_keys=day_keys,
-            logging_styles=("sessions", "repeats"),
-            reason="episode_score_change",
-        )
 
     return JsonResponse(
         {

@@ -12,6 +12,7 @@ from app.models import TV, Item, ItemProviderLink, MediaTypes, Movie, Sources
 from app.providers import services
 from app.services import metadata_resolution
 from app.services.completion import select_preferred_activity_entry
+from app.services.episode_scores import set_episode_score, tracked_episode_plays
 from integrations.imports.helpers import find_item_across_buckets
 from integrations.source_sync import (
     remove_collection_source_state,
@@ -707,6 +708,9 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             logger.warning("Could not resolve Jellyfin rating target")
             return None
 
+        if (payload.get("Item") or {}).get("Type") == "Episode":
+            return self._apply_episode_rating(payload, user, item, rating)
+
         instances = model.objects.filter(item=item, user=user)
         instance = select_preferred_activity_entry(instances)
         if instance is None:
@@ -731,6 +735,44 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
                 item.title,
                 rating,
             )
+        return rating
+
+    def _apply_episode_rating(self, payload, user, show_item, rating):
+        """Rate the episode's plays; an episode rating never rates the show."""
+        season_number, episode_number = self._extract_season_episode_from_payload(
+            payload,
+        )
+        if season_number is None or episode_number is None:
+            logger.warning(
+                "Ignoring Jellyfin episode rating without season/episode numbers",
+            )
+            return None
+
+        episodes = tracked_episode_plays(
+            user,
+            show_item.media_id,
+            show_item.source,
+            season_number,
+            episode_number,
+        )
+        updated = set_episode_score(episodes.exclude(score=rating), rating, user.id)
+        if updated:
+            logger.info(
+                "Updated episode rating from Jellyfin: %s S%sE%s=%s",
+                show_item.title,
+                season_number,
+                episode_number,
+                rating,
+            )
+        elif not episodes.exists():
+            # Episode plays are watch records; a rating alone must not create one.
+            logger.info(
+                "Ignoring Jellyfin rating for untracked episode %s S%sE%s",
+                show_item.title,
+                season_number,
+                episode_number,
+            )
+            return None
         return rating
 
     def _resolve_rating_tv_item(self, payload, ids):
