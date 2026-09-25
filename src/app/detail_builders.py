@@ -689,6 +689,26 @@ def _build_mal_rating_context(detail_item, route_media_type):
     }
 
 
+def _build_opencritic_context(detail_item, route_media_type):
+    """Return template-ready stored OpenCritic scores for a game."""
+    if (
+        not detail_item
+        or route_media_type != MediaTypes.GAME.value
+        or detail_item.opencritic_score is None
+    ):
+        return None
+    return {
+        "score": round(detail_item.opencritic_score),
+        "percent_recommended": (
+            round(detail_item.opencritic_percent_recommended)
+            if detail_item.opencritic_percent_recommended is not None
+            else None
+        ),
+        "tier": detail_item.opencritic_tier,
+        "url": detail_item.opencritic_url,
+    }
+
+
 def _apply_cached_hltb_link(media_metadata, detail_item):
     """Prefer a stored direct HLTB link when one has already been resolved."""
     if not detail_item or not isinstance(media_metadata, dict):

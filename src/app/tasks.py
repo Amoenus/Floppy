@@ -222,6 +222,10 @@ from app.tasks_music import (  # noqa: E402
     prefetch_album_covers_batch,
     prefetch_artist_images_batch,
 )
+from app.tasks_opencritic import (  # noqa: E402
+    backfill_opencritic_scores,  # noqa: F401
+    refresh_item_opencritic_score,  # noqa: F401
+)
 from app.tasks_podcast import (  # noqa: E402
     PODCAST_WEBSITE_BACKFILL_VERSION,
     backfill_podcast_show_websites,

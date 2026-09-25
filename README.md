@@ -481,6 +481,7 @@ The only universally required variable is `SECRET`. For Docker installs you shou
 - `BGG_API_TOKEN` - board game metadata from [BoardGameGeek](https://boardgamegeek.com/using_the_xml_api)
 - `HARDCOVER_API` - Hardcover book metadata/imports. **Required to use Hardcover** ([generate a token](https://hardcover.app/account/api)); Hardcover meters its free tier per account (5000 requests/day), so Floppy ships no shared default and book search falls back to Open Library without one. Individual users can also set a personal token in their own settings.
 - `GOOGLE_BOOKS_API_KEY` - optional Google Books book metadata ([Google Books API](https://developers.google.com/books/docs/v1/using)); supports `GOOGLE_BOOKS_API_KEY_FILE` for Docker secrets
+- `OPENCRITIC_API_KEY` - optional OpenCritic critic scores for games, from a [RapidAPI key](https://rapidapi.com/opencritic-opencritic-default/api/opencritic-api). The free plan (25 searches and 200 requests a day) is enough: a score is fetched when a game page is opened, and quota left over in the hour before the daily reset fills in tracked games. Supports `OPENCRITIC_API_KEY_FILE`; can also be set in Settings > Metadata
 - `COMICVINE_API` - comic metadata
 - `LASTFM_API_KEY` - Last.fm integration and scrobble polling
 - `MUSICBRAINZ_URL` - custom MusicBrainz-compatible API root, including `/ws/2` (defaults to `https://musicbrainz.org/ws/2`)

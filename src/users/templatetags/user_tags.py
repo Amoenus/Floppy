@@ -232,6 +232,10 @@ SOURCES_CONFIG = {
         "name": "IGDB",
         "logo": static("img/igdb-logo.png"),
     },
+    "opencritic": {
+        "name": "OpenCritic",
+        "logo": static("img/opencritic-logo.svg"),
+    },
     "hardcover": {
         "name": "Hardcover",
         "logo": static("img/hardcover-logo.png"),
