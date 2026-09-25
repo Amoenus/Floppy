@@ -683,7 +683,8 @@ class YamtrackImporter:
                         ] = status_value
             # Keep the backup's rating time; otherwise the insert stamps "now".
             scored_at = parse_datetime(row.get("scored_at") or "")
-            if scored_at and form.instance.score is not None:
+            # A cleared rating keeps its time too, so the removal survives.
+            if scored_at:
                 form.instance.scored_at = scored_at
             self.bulk_media[media_type].append(form.instance)
         else:

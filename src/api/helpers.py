@@ -1063,7 +1063,7 @@ def apply_episode_score(season, episode_number, score):
     if not episodes.exists():
         return False
 
-    episodes.update(score=score, scored_at=timezone.now())
+    episodes.exclude(score=score).update(score=score, scored_at=timezone.now())
 
     day_keys = [
         history_cache.history_day_key(end_date)

@@ -33,6 +33,8 @@ def set_episode_score(episodes, score, user_id):
     ``update()`` skips post_save, so the Episode signal that refreshes the
     History cache never fires. Invalidate the affected days here instead.
     """
+    # Only plays whose score differs, so a retried request is not a new rating.
+    episodes = episodes.exclude(score=score)
     end_dates = list(episodes.values_list("end_date", flat=True))
     updated = episodes.update(score=score, scored_at=timezone.now())
 

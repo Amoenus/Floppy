@@ -1640,7 +1640,10 @@ class TraktImporter(TraktMetadataResolverMixin):
                 item__episode_number=episode_number,
             )
             if episodes.exists():
-                episodes.update(score=scaled_score, scored_at=timezone.now())
+                episodes.exclude(score=scaled_score).update(
+                    score=scaled_score,
+                    scored_at=timezone.now(),
+                )
                 return
 
         # Fall back to in-memory episode objects from this same import run

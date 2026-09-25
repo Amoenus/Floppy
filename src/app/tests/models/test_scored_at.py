@@ -196,3 +196,22 @@ class EpisodeScoredAtTests(TestCase):
         for score, scored_at in plays.values_list("score", "scored_at"):
             self.assertEqual(score, Decimal("7.0"))
             self.assertIsNotNone(scored_at)
+
+    def test_set_episode_score_same_score_keeps_timestamp(self):
+        """A retried rating request is not a new rating event."""
+        self._play(score=Decimal("7.0"))
+        plays = Episode.objects.filter(item=self.episode_item)
+        plays.update(scored_at=OLD)
+
+        set_episode_score(plays, Decimal("7.0"), self.user.id)
+
+        self.assertEqual(plays.get().scored_at, OLD)
+
+    def test_clearing_unrated_episode_keeps_timestamp(self):
+        """Clearing an episode that has no rating is a no-op."""
+        self._play()
+        plays = Episode.objects.filter(item=self.episode_item)
+
+        set_episode_score(plays, None, self.user.id)
+
+        self.assertIsNone(plays.get().scored_at)

@@ -603,6 +603,17 @@ class ImportYamtrackStatuslessRoundTrip(TestCase):
         movie = Movie.objects.get(user=self.importer_user)
         self.assertEqual(movie.scored_at, self.SCORED_AT)
 
+    def test_cleared_rating_time_round_trips(self):
+        """A cleared rating keeps its time, so the removal still syncs."""
+        Movie.objects.filter(user=self.exporter).update(score=None)
+        csv_bytes = "".join(exports.generate_rows(self.exporter)).encode("utf-8")
+
+        yamtrack.importer(BytesIO(csv_bytes), self.importer_user, "new")
+
+        movie = Movie.objects.get(user=self.importer_user)
+        self.assertIsNone(movie.score)
+        self.assertEqual(movie.scored_at, self.SCORED_AT)
+
 
 class ImportYamtrackTagsRoundTrip(TestCase):
     """An item's tags survive an export/import cycle (issue #574)."""
