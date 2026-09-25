@@ -942,11 +942,19 @@ def get_sidebar_media_types(user):
     else:
         enabled_types = user.get_sidebar_media_types()
 
+    saved_views_by_type = {}
+    if user and user.is_authenticated:
+        for saved_view in user.saved_views.all():
+            saved_views_by_type.setdefault(saved_view.media_type, []).append(
+                saved_view,
+            )
+
     # Format the types for sidebar
     return [
         {
             "media_type": media_type,
             "display_name": media_type_readable_plural(media_type),
+            "saved_views": saved_views_by_type.get(media_type, []),
         }
         for media_type in enabled_types
     ]
