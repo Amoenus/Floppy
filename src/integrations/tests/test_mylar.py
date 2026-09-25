@@ -300,8 +300,11 @@ class MylarViewTests(TestCase):
             user=self.user, item=item, source="mylar", source_instance_id=instance.id
         )
 
+        CollectionEntry.objects.create(user=self.user, item=item)
+
         self.client.post(reverse("mylar_disconnect"), {"instance_id": instance.id})
 
+        self.assertFalse(CollectionEntry.objects.filter(item=item).exists())
         self.assertFalse(MylarInstance.objects.exists())
         self.assertFalse(
             PeriodicTask.objects.filter(task="Import from Mylar3 (Recurring)").exists()

@@ -129,6 +129,7 @@ from integrations.plex_watchlist import (
     WATCHLIST_TASK_NAME,
 )
 from integrations.pocketcasts_api import PocketCastsAuthError
+from integrations.source_sync import remove_collection_source_state
 from integrations.state import outbound
 from integrations.upload_staging import (
     build_staged_zip,
@@ -1806,9 +1807,17 @@ def mylar_disconnect(request):
             _periodic_task_filter_for_instance(instance.id),
             task=MYLAR_RECURRING_TASK_NAME,
         ).delete()
-        CollectionSourceState.objects.filter(
+        # Through the reconciling helper, so copies only Mylar3 created go too.
+        states = CollectionSourceState.objects.filter(
             user=request.user, source="mylar", source_instance_id=instance.id
-        ).delete()
+        ).select_related("item")
+        for state in states:
+            remove_collection_source_state(
+                user=request.user,
+                item=state.item,
+                source="mylar",
+                source_instance_id=instance.id,
+            )
         instance.delete()
 
     _run_with_lock_retry("disconnect Mylar3", _disconnect)
