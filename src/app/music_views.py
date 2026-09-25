@@ -35,6 +35,11 @@ logger = logging.getLogger(__name__)
 
 MINUTES_PER_HOUR = 60
 
+# How often viewing an artist may call MusicBrainz on the viewer's time: an
+# MBID search when the artist has none, and a discography sync.
+ARTIST_VIEW_MBID_RESOLVE_SECONDS = 24 * 60 * 60
+ARTIST_VIEW_SYNC_SECONDS = 60 * 60
+
 # Lengths of the partial-date strings MusicBrainz can return for a release
 # date: "YYYY", "YYYY-MM", or a full "YYYY-MM-DD" (10+ chars).
 DATE_STR_LEN_YEAR_ONLY = 4
@@ -421,7 +426,14 @@ def _render_music_artist_details(request, artist):
     )
     from app.services.music_scrobble import dedupe_artist_albums
 
-    if not artist.musicbrainz_id:
+    # Resolving an MBID searches MusicBrainz under several name variants, each
+    # a rate-limited call. An artist with no match would repeat that search on
+    # every view, so a view tries at most once a day.
+    if not artist.musicbrainz_id and cache.add(
+        f"music:artist-mbid-resolve:{artist.id}",
+        True,
+        ARTIST_VIEW_MBID_RESOLVE_SECONDS,
+    ):
         try:
             mbid, cand_count, variant = sync_services.resolve_artist_mbid(
                 artist.name or "",
@@ -484,8 +496,20 @@ def _render_music_artist_details(request, artist):
     )
     force_sync = existing_album_count == 0 or missing_mbids
 
+    # A forced sync re-reads the whole discography from MusicBrainz. Albums the
+    # provider cannot match keep ``missing_mbids`` true forever, so without a
+    # gate every view of such an artist paid for a full sync. The page's sync
+    # button still forces one on demand.
     synced_count = 0
-    if should_sync and artist.musicbrainz_id:
+    if (
+        should_sync
+        and artist.musicbrainz_id
+        and cache.add(
+            f"music:artist-view-sync:{artist.id}",
+            True,
+            ARTIST_VIEW_SYNC_SECONDS,
+        )
+    ):
         synced_count = sync_artist_discography(artist, force=force_sync)
         if synced_count:
             dedupe_artist_albums(artist)
@@ -516,11 +540,20 @@ def _render_music_artist_details(request, artist):
         ).select_related("album", "item"),
     )
 
+    play_counts_by_music_id = dict(
+        Music.history.model.objects.filter(
+            id__in=[music.id for music in user_music_entries if music.album_id],
+        )
+        .order_by()
+        .values("id")
+        .annotate(play_count=models.Count("history_id"))
+        .values_list("id", "play_count"),
+    )
     album_play_counts = {}
     total_plays = 0
     for music in user_music_entries:
         if music.album_id:
-            play_count = music.history.count()
+            play_count = play_counts_by_music_id.get(music.id, 0)
             album_play_counts[music.album_id] = (
                 album_play_counts.get(music.album_id, 0) + play_count
             )

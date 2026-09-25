@@ -85,6 +85,10 @@ logger = logging.getLogger(__name__)
 
 RUNTIME_UNKNOWN_AIRED = 999998  # aired but runtime unknown
 
+# How long a podcast show's page renders its stored episodes before a view
+# re-reads the feed.
+PODCAST_DETAIL_RSS_REFRESH_SECONDS = 15 * 60
+
 
 def _enrich_comic_issues(issues, user):
     """Attach user tracking history to each issue dict from the volume issues list."""
@@ -384,7 +388,17 @@ def media_details(
             # published since the last visit, and backfill website_url on the
             # ones already stored, which is the only path that repairs rows
             # created before podcast website links existed (issue #1014).
-            if show.rss_feed_url and not public_view:
+            # The feed is a full third-party download plus episode writes, so
+            # repeat views inside the window render the stored episodes.
+            if (
+                show.rss_feed_url
+                and not public_view
+                and cache.add(
+                    f"podcast:detail-rss-refresh:{show.id}",
+                    True,
+                    PODCAST_DETAIL_RSS_REFRESH_SECONDS,
+                )
+            ):
                 from app.fork_services_podcast import refresh_show_from_rss
 
                 _best_effort_detail_followup(
