@@ -18,6 +18,7 @@ import os
 import statistics
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import requests
@@ -183,7 +184,9 @@ class SurfaceBenchmarkTests(TestCase):
         )
         CustomListItem.objects.bulk_create(
             [
-                CustomListItem(custom_list=cls.custom_list, item=item, added_by=cls.user)
+                CustomListItem(
+                    custom_list=cls.custom_list, item=item, added_by=cls.user
+                )
                 for item in Item.objects.filter(
                     media_type__in=[MediaTypes.MOVIE.value, MediaTypes.TV.value],
                 ).order_by("id")[:12]
@@ -294,7 +297,9 @@ class SurfaceBenchmarkTests(TestCase):
             cache.clear()
             self.client.force_login(self.user)
             cold = self._measure(path, **request_kwargs)
-            warm_runs = [self._measure(path, **request_kwargs) for _ in range(WARM_RUNS)]
+            warm_runs = [
+                self._measure(path, **request_kwargs) for _ in range(WARM_RUNS)
+            ]
             warm = warm_runs[-1]
             results.append(
                 {
@@ -316,9 +321,9 @@ class SurfaceBenchmarkTests(TestCase):
 
         out_path = os.environ.get("FLOPPY_SURFACE_BENCH_OUT")
         if out_path:
-            with open(out_path, "w", encoding="utf-8") as handle:
+            with Path(out_path).open("w", encoding="utf-8") as handle:
                 json.dump(results, handle, indent=1, sort_keys=True)
-        print(json.dumps(results, sort_keys=True))  # noqa: T201
+        print(json.dumps(results, sort_keys=True))
 
         # 503 is the designed "provider unavailable" page: provider HTTP is
         # blocked here, so a page that cannot render without it reports that.
