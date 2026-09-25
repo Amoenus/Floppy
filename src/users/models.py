@@ -1884,6 +1884,7 @@ class User(AbstractUser):
             ],
             "radarr": ["Import from Radarr", "Import from Radarr (Recurring)"],
             "sonarr": ["Import from Sonarr", "Import from Sonarr (Recurring)"],
+            "mylar": ["Import from Mylar3", "Import from Mylar3 (Recurring)"],
             "audiobookshelf": [
                 "Import from Audiobookshelf",
                 "Import from Audiobookshelf (Recurring)",
@@ -1911,6 +1912,7 @@ class User(AbstractUser):
             **result_task_names,
             "radarr": ["Import from Radarr (Recurring)"],
             "sonarr": ["Import from Sonarr (Recurring)"],
+            "mylar": ["Import from Mylar3 (Recurring)"],
             "audiobookshelf": ["Import from Audiobookshelf (Recurring)"],
             "storyteller": ["Import from Storyteller (Recurring)"],
             "pocketcasts": ["Import from Pocket Casts (Recurring)"],

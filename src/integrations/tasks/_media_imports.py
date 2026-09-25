@@ -23,6 +23,7 @@ from integrations.imports import (
     kitsu,
     mal,
     mdblist,
+    mylar,
     plex,
     pocketcasts,
     psn,
@@ -37,6 +38,7 @@ from integrations.imports import (
     trakt_collection,
     trakt_export,
     tvtime,
+    wetrakr,
     xbox,
     yamtrack,
 )
@@ -302,6 +304,12 @@ def import_trakt_export(file, user_id, mode):
     )
 
 
+@shared_task(name="Import WeTrakr data export")
+def import_wetrakr_export(file, user_id, mode):
+    """Celery task for importing a WeTrakr data export archive."""
+    return _run_file_import(wetrakr.importer, file, user_id, mode)
+
+
 @shared_task(name="Import from Steam")
 def import_steam(username, user_id, mode):
     """Celery task for importing game data from Steam."""
@@ -435,6 +443,27 @@ def import_radarr_recurring(instance_id):
     )
     return _run_arr_import(
         "Radarr", radarr.importer, user_id, "new", instance_id=instance_id
+    )
+
+
+@shared_task(name="Import from Mylar3")
+def import_mylar(user_id, mode="new", username=None, instance_id=None):
+    """Celery task for importing comic collection data from Mylar3."""
+    return _run_arr_import(
+        "Mylar3", mylar.importer, user_id, mode, instance_id=instance_id
+    )
+
+
+@shared_task(name="Import from Mylar3 (Recurring)")
+def import_mylar_recurring(instance_id):
+    """Recurring import task for one Mylar3 instance."""
+    from integrations.models import MylarInstance
+
+    user_id = MylarInstance.objects.values_list("user_id", flat=True).get(
+        pk=instance_id
+    )
+    return _run_arr_import(
+        "Mylar3", mylar.importer, user_id, "new", instance_id=instance_id
     )
 
 
