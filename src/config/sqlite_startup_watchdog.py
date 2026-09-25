@@ -12,6 +12,11 @@ absolute ceiling that exists only to end a runaway loop.
 Where ``/proc`` cannot be read, the scan's own status sidecar is the progress
 signal instead, and the ceiling still applies.
 
+The sidecar lives next to the database, on the same storage that may be the
+thing that stalled. Every sidecar read or write here therefore runs on a
+helper thread with a short bound, so a dead mount can delay a heartbeat line
+but never the stall decision.
+
 Usage: ``python -m config.sqlite_startup_watchdog DB_FILE COMMAND [ARG...]``.
 Exits with the child's status, or 124 when the watchdog stopped it, which is
 the status ``timeout(1)`` used and the entrypoint already handles.
@@ -19,9 +24,11 @@ the status ``timeout(1)`` used and the entrypoint already handles.
 
 from __future__ import annotations
 
+import contextlib
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -38,6 +45,28 @@ POLL_SECONDS = 5.0
 HEARTBEAT_SECONDS = 30.0
 TIMEOUT_EXIT = 124
 _STOP_GRACE_SECONDS = 10.0
+_SIDECAR_IO_SECONDS = 10.0
+
+
+def _bounded(function, *args, **kwargs) -> tuple[bool, object]:
+    """Run sidecar I/O on a helper thread; give up waiting after a short bound.
+
+    Returns ``(finished, result)``. A call blocked on a dead mount is left
+    behind on its daemon thread instead of holding up the watchdog.
+    """
+    outcome = []
+
+    def run() -> None:
+        try:
+            outcome.append(function(*args, **kwargs))
+        except Exception as error:  # best-effort diagnostics only
+            _log(f"[entrypoint] SQLite startup watchdog sidecar I/O failed: {error}")
+            outcome.append(None)
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(_SIDECAR_IO_SECONDS)
+    return (bool(outcome), outcome[0] if outcome else None)
 
 
 def _activity(pid: int) -> tuple[int, int] | None:
@@ -60,7 +89,8 @@ def _activity(pid: int) -> tuple[int, int] | None:
 
 
 def _status_stamp(db_path: str) -> tuple[object, object]:
-    status = read_startup_status(db_path) or {}
+    _finished, status = _bounded(read_startup_status, db_path)
+    status = status or {}
     return status.get("phase"), status.get("updated_at")
 
 
@@ -70,7 +100,10 @@ def _stop(child: subprocess.Popen) -> None:
         child.wait(timeout=_STOP_GRACE_SECONDS)
     except subprocess.TimeoutExpired:
         child.kill()
-        child.wait()
+        # A process stuck in uninterruptible I/O cannot die until that I/O
+        # returns; startup still has to park rather than wait on it.
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            child.wait(timeout=_STOP_GRACE_SECONDS)
 
 
 def _exit_status(returncode: int) -> int:
@@ -134,7 +167,9 @@ def _watch(
         activity = _activity(child.pid)
         if activity is not None:
             read_bytes = activity[0]
-        seen = (activity, _status_stamp(db_path))
+        # /proc is the progress signal whenever it answers; the sidecar sits on
+        # the database's own storage and is only the fallback.
+        seen = activity if activity is not None else _status_stamp(db_path)
         if seen != last_seen:
             last_seen = seen
             last_change = now
@@ -146,12 +181,19 @@ def _watch(
             reason = f"still running at the {ceiling_seconds:g}s ceiling"
         if reason:
             _stop(child)
-            mark_startup_status_timeout(
+            _log(f"[entrypoint] SQLite startup watchdog stopped the check: {reason}")
+            finished, _result = _bounded(
+                mark_startup_status_timeout,
                 db_path,
                 now - started,
                 reason=reason,
                 read_bytes=read_bytes,
             )
+            if not finished:
+                _log(
+                    "[entrypoint] Could not record the stopped check next to the "
+                    "database; its storage is not responding.",
+                )
             return TIMEOUT_EXIT
 
         if now - last_heartbeat >= heartbeat_seconds:
@@ -161,7 +203,7 @@ def _watch(
                     f"process_read={activity[0] / 1_048_576:.0f}MB "
                     f"cpu_ticks={activity[1]} {extra}"
                 )
-            print_startup_heartbeat(db_path, extra=extra)
+            _bounded(print_startup_heartbeat, db_path, extra=extra)
             last_heartbeat = now
 
 

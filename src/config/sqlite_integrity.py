@@ -353,8 +353,10 @@ def recent_verification(
     age = (now - verified_at).total_seconds()
     if age > _VERIFIED_FRESH_SECONDS:
         return None, f"last verification is {age / 3600:.0f}h old"
-    commit_sha = os.environ.get("COMMIT_SHA")
-    if not commit_sha or record.get("commit_sha") != commit_sha:
+    # A local build bakes the placeholder "unknown" (Dockerfile ARG default),
+    # so two different local images would otherwise look identical.
+    commit_sha = (os.environ.get("COMMIT_SHA") or "").strip()
+    if commit_sha.lower() in {"", "unknown", "none"} or record.get("commit_sha") != commit_sha:
         return None, "the image changed since the last verification"
     try:
         file_stat = Path(db_path).resolve().stat()

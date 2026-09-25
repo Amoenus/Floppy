@@ -15,6 +15,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -124,6 +125,15 @@ class RecentVerificationTests(_Base):
     def test_a_build_without_a_commit_never_skips(self):
         self.run_startup_check()
         with mock.patch.dict(os.environ, {"COMMIT_SHA": ""}):
+            record, reason = self.recent_verification()
+        self.assertIsNone(record)
+        self.assertIn("image changed", reason)
+
+    def test_a_placeholder_commit_never_skips(self):
+        # Local image builds bake COMMIT_SHA=unknown, so two different local
+        # builds must not look like the same image.
+        with mock.patch.dict(os.environ, {"COMMIT_SHA": "unknown"}):
+            self.run_startup_check()
             record, reason = self.recent_verification()
         self.assertIsNone(record)
         self.assertIn("image changed", reason)
@@ -303,6 +313,37 @@ class WatchdogTests(SimpleTestCase):
         self.assertEqual(status, sqlite_startup_watchdog.TIMEOUT_EXIT)
         recorded = sqlite_integrity.read_startup_status(self.db_path)
         self.assertIn("ceiling", recorded["error_message"])
+
+    def test_a_hung_sidecar_cannot_hold_up_the_stall_decision(self):
+        # The sidecar lives on the database's storage. When that storage stops
+        # answering, every sidecar call blocks; the watchdog must still stop
+        # the check and return.
+        never = threading.Event()
+
+        def hang(*_args, **_kwargs):
+            never.wait()
+
+        started = time.monotonic()
+        with (
+            mock.patch.object(sqlite_startup_watchdog, "_SIDECAR_IO_SECONDS", 0.2),
+            mock.patch.object(sqlite_startup_watchdog, "read_startup_status", hang),
+            mock.patch.object(sqlite_startup_watchdog, "print_startup_heartbeat", hang),
+            mock.patch.object(
+                sqlite_startup_watchdog, "mark_startup_status_timeout", hang
+            ),
+            mock.patch.object(sqlite_startup_watchdog, "_activity", return_value=None),
+        ):
+            status, output = self.supervise(
+                "import time; time.sleep(30)",
+                stall_seconds=1.0,
+                ceiling_seconds=60.0,
+                heartbeat_seconds=0.3,
+            )
+        never.set()
+
+        self.assertEqual(status, sqlite_startup_watchdog.TIMEOUT_EXIT)
+        self.assertLess(time.monotonic() - started, 15)
+        self.assertIn("storage is not responding", output)
 
     def test_the_childs_own_exit_status_is_passed_through(self):
         status, _output = self.supervise("raise SystemExit(3)", stall_seconds=60.0)
