@@ -39,6 +39,10 @@ logger = logging.getLogger(__name__)
 
 MIN_PLAUSIBLE_YEAR = 1900
 
+# How long a show whose season lookup failed is left to the database episode
+# count before the provider is asked again during page rendering.
+SEASON_MAX_PROGRESS_RETRY_SECONDS = 10 * 60
+
 # Sort keys whose value aggregates an item's rows the way
 # _aggregate_item_data does; ``_aggregated_sort_subquery`` expresses them in
 # SQL for the library-query engine's sort registry.
@@ -1750,28 +1754,7 @@ class MediaManager(models.Manager):
             # For seasons, use metadata max_progress instead of database annotation
             # The metadata value is more accurate as it reflects the actual total episodes
             # from the provider, not just episodes with release_datetime set
-            from app.providers import services
-
-            for season in media_list:
-                try:
-                    season_metadata = services.get_media_metadata(
-                        MediaTypes.SEASON.value,
-                        season.item.media_id,
-                        season.item.source,
-                        [season.item.season_number],
-                    )
-                    # Use metadata max_progress if available, otherwise fall back to annotation
-                    metadata_max_progress = season_metadata.get("max_progress")
-                    if metadata_max_progress is not None:
-                        season.max_progress = metadata_max_progress
-                    else:
-                        # Fall back to database annotation if metadata doesn't have max_progress
-                        self._annotate_season_released_episodes(
-                            [season], current_datetime
-                        )
-                except Exception:
-                    # If metadata fetch fails, fall back to database annotation
-                    self._annotate_season_released_episodes([season], current_datetime)
+            self._annotate_season_metadata_max_progress(media_list, current_datetime)
             return
 
         if media_type == MediaTypes.BOOK.value:
@@ -2019,6 +2002,71 @@ class MediaManager(models.Manager):
                         details,
                         fallback_max_progress=None,
                     )
+
+    def _annotate_season_metadata_max_progress(self, season_list, current_datetime):
+        """Annotate seasons with the provider's episode count.
+
+        The provider count is more accurate than the database annotation: it
+        reflects every episode, not only those with a release date stored. A
+        list renders many seasons of the same show, so provider-backed seasons
+        are read with one bundle call per show rather than one per season.
+        A show whose lookup failed is not retried for a while, so a slow or
+        unreachable provider costs one attempt, not one per season per render.
+        """
+        from django.core.cache import cache
+
+        from app.providers import services
+
+        batched_sources = {Sources.TMDB.value, Sources.TVDB.value}
+        seasons_by_show = defaultdict(list)
+        fallback = []
+        for season in season_list:
+            item = season.item
+            if item.source in batched_sources and item.season_number is not None:
+                seasons_by_show[(item.source, item.media_id)].append(season)
+                continue
+            try:
+                season_metadata = services.get_media_metadata(
+                    MediaTypes.SEASON.value,
+                    item.media_id,
+                    item.source,
+                    [item.season_number],
+                )
+            except Exception:
+                fallback.append(season)
+                continue
+            metadata_max_progress = season_metadata.get("max_progress")
+            if metadata_max_progress is None:
+                fallback.append(season)
+            else:
+                season.max_progress = metadata_max_progress
+
+        for (source, media_id), seasons in seasons_by_show.items():
+            failed_key = f"season_max_progress_failed:{source}:{media_id}"
+            if cache.get(failed_key):
+                fallback.extend(seasons)
+                continue
+            season_numbers = sorted({season.item.season_number for season in seasons})
+            try:
+                bundle = services.get_media_metadata(
+                    "tv_with_seasons",
+                    media_id,
+                    source,
+                    season_numbers,
+                )
+            except Exception:
+                cache.set(failed_key, True, SEASON_MAX_PROGRESS_RETRY_SECONDS)
+                fallback.extend(seasons)
+                continue
+            for season in seasons:
+                season_data = bundle.get(f"season/{season.item.season_number}") or {}
+                metadata_max_progress = season_data.get("max_progress")
+                if metadata_max_progress is None:
+                    fallback.append(season)
+                else:
+                    season.max_progress = metadata_max_progress
+
+        self._annotate_season_released_episodes(fallback, current_datetime)
 
     def _annotate_season_released_episodes(self, season_list, current_datetime):
         """Annotate seasons with the number of released episodes."""
