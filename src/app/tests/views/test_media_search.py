@@ -9,13 +9,17 @@ from app.models import (
     AlbumTracker,
     Artist,
     ArtistTracker,
+    CollectionEntry,
+    Item,
     MediaTypes,
+    Movie,
     PodcastShow,
     PodcastShowTracker,
     Sources,
     Status,
 )
 from app.providers import services
+from app.search_views import get_saved_suggestions
 from users.models import MetadataSourceDefaultChoices
 
 
@@ -344,3 +348,116 @@ class MediaSearchViewTests(TestCase):
         self.assertEqual(len(messages), 1)
         self.assertIn("Hardcover", str(messages[0]))
         self.assertIn("unavailable", str(messages[0]))
+
+
+class CollectedItemSearchTests(TestCase):
+    """Search covers items in the user's Collection, not only tracked ones (#1270)."""
+
+    def setUp(self):
+        """Create a user and log in."""
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+
+    def _collect(self, **item_fields):
+        item = Item.objects.create(image="http://example.com/i.jpg", **item_fields)
+        CollectionEntry.objects.create(user=self.user, item=item)
+        return item
+
+    @patch("app.providers.services.search")
+    def test_collected_untracked_movie_is_a_local_result(self, mock_search):
+        mock_search.return_value = {
+            "page": 1,
+            "total_results": 0,
+            "total_pages": 0,
+            "results": [],
+        }
+        item = self._collect(
+            media_id="603",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Matrix",
+        )
+        other_user = get_user_model().objects.create_user(username="other")
+        CollectionEntry.objects.create(
+            user=other_user,
+            item=Item.objects.create(
+                media_id="604",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="The Matrix Reloaded",
+                image="http://example.com/i.jpg",
+            ),
+        )
+
+        response = self.client.get(reverse("search") + "?media_type=movie&q=matrix")
+
+        self.assertEqual(
+            [result["item"] for result in response.context["local_results"]],
+            [item],
+        )
+        self.assertEqual(response.context["local_results_total"], 1)
+
+    @patch("app.providers.services.search")
+    def test_collected_episode_surfaces_its_show(self, mock_search):
+        mock_search.return_value = {
+            "page": 1,
+            "total_results": 0,
+            "total_pages": 0,
+            "results": [],
+        }
+        show = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+            image="http://example.com/i.jpg",
+        )
+        self._collect(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Breaking Bad",
+            season_number=1,
+            episode_number=1,
+        )
+
+        response = self.client.get(reverse("search") + "?media_type=tv&q=breaking")
+
+        self.assertEqual(
+            [result["item"] for result in response.context["local_results"]],
+            [show],
+        )
+
+    @patch("app.providers.services.search")
+    def test_tracked_and_collected_item_is_listed_once(self, mock_search):
+        mock_search.return_value = {
+            "page": 1,
+            "total_results": 0,
+            "total_pages": 0,
+            "results": [],
+        }
+        item = self._collect(
+            media_id="603",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Matrix",
+        )
+        Movie.objects.create(user=self.user, item=item, status=Status.COMPLETED.value)
+
+        response = self.client.get(reverse("search") + "?media_type=movie&q=matrix")
+
+        self.assertEqual(len(response.context["local_results"]), 1)
+        self.assertIsNotNone(response.context["local_results"][0]["media"])
+
+    def test_collected_untracked_movie_is_suggested(self):
+        self._collect(
+            media_id="603",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Matrix",
+        )
+
+        suggestions = get_saved_suggestions(self.user, MediaTypes.MOVIE.value, "matrix")
+
+        self.assertEqual([s["title"] for s in suggestions], ["The Matrix"])

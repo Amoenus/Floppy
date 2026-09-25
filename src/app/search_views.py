@@ -103,6 +103,58 @@ def _matched_title(item_obj, search_query, user):
     return None
 
 
+def _collected_untracked_items(user, media_type, query, tracked_item_ids):
+    """Return the user's collected items of ``media_type`` that no tracker covers.
+
+    Collection entries have no Media row, so the tracker queries above miss
+    them (#1270). A collected episode stands for its show, as it does in the
+    media list.
+    """
+    collected_items = Item.objects.filter(collectionentry__user=user).distinct()
+    candidate_ids = set(collected_items.values_list("id", flat=True))
+    if media_type in {MediaTypes.TV.value, MediaTypes.ANIME.value}:
+        episode_shows = collected_items.filter(
+            media_type=MediaTypes.EPISODE.value,
+        ).values_list("media_id", "source")
+        show_filter = Q()
+        for show_media_id, show_source in set(episode_shows):
+            show_filter |= Q(media_id=show_media_id, source=show_source)
+        if show_filter:
+            candidate_ids.update(
+                Item.objects.filter(
+                    show_filter,
+                    media_type__in=(MediaTypes.TV.value, MediaTypes.ANIME.value),
+                ).values_list("id", flat=True),
+            )
+
+    include_anime_in_anime, include_anime_in_tv = (
+        metadata_resolution.anime_library_visibility(user)
+    )
+    items = []
+    for item in Item.objects.filter(
+        id__in=candidate_ids - set(tracked_item_ids),
+        title__icontains=query,
+    ).order_by("title", "id"):
+        is_grouped_anime = (
+            item.media_type == MediaTypes.TV.value
+            and item.library_media_type == MediaTypes.ANIME.value
+        )
+        if media_type == MediaTypes.ANIME.value:
+            if is_grouped_anime and include_anime_in_anime:
+                _mark_grouped_anime_route([item])
+            elif item.media_type != MediaTypes.ANIME.value:
+                continue
+        elif media_type == MediaTypes.TV.value:
+            if item.media_type != MediaTypes.TV.value or (
+                is_grouped_anime and not include_anime_in_tv
+            ):
+                continue
+        elif item.media_type != media_type:
+            continue
+        items.append(item)
+    return items
+
+
 @require_GET
 def media_search(request):
     """Return the media search page."""
@@ -280,8 +332,17 @@ def media_search(request):
                         ).lower(),
                     )
 
-                local_results_total = len(local_media)
+                collected_items = _collected_untracked_items(
+                    request.user,
+                    media_type,
+                    query,
+                    {media.item_id for media in local_media},
+                )
+                local_results_total = len(local_media) + len(collected_items)
                 local_media = local_media[:local_results_limit]
+                collected_items = collected_items[
+                    : local_results_limit - len(local_media)
+                ]
                 BasicMedia.objects.annotate_max_progress(local_media, media_type)
                 local_results = [
                     {
@@ -292,6 +353,13 @@ def media_search(request):
                         ),
                     }
                     for media in local_media
+                ] + [
+                    {
+                        "item": item,
+                        "media": None,
+                        "matched_title": _matched_title(item, query, request.user),
+                    }
+                    for item in collected_items
                 ]
         except Exception as exc:  # pragma: no cover - defensive
             logger.debug("Local search failed: %s", exception_summary(exc))
@@ -523,8 +591,16 @@ def get_saved_suggestions(user, media_type, query, limit=8):
             ).lower(),
         )
 
-    for media in local_media[:limit]:
-        item = getattr(media, "item", None)
+    local_items = [getattr(media, "item", None) for media in local_media[:limit]]
+    if len(local_items) < limit:
+        local_items += _collected_untracked_items(
+            user,
+            media_type,
+            query,
+            {media.item_id for media in local_media},
+        )[: limit - len(local_items)]
+
+    for item in local_items:
         if item is None:
             continue
         url = _safe_url(media_url, item)
