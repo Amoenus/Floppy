@@ -5,11 +5,14 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from app.models import (
+    TV,
     CollectionEntry,
+    Episode,
     Game,
     Item,
     MediaTypes,
     Movie,
+    Season,
     Sources,
     Status,
 )
@@ -168,12 +171,67 @@ class CollectionListViewTest(TestCase):
             return len(queries)
 
         add_tracked_movies(0, 2)
+        count_queries()  # the first visit also runs one-time setup queries
         small_page = count_queries()
         add_tracked_movies(2, 8)
         large_page = count_queries()
 
         self.assertEqual(small_page, large_page)
 
+
+    def test_collection_episode_cards_do_not_query_per_episode(self):
+        """Episode cards read their season; it is loaded with the page, not per card."""
+        self.client.login(**self.credentials)
+        show_item = Item.objects.create(
+            media_id="ep-show",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Episode Show",
+        )
+        season_item = Item.objects.create(
+            media_id="ep-show",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Episode Show",
+        )
+        tv = TV.objects.create(
+            item=show_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        def add_tracked_episodes(start, count):
+            for number in range(start, start + count):
+                item = Item.objects.create(
+                    media_id="ep-show",
+                    source=Sources.TMDB.value,
+                    media_type=MediaTypes.EPISODE.value,
+                    season_number=1,
+                    episode_number=number,
+                    title=f"Episode {number}",
+                )
+                Episode.objects.create(item=item, related_season=season)
+                CollectionEntry.objects.create(user=self.user, item=item)
+
+        def count_queries():
+            with CaptureQueriesContext(connection) as queries:
+                self.client.get(reverse("collection_list"))
+            return len(queries)
+
+        add_tracked_episodes(1, 2)
+        count_queries()  # the first visit also runs one-time setup queries
+        small_page = count_queries()
+        add_tracked_episodes(3, 4)
+        large_page = count_queries()
+
+        self.assertEqual(small_page, large_page)
 
 class CollectionCompletenessTest(TestCase):
     """Test the collection page's partial/full collection filter and badge."""
