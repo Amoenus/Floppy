@@ -115,6 +115,7 @@ urlpatterns = [
     path("import/hardcover", views.import_hardcover, name="import_hardcover"),
     path("import/storygraph", views.import_storygraph, name="import_storygraph"),
     path("import/tvtime", views.import_tvtime, name="import_tvtime"),
+    path("import/wetrakr", views.import_wetrakr, name="import_wetrakr"),
     path(
         "import/audiobookshelf/connect",
         views.audiobookshelf_connect,

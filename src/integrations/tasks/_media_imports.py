@@ -38,6 +38,7 @@ from integrations.imports import (
     trakt_collection,
     trakt_export,
     tvtime,
+    wetrakr,
     xbox,
     yamtrack,
 )
@@ -301,6 +302,12 @@ def import_trakt_export(file, user_id, mode):
         user_id,
         mode,
     )
+
+
+@shared_task(name="Import WeTrakr data export")
+def import_wetrakr_export(file, user_id, mode):
+    """Celery task for importing a WeTrakr data export archive."""
+    return _run_file_import(wetrakr.importer, file, user_id, mode)
 
 
 @shared_task(name="Import from Steam")
