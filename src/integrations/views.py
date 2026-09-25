@@ -17,6 +17,7 @@ import requests
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required, login_required
+from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError, transaction
 from django.db.models import Q
@@ -2318,6 +2319,10 @@ def import_audiobookshelf(request):
 
 
 AUDIOBOOKSHELF_COVER_TIMEOUT = 15
+# After one failed cover fetch, the account's remaining covers skip ABS for this
+# long. Otherwise every poster on a page holds a web worker for the full
+# timeout while the server is down (#1307).
+AUDIOBOOKSHELF_COVER_BACKOFF_SECONDS = 60
 # Plain raster types only - an upstream ABS server (attacker-controlled, or
 # just compromised) returning e.g. text/html or image/svg+xml would have it
 # served as active content from Floppy's own origin to anyone holding the
@@ -2474,6 +2479,16 @@ def audiobookshelf_cover(request, token):
         )
         return _placeholder_image_response()
 
+    backoff_key = f"abs_cover_backoff:{account_id}"
+    if cache.get(backoff_key):
+        logger.debug(
+            "Audiobookshelf cover skipped: server recently unreachable "
+            "account=%s item=%s",
+            account_id,
+            library_item_id,
+        )
+        return _placeholder_image_response()
+
     cover_url = f"{account.base_url.rstrip('/')}/api/items/{library_item_id}/cover"
     try:
         upstream = send_to_self_hosted(
@@ -2484,6 +2499,7 @@ def audiobookshelf_cover(request, token):
             stream=True,
         )
     except requests.RequestException as error:
+        cache.set(backoff_key, 1, AUDIOBOOKSHELF_COVER_BACKOFF_SECONDS)
         logger.warning(
             "Audiobookshelf cover unavailable: request failed "
             "account=%s item=%s error=%s",
