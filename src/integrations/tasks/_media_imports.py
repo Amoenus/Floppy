@@ -20,6 +20,7 @@ from integrations.imports import (
     hltb,
     imdb,
     jellyfin_playback_reporting,
+    kapowarr,
     kitsu,
     mal,
     mdblist,
@@ -464,6 +465,27 @@ def import_mylar_recurring(instance_id):
     )
     return _run_arr_import(
         "Mylar3", mylar.importer, user_id, "new", instance_id=instance_id
+    )
+
+
+@shared_task(name="Import from Kapowarr")
+def import_kapowarr(user_id, mode="new", username=None, instance_id=None):
+    """Celery task for importing comic collection data from Kapowarr."""
+    return _run_arr_import(
+        "Kapowarr", kapowarr.importer, user_id, mode, instance_id=instance_id
+    )
+
+
+@shared_task(name="Import from Kapowarr (Recurring)")
+def import_kapowarr_recurring(instance_id):
+    """Recurring import task for one Kapowarr instance."""
+    from integrations.models import KapowarrInstance
+
+    user_id = KapowarrInstance.objects.values_list("user_id", flat=True).get(
+        pk=instance_id
+    )
+    return _run_arr_import(
+        "Kapowarr", kapowarr.importer, user_id, "new", instance_id=instance_id
     )
 
 

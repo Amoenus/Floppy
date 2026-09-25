@@ -778,6 +778,58 @@ class MylarInstance(models.Model):
         return bool(self.base_url and self.api_key) and not self.connection_broken
 
 
+class KapowarrInstance(models.Model):
+    """Store connection settings and sync state for one Kapowarr instance.
+
+    Kapowarr keys its volumes and issues by Comic Vine id, like Mylar3, so a
+    sync can mark Floppy's Comic Vine comic issues as owned without matching.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="kapowarr_instances",
+    )
+    name = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Optional label to distinguish multiple instances",
+    )
+    base_url = models.URLField(help_text="Kapowarr server URL")
+    api_key = models.TextField(help_text="Encrypted Kapowarr API key")
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Kapowarr instance"
+        verbose_name_plural = "Kapowarr instances"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "base_url"],
+                name="integrations_kapowarrinstance_unique_user_base_url",
+            ),
+        ]
+
+    def __str__(self):
+        """Return a readable label for this Kapowarr instance."""
+        return f"{self.display_name} ({self.user})"
+
+    @property
+    def display_name(self):
+        """Return the instance's label, falling back to a generic name."""
+        return self.name or "Kapowarr"
+
+    def is_connected(self):
+        """Return True when the instance appears connected."""
+        return bool(self.base_url and self.api_key) and not self.connection_broken
+
+
 class MDBListAccount(models.Model):
     """Store MDBList connection settings and sync state for a user."""
 
@@ -907,6 +959,7 @@ class CollectionSourceState(models.Model):
         ("radarr", "Radarr"),
         ("sonarr", "Sonarr"),
         ("mylar", "Mylar3"),
+        ("kapowarr", "Kapowarr"),
     ]
 
     user = models.ForeignKey(
@@ -924,7 +977,7 @@ class CollectionSourceState(models.Model):
         null=True,
         blank=True,
         help_text=(
-            "PK of the Radarr/Sonarr/Mylar instance this row came from; "
+            "PK of the Radarr/Sonarr/Mylar/Kapowarr instance this row came from; "
             "unused for plex/jellyfin"
         ),
     )
