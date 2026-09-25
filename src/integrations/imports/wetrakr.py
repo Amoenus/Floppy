@@ -81,6 +81,8 @@ class WeTrakrExport:
 
         self.warnings = []
         self.rows = {section: [] for section in SECTIONS}
+        # Sections present in the upload, even when a file has no rows.
+        self.sections_found = set()
 
         total_size = 0
         for info in archive.infolist():
@@ -105,6 +107,7 @@ class WeTrakrExport:
                 self.warnings.append(f"{info.filename}: could not be read, skipped.")
                 continue
             self.rows[section].extend(csv.DictReader(io.StringIO(text)))
+            self.sections_found.add(section)
 
         if not any(self.rows[s] for s in ("tracklog", "ratings", "notes", "lists")):
             msg = (
@@ -279,13 +282,23 @@ class WeTrakrExport:
     def notes(self):
         """Return notes as Trakt note entries."""
         entries = []
+        skipped_episodes = 0
         for row in self.rows["notes"]:
             text = (row.get("text") or "").strip()
             if not text:
                 continue
+            if row.get("type") not in {"movie", "show"}:
+                # The Trakt import stores notes on movies and shows only.
+                skipped_episodes += 1
+                continue
             entry = self._entry(row, note={"notes": text})
             if entry:
                 entries.append(entry)
+        if skipped_episodes:
+            self.warnings.append(
+                f"Skipped {skipped_episodes} note(s) on episodes or seasons: "
+                "Floppy imports notes for movies and shows only.",
+            )
         return entries
 
     def lists(self):
@@ -420,7 +433,28 @@ def importer(file, user, mode):
     from lists.imports.wetrakr import import_wetrakr_lists
 
     export = WeTrakrExport(file)
+    overwrite_skipped = mode == "overwrite" and "tracklog" not in export.sections_found
+    if overwrite_skipped:
+        # Overwrite replaces each item it touches with what the upload says.
+        # Without the tracklog, that would wipe the watch status of every
+        # rated or noted item, so only add what is new.
+        mode = "new"
     imported_counts, messages = WeTrakrImporter(export, user, mode).import_data()
+    if overwrite_skipped:
+        messages = "\n".join(
+            filter(
+                None,
+                [
+                    "No tracklog.csv was uploaded, so existing items were kept "
+                    "instead of overwritten.",
+                    messages,
+                ],
+            ),
+        )
+
+    if "lists" not in export.sections_found:
+        # Keep lists from an earlier import when this upload has no lists file.
+        return imported_counts, messages
 
     before = set(export.warnings)
     lists_created, items_skipped = import_wetrakr_lists(user, export.lists())

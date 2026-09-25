@@ -9,7 +9,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
-from app.models import TV, Episode, MediaTypes, Movie, Status
+from app.models import TV, Episode, Item, MediaTypes, Movie, Sources, Status
 from integrations.imports.helpers import MediaImportError
 from integrations.imports.wetrakr import WeTrakrExport, importer, parse_wetrakr_date
 from integrations.upload_staging import discard_staged_upload
@@ -341,6 +341,77 @@ class WeTrakrImportTests(TestCase):
         self.assertEqual(
             CustomList.objects.filter(owner=self.user, source="wetrakr").count(),
             1,
+        )
+
+    def test_ratings_only_overwrite_keeps_watch_status(self, _metadata, _find):
+        """Overwrite without a tracklog must not wipe an item's watch status."""
+        item = Item.objects.create(
+            media_id="919207",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="12.12: The Day",
+            image="",
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.COMPLETED.value)
+        export = _zip_bytes(
+            {
+                "ratings.csv": RATINGS_HEADER
+                + "12.12: The Day,2023,movie,919207,tt22507524,,,,7,"
+                + f"{_date('Tue Feb 24 2026 02:36:31')}\n",
+            },
+        )
+
+        _, messages = importer(export, self.user, "overwrite")
+
+        movie = Movie.objects.get(user=self.user, item=item)
+        self.assertEqual(movie.status, Status.COMPLETED.value)
+        self.assertIn("No tracklog.csv was uploaded", messages)
+
+    def test_episode_notes_are_reported_as_skipped(self, _metadata, _find):
+        export = _zip_bytes(
+            {
+                "notes.csv": "title,year,type,tmdb_id,imdb_id,show_title,season_number,"
+                "episode_number,text,privacy,spoiler,created_at\n"
+                "The Client,,episode,119005,tt0583063,The Fresh Prince of Bel-Air,5,1,"
+                f"A two-parter.,private,0,{UPDATED}\n",
+            },
+        )
+
+        _, messages = importer(export, self.user, "new")
+
+        self.assertIn("Skipped 1 note(s) on episodes or seasons", messages)
+
+    @patch(
+        "lists.imports.trakt._get_metadata",
+        return_value={"title": "Item", "image": "item.jpg"},
+    )
+    def test_upload_without_lists_file_keeps_earlier_lists(
+        self,
+        _list_metadata,
+        _metadata,
+        _find,
+    ):
+        importer(
+            _zip_bytes(
+                {"lists.csv": LISTS_HEADER + f"Faves,,Prom,2011,movie,51588,,1,{UPDATED}\n"},
+            ),
+            self.user,
+            "new",
+        )
+
+        importer(
+            _zip_bytes(
+                {
+                    "tracklog.csv": TRACKLOG_HEADER
+                    + f"Coco,2017,movie,354912,tt2380307,,,,watched,,{UPDATED}\n",
+                },
+            ),
+            self.user,
+            "new",
+        )
+
+        self.assertTrue(
+            CustomList.objects.filter(owner=self.user, source="wetrakr", name="Faves").exists(),
         )
 
 
