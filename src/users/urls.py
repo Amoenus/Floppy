@@ -260,6 +260,11 @@ urlpatterns = [
         name="delete_plex_webhook_share",
     ),
     path(
+        "update_plex_mark_watched",
+        views.update_plex_mark_watched,
+        name="update_plex_mark_watched",
+    ),
+    path(
         "update_jellyfin_webhook_events",
         views.update_jellyfin_webhook_events,
         name="update_jellyfin_webhook_events",

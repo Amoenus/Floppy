@@ -61,6 +61,7 @@ from integrations import plex as plex_api
 from integrations import plex_cover as plex_cover_proxy
 from integrations.gpodder_api import GPodderAuthError, GPodderClientError
 from integrations.imports import anilist, helpers, mdblist, simkl, stremio, trakt
+from integrations.imports import plex as plex_import
 from integrations.imports.audiobookshelf import (
     AudiobookshelfAuthError,
     AudiobookshelfClient,
@@ -1080,6 +1081,9 @@ def plex_disconnect(request):
 
     def _disconnect():
         _disable_plex_watchlist_schedule(request.user)
+        account = PlexAccount.objects.filter(user=request.user).first()
+        if account:
+            plex_import.set_mark_watched_sync(account, enabled=False)
         PlexWebhookShare.objects.filter(owner=request.user).delete()
         PlexAccount.objects.filter(user=request.user).delete()
 

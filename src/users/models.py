@@ -1874,7 +1874,11 @@ class User(AbstractUser):
                 "integrations.tasks.import_goodreads",
             ],
             "mdblist": ["Import from MDBList", "Import MDBList Lists"],
-            "plex": ["Import from Plex", "Sync Plex Watchlist"],
+            "plex": [
+                "Import from Plex",
+                "Sync Plex Watchlist",
+                "Sync Plex Watched Marks",
+            ],
             "jellyfin_playback_reporting": [
                 "Import from Jellyfin Playback Reporting",
             ],

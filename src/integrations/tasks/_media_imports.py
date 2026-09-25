@@ -399,6 +399,21 @@ def import_plex(library, user_id, mode, username=None):
     return import_media(plex.importer, library, user_id, mode)
 
 
+@shared_task(name=plex.MARK_WATCHED_TASK_NAME)
+def sync_plex_mark_watched(user_id):
+    """Recurring poll of new Plex history, to catch items marked watched by hand."""
+    user = get_user_model().objects.get(id=user_id)
+    account = getattr(user, "plex_account", None)
+    if not account or not account.mark_watched_sync_enabled:
+        return "Skipped: Plex watched-mark sync is off."
+    library = user.plex_webhook_libraries or ["all"]
+    try:
+        return import_media(plex.mark_watched_importer, library, user_id, "new")
+    except helpers.MediaImportError as exc:
+        logger.warning("Plex watched-mark sync failed for user %s: %s", user_id, exc)
+        return f"Plex watched-mark sync failed: {exc}"
+
+
 @shared_task(name="Import from Jellyfin Playback Reporting")
 def import_jellyfin_playback_reporting(file, user_id, mode="new"):
     """Import a Jellyfin Playback Reporting TSV backup."""
