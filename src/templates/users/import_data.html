@@ -2580,6 +2580,23 @@
                 <input type="hidden" name="frequency" x-model="importFrequency">
                 <input type="hidden" name="time" x-model="importTime">
                 <input type="hidden" name="mode" x-model="importMode">
+                <div class="mb-3">
+                  <label for="clz_media_type"
+                         class="block text-sm text-[var(--color-text-secondary)] mb-2">{% translate "Import as" %}</label>
+                  <div class="relative">
+                    <select id="clz_media_type"
+                            name="clz_media_type"
+                            class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none">
+                      <option value="">{% translate "Detect from the export's columns" %}</option>
+                      <option value="comicissue">{% translate "Comics" %}</option>
+                      <option value="manga">{% translate "Manga" %}</option>
+                      <option value="book">{% translate "Books" %}</option>
+                      <option value="movie">{% translate "Movies" %}</option>
+                      <option value="game">{% translate "Games" %}</option>
+                    </select>
+                    {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
+                  </div>
+                </div>
                 <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors"
                        :class="importFrequency === 'once' && !standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
                        :disabled="importFrequency !== 'once' || standardImportsDisabled()">

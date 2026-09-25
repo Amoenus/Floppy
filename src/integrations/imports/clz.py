@@ -68,8 +68,10 @@ STRUCTURAL_COLUMNS = frozenset(
         "sorttitle",
         "originaltitle",
         "series",
+        "issue",
         "issuenr",
         "issuenumber",
+        "issueno",
         "volume",
         "year",
         "releaseyear",
@@ -95,6 +97,10 @@ STRUCTURAL_COLUMNS = frozenset(
 )
 
 IDENTIFIER_COLUMNS = ("barcode", "upc", "ean", "isbn")
+# CLZ Comics heads its issue column "Issue"; other exports use "Issue Nr".
+ISSUE_COLUMNS = ("issue nr", "issue number", "issue no", "issue")
+# What versions before issue #809 read, kept only to recognise their links.
+LEGACY_ISSUE_COLUMNS = ("issue nr", "issue number")
 QUANTITY_COLUMNS = ("quantity", "qty")
 RECORD_ID_COLUMNS = ("clz id", "id", "index")
 
@@ -321,6 +327,8 @@ class CLZImporter:
         self._column_index = {}
         self._custom_columns = []
         self._wishlist = None
+        self._legacy_links = None
+        self._legacy_items = ()
 
     def _import_run(self):
         """Return the ImportRun this task is running under, if any."""
@@ -446,12 +454,18 @@ class CLZImporter:
     def _detect_media_type(self, columns):
         """Infer which CLZ product produced the export from its columns."""
         present = {column_key(column) for column in columns}
-        if present & {"issuenr", "issuenumber", "storyarc"}:
+        if present & {"issue", "issuenr", "issuenumber", "issueno", "storyarc"}:
             return MediaTypes.COMIC_ISSUE.value
         if "platform" in present:
             return MediaTypes.GAME.value
         if present & {"isbn", "author", "authors", "pages"}:
             return MediaTypes.BOOK.value
+        if not present & {"imdb", "imdbnumber", "tmdb", "director", "runtime"}:
+            self.warnings.append(
+                "Could not tell what this CLZ export contains, so it was "
+                "imported as movies. Choose the type under Import as and "
+                "re-import in Overwrite mode to correct it.",
+            )
         return MediaTypes.MOVIE.value
 
     def _build_column_index(self, columns):
@@ -494,7 +508,7 @@ class CLZImporter:
     def _describe(self, record):
         """Return a short human label for a record, for diagnostics."""
         title = self._get(record, "title") or self._get(record, "series")
-        issue = self._get(record, "issue nr", "issue number")
+        issue = self._get(record, *ISSUE_COLUMNS)
         return f"{title} #{issue}" if issue else (title or "untitled")
 
     # -- records --------------------------------------------------------
@@ -511,7 +525,7 @@ class CLZImporter:
 
         status = self._get(record, "collection status", "status")
         if is_wishlist(status):
-            self._add_to_wishlist(item, record)
+            self._add_to_wishlist(item, record, media_type)
             self.counts["wishlist"] += 1
             return
 
@@ -522,10 +536,11 @@ class CLZImporter:
             item.media_type,
         )
         collected_at = _parse_date(self._get(record, "purchase date"))
-        record_id, derived = self._record_identity(record, item)
+        record_id, derived = self._record_identity(record)
 
         for copy_index in range(quantity):
             self._upsert_copy(
+                record=record,
                 item=item,
                 record_id=record_id,
                 derived=derived,
@@ -557,24 +572,26 @@ class CLZImporter:
                 fields[attribute] = value[:100]
         return fields
 
-    def _record_identity(self, record, item):
+    def _record_identity(self, record):
         """Return ``(record_id, derived)`` identifying this source record.
 
         Prefers CLZ's own stable record id. Otherwise derives one from
         bibliographic and edition attributes only — never from mutable
         collection values like price or storage box, so editing those in CLZ
-        does not orphan the copy on the next import.
+        does not orphan the copy on the next import, and never from the item
+        it resolved to, so importing it as a different media type still
+        finds the same copy.
         """
         explicit = self._get(record, *RECORD_ID_COLUMNS)
         if explicit:
             return explicit[:200], False
+        return _digest([self._get(record, "title"), *self._edition_parts(record)]), True
 
-        parts = [
-            item.media_type,
-            item.source,
-            item.media_id,
+    def _edition_parts(self, record, issue_columns=ISSUE_COLUMNS):
+        """Return the bibliographic and edition values a derived id hashes."""
+        return [
             self._get(record, "series"),
-            self._get(record, "issue nr", "issue number"),
+            self._get(record, *issue_columns),
             self._get(record, "volume"),
             self._get(record, "year", "release year", "publication year"),
             self._get(record, "publisher"),
@@ -584,15 +601,58 @@ class CLZImporter:
             self._get(record, "format", "media"),
             self._get(record, *IDENTIFIER_COLUMNS),
         ]
-        digest = blake2s(
-            "|".join(normalize(part) for part in parts).encode("utf-8"),
-            digest_size=16,
-        ).hexdigest()
-        return digest, True
+
+    def _find_link(self, record, record_id, derived, occurrence):
+        """Return the link for this source record, re-keying an old one.
+
+        Versions before issue #809 hashed the resolved item into derived
+        ids, so an export imported under the wrong media type could not be
+        found again once the type was corrected. Such a link is recognised
+        by recomputing that old id for each item this user's CLZ copies sit
+        on, then moved to the current id so the lookup happens only once.
+        """
+        links = CollectionEntrySource.objects.select_related("entry").filter(
+            user=self.user,
+            source=SOURCE,
+        )
+        link = links.filter(
+            source_record_id=record_id,
+            occurrence=occurrence,
+        ).first()
+        if link is not None or not derived:
+            return link
+
+        if self._legacy_links is None:
+            self._legacy_links = {
+                (source_record_id, link_occurrence): link_id
+                for link_id, source_record_id, link_occurrence in links.filter(
+                    derived_identity=True,
+                ).values_list("id", "source_record_id", "occurrence")
+            }
+            self._legacy_items = set(
+                links.filter(derived_identity=True).values_list(
+                    "entry__item__media_type",
+                    "entry__item__source",
+                    "entry__item__media_id",
+                ),
+            )
+        rest = self._edition_parts(record, LEGACY_ISSUE_COLUMNS)
+        for item_parts in self._legacy_items:
+            link_id = self._legacy_links.pop(
+                (_digest([*item_parts, *rest]), occurrence),
+                None,
+            )
+            if link_id is not None:
+                link = links.get(id=link_id)
+                link.source_record_id = record_id
+                link.save(update_fields=["source_record_id"])
+                return link
+        return None
 
     def _upsert_copy(
         self,
         *,
+        record,
         item,
         record_id,
         derived,
@@ -602,16 +662,7 @@ class CLZImporter:
         collected_at,
     ):
         """Create or update the copy this source record owns."""
-        link = (
-            CollectionEntrySource.objects.select_related("entry")
-            .filter(
-                user=self.user,
-                source=SOURCE,
-                source_record_id=record_id,
-                occurrence=occurrence,
-            )
-            .first()
-        )
+        link = self._find_link(record, record_id, derived, occurrence)
 
         if link is not None and self.mode != "overwrite":
             # Default mode imports new records only.
@@ -621,6 +672,10 @@ class CLZImporter:
         with transaction.atomic():
             if link is not None:
                 entry = link.entry
+                previous_item = entry.item
+                # A record first imported as the wrong media type moves to
+                # the item it resolves to now.
+                entry.item = item
                 for attribute, value in entry_fields.items():
                     setattr(entry, attribute, value)
                 # Only supplied values are written, so unrelated fields and
@@ -630,6 +685,8 @@ class CLZImporter:
                     **custom_values,
                 }
                 entry.save()
+                if previous_item.id != item.id:
+                    _delete_if_unused(previous_item)
                 self.counts["updated"] += 1
             else:
                 entry = helpers.retry_on_lock(
@@ -726,7 +783,7 @@ class CLZImporter:
             "year",
             "release year",
             "publication year",
-        ) or self._get(record, "issue nr", "issue number", "volume")
+        ) or self._get(record, *ISSUE_COLUMNS, "volume")
         if not corroboration:
             return None
 
@@ -789,7 +846,7 @@ class CLZImporter:
             image="",
         )
 
-    def _title(self, record):
+    def _title(self, record, issue_columns=ISSUE_COLUMNS):
         """Return the display title for a record.
 
         Comic and volume-based rows carry the issue or volume in the title so
@@ -797,7 +854,7 @@ class CLZImporter:
         """
         title = self._get(record, "title")
         series = self._get(record, "series")
-        issue = self._get(record, "issue nr", "issue number")
+        issue = self._get(record, *issue_columns)
         volume = self._get(record, "volume")
 
         base = title or series
@@ -811,7 +868,7 @@ class CLZImporter:
 
     # -- wishlist -------------------------------------------------------
 
-    def _add_to_wishlist(self, item, record):
+    def _add_to_wishlist(self, item, record, media_type):
         """Add an unowned record to the dedicated CLZ wishlist list.
 
         No copy is created and no reading progress is inferred; the source
@@ -832,4 +889,51 @@ class CLZImporter:
             item=item,
             defaults={"added_by": self.user},
         )
+        if self.mode == "overwrite":
+            self._drop_mistyped_wishlist_item(item, record, media_type)
         logger.debug("CLZ wishlist row kept for %s", self._describe(record))
+
+    def _drop_mistyped_wishlist_item(self, item, record, media_type):
+        """Remove the manual item an earlier run wishlisted as another type.
+
+        Versions before issue #809 could import a comics export as movies.
+        The corrected item replaces that one in the wishlist.
+        """
+        from lists.models import CustomListItem
+
+        stale = CustomListItem.objects.filter(
+            custom_list=self._wishlist,
+            item__source=Sources.MANUAL.value,
+            item__title__in={
+                self._title(record),
+                self._title(record, LEGACY_ISSUE_COLUMNS),
+            },
+        ).exclude(item__media_type=media_type).exclude(item=item)
+        for list_item in stale.select_related("item"):
+            old_item = list_item.item
+            list_item.delete()
+            _delete_if_unused(old_item)
+
+
+def _digest(parts):
+    """Return the derived identity hash of *parts*."""
+    return blake2s(
+        "|".join(normalize(part) for part in parts).encode("utf-8"),
+        digest_size=16,
+    ).hexdigest()
+
+
+def _delete_if_unused(item):
+    """Delete a manual *item* an import left with nothing pointing at it.
+
+    Only manual items are considered, since the importer created them, and
+    only when no copy, list entry, history or other row still references
+    them, including another user's.
+    """
+    if item.source != Sources.MANUAL.value:
+        return
+    for relation in item._meta.related_objects:
+        manager = relation.related_model._base_manager
+        if manager.filter(**{relation.field.name: item}).exists():
+            return
+    item.delete()
