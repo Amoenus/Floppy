@@ -623,6 +623,7 @@ def _resolve_current_display_metadata_payload(
         item,
         current_provider,
         route_media_type=media_type,
+        persist_links=False,
     )
     if not provider_media_id:
         return base_metadata
@@ -1261,6 +1262,7 @@ def _build_flat_anime_episode_preview(
                     persistence_mode="best_effort",
                     retry_max_retries=retry_max_retries,
                     on_deferred=on_persistence_deferred,
+                    persist_links=False,
                 )
                 if detail_item is not None
                 else anime_mapping.resolve_provider_series_id(media_id, candidate)

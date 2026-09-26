@@ -6,14 +6,14 @@ from urllib.parse import urlparse
 from django.conf import settings
 from django.contrib.auth import get_user_model, login
 from django.contrib.sessions.exceptions import SessionInterrupted
-from django.db import connection
+from django.db import DatabaseError, connection
 from django.db.utils import OperationalError
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, resolve_url
 from django.urls import reverse
 from django.utils import translation
 
-from app.db_retry import is_retryable_error
+from app.db_retry import is_contention_error, is_retryable_error
 from app.discover import tab_cache as discover_tab_cache
 from app.error_views import format_exception_traceback, render_error_page
 from app.interactive_requests import (
@@ -200,9 +200,9 @@ class DatabaseRetryMiddleware:
         while True:
             try:
                 return self.get_response(request)
-            except OperationalError as error:
+            except DatabaseError as error:
                 # Only retry retryable errors while under the retry cap.
-                if not is_retryable_error(error) or attempt >= max_retries:
+                if not (is_contention_error(error) or is_retryable_error(error)):
                     raise
 
                 if request.method != "GET":
@@ -210,6 +210,12 @@ class DatabaseRetryMiddleware:
                         "Database error on %s request, not retrying",
                         request.method,
                     )
+                    raise
+
+                if attempt >= max_retries:
+                    response = self._contention_response(request, error)
+                    if response is not None:
+                        return response
                     raise
 
                 error_type = "disk I/O" if "i/o" in str(error).lower() else "lock"
@@ -225,8 +231,49 @@ class DatabaseRetryMiddleware:
                 time.sleep(sleep_for)
                 attempt += 1
 
+    def _contention_response(self, request, exception):
+        if (
+            request.method == "GET"
+            and isinstance(exception, DatabaseError)
+            and is_contention_error(exception)
+            and should_mark_interactive_request(request)
+        ):
+            logger.warning(
+                "Database contention on GET %s: %s",
+                request.path,
+                exception,
+            )
+            if request.headers.get("HX-Request") == "true":
+                response = HttpResponse(status=503)
+            else:
+                response = HttpResponse(
+                    """<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="6"><title>Loading</title></head>
+<body style="font-family:system-ui;margin:3rem auto;max-width:36rem">
+<p role="status">Waiting for the database. This page will load automatically.</p>
+<script>
+const key = "floppy-db-retry:" + location.href;
+let attempt = 5;
+try {
+  attempt = Number(sessionStorage.getItem(key) || 0);
+  sessionStorage.setItem(key, String(attempt + 1));
+} catch (error) { /* storage disabled */ }
+setTimeout(() => location.replace(location.href), Math.min(5000, 250 * 2 ** Math.min(attempt, 5)));
+</script></body></html>""",
+                    status=503,
+                )
+            response["X-Floppy-Transient-DB"] = "contention"
+            response["Retry-After"] = "1"
+            response["Cache-Control"] = "no-store"
+            return response
+        return None
+
     def process_exception(self, request, exception):
         """Handle exceptions that weren't caught in __call__."""
+        response = self._contention_response(request, exception)
+        if response is not None:
+            return response
         if isinstance(exception, OperationalError) and is_retryable_error(exception):
             error_type = "disk I/O" if "i/o" in str(exception).lower() else "lock"
             logger.error(

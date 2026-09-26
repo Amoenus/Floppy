@@ -26,7 +26,7 @@ def available_orders(tv, user):
     orders, errors = [], []
     for provider in ("tmdb", "tvdb"):
         series_id = metadata_resolution.resolve_provider_media_id(
-            tv.item, provider, route_media_type="tv",
+            tv.item, provider, route_media_type="tv", persist_links=False,
         )
         if not series_id or not credentials.is_configured(provider, user=user):
             continue

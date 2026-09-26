@@ -948,6 +948,7 @@ def resolve_provider_media_id(
     persistence_mode: str = "required",
     retry_max_retries: int | None = None,
     on_deferred: Callable[[Exception], None] | None = None,
+    persist_links: bool = True,
 ) -> str | None:
     """Return the mapped provider ID for a tracked item."""
     if item is None:
@@ -1011,13 +1012,14 @@ def resolve_provider_media_id(
                 return None
             if not identity or identity.media_type != MediaTypes.TV.value:
                 return None
-            persist_mal_tmdb_identity(
-                item,
-                identity,
-                persistence_mode=persistence_mode,
-                retry_max_retries=retry_max_retries,
-                on_deferred=on_deferred,
-            )
+            if persist_links:
+                persist_mal_tmdb_identity(
+                    item,
+                    identity,
+                    persistence_mode=persistence_mode,
+                    retry_max_retries=retry_max_retries,
+                    on_deferred=on_deferred,
+                )
             return identity.media_id
 
         mapped_series_id = anime_mapping.resolve_provider_series_id(
@@ -1026,22 +1028,23 @@ def resolve_provider_media_id(
         )
 
         if mapped_series_id:
-            run_retryable_db_operation(
-                lambda: update_or_create_race_safe(
-                    ItemProviderLink.objects,
-                    item=item,
-                    provider=provider,
-                    provider_media_type=provider_media_type,
-                    season_number=season_number,
-                    defaults={"provider_media_id": str(mapped_series_id)},
-                ),
-                mode=persistence_mode,
-                fallback=lambda: (None, False),
-                operation_name="grouped-anime provider-link upsert",
-                operation_logger=logger,
-                on_deferred=on_deferred,
-                **retry_kwargs,
-            )
+            if persist_links:
+                run_retryable_db_operation(
+                    lambda: update_or_create_race_safe(
+                        ItemProviderLink.objects,
+                        item=item,
+                        provider=provider,
+                        provider_media_type=provider_media_type,
+                        season_number=season_number,
+                        defaults={"provider_media_id": str(mapped_series_id)},
+                    ),
+                    mode=persistence_mode,
+                    fallback=lambda: (None, False),
+                    operation_name="grouped-anime provider-link upsert",
+                    operation_logger=logger,
+                    on_deferred=on_deferred,
+                    **retry_kwargs,
+                )
             return str(mapped_series_id)
 
     return None
@@ -1348,6 +1351,7 @@ def resolve_detail_metadata(
     persistence_mode: str = "required",
     retry_max_retries: int | None = None,
     on_persistence_deferred: Callable[[Exception], None] | None = None,
+    persist_links: bool = True,
 ) -> MetadataResolutionResult:
     """Resolve the detail-page display provider and overlay metadata when mapped."""
     provider = get_preferred_provider(
@@ -1389,6 +1393,7 @@ def resolve_detail_metadata(
             persistence_mode=persistence_mode,
             retry_max_retries=retry_max_retries,
             on_deferred=on_persistence_deferred,
+            persist_links=persist_links,
         )
         if provider_media_id:
             overlay_metadata = services.get_media_metadata(
@@ -1436,7 +1441,7 @@ def resolve_detail_metadata(
                 )
         else:
             mapping_status = "missing"
-    elif item is not None and isinstance(base_metadata, dict):
+    elif persist_links and item is not None and isinstance(base_metadata, dict):
         upsert_provider_links(
             item,
             base_metadata,

@@ -1057,6 +1057,7 @@ def media_details(
             persistence_mode="best_effort",
             retry_max_retries=detail_db_max_retries,
             on_persistence_deferred=_mark_detail_persistence_deferred,
+            persist_links=False,
         )
         media_metadata = metadata_resolution_result.header_metadata
         media_metadata.update(
@@ -1758,14 +1759,6 @@ def media_details(
             if identity:
                 tmdb_media_id = identity.media_id
                 tmdb_media_type = identity.media_type
-                if detail_item:
-                    metadata_resolution.persist_mal_tmdb_identity(
-                        detail_item,
-                        identity,
-                        persistence_mode="best_effort",
-                        retry_max_retries=detail_db_max_retries,
-                        on_deferred=_mark_detail_persistence_deferred,
-                    )
         elif (
             render_secondary_only
             and detail_item
@@ -1779,6 +1772,7 @@ def media_details(
                 persistence_mode="best_effort",
                 retry_max_retries=detail_db_max_retries,
                 on_deferred=_mark_detail_persistence_deferred,
+                persist_links=False,
             )
 
         if tmdb_media_id:

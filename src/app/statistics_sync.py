@@ -27,6 +27,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import F, Model, Q
 from django.utils import timezone
 
+from app.interactive_requests import interactive_request_active
 from app.models import StatisticsDirtyDay, StatisticsSnapshot, StatisticsSyncState
 from app.statistics_day_cache import (
     STATISTICS_DAY_CACHE_TIMEOUT,
@@ -503,16 +504,27 @@ def publish_snapshot(user_id: int, range_name: str, data: dict, generation: int)
             exc,
         )
         return entry
-    StatisticsSnapshot.objects.update_or_create(
-        user_id=user_id,
-        range_name=range_name,
-        defaults={
-            "payload": payload,
-            "generation": generation,
-            "built_day": built_day,
-            "built_at": built_at,
-            "schema_version": SNAPSHOT_SCHEMA_VERSION,
-        },
+    StatisticsSnapshot.objects.bulk_create(
+        [
+            StatisticsSnapshot(
+                user_id=user_id,
+                range_name=range_name,
+                payload=payload,
+                generation=generation,
+                built_day=built_day,
+                built_at=built_at,
+                schema_version=SNAPSHOT_SCHEMA_VERSION,
+            )
+        ],
+        update_conflicts=True,
+        update_fields=[
+            "payload",
+            "generation",
+            "built_day",
+            "built_at",
+            "schema_version",
+        ],
+        unique_fields=["user", "range_name"],
     )
     return entry
 
@@ -578,6 +590,11 @@ def _check_deadline(deadline) -> None:
         raise _OutOfTimeError
 
 
+def _yield_if_interactive(enabled: bool) -> None:
+    if enabled and interactive_request_active():
+        raise _OutOfTimeError
+
+
 def _ordered_ranges(user, heavy_due: bool, only_ranges=None) -> list[str]:
     if only_ranges:
         return list(only_ranges)
@@ -621,7 +638,9 @@ def _missing_days(user_id: int, days) -> set:
     return missing
 
 
-def _build_days(user, days, deadline, dirty_tokens) -> int:
+def _build_days(
+    user, days, deadline, dirty_tokens, *, yield_to_interactive=False
+) -> int:
     """Build day payloads in slices; clear each slice's dirty rows as it lands."""
     from app.statistics_day_builder import (
         _build_prefetch_for_range,
@@ -632,6 +651,7 @@ def _build_days(user, days, deadline, dirty_tokens) -> int:
     credit_hints = 0
     size = _slice_days()
     for offset in range(0, len(days), size):
+        _yield_if_interactive(yield_to_interactive)
         _check_deadline(deadline)
         chunk = days[offset : offset + size]
         prefetch = _build_prefetch_for_range(user, chunk)
@@ -642,7 +662,12 @@ def _build_days(user, days, deadline, dirty_tokens) -> int:
             "credit_item_ids": set(),
         }
         pending = {}
+        processed_days = []
+        deferred = False
         for day in chunk:
+            if processed_days and yield_to_interactive and interactive_request_active():
+                deferred = True
+                break
             day_stats = build_stats_for_day(
                 user.id,
                 day,
@@ -656,6 +681,7 @@ def _build_days(user, days, deadline, dirty_tokens) -> int:
                 credit_hints += int(
                     day_stats.get("backfill", {}).get("missing_credits") or 0
                 )
+            processed_days.append(day)
         if pending:
             failed = set(
                 cache.set_many(pending, timeout=STATISTICS_DAY_CACHE_TIMEOUT) or ()
@@ -666,8 +692,10 @@ def _build_days(user, days, deadline, dirty_tokens) -> int:
                     timeout=STATISTICS_DAY_CACHE_TIMEOUT,
                 )
         _enqueue_collected_backfills(user.id, collector)
-        _clear_dirty(user.id, chunk, dirty_tokens)
+        _clear_dirty(user.id, processed_days, dirty_tokens)
         _renew_lease(user.id)
+        if deferred:
+            raise _OutOfTimeError
     return credit_hints
 
 
@@ -720,13 +748,17 @@ def run_sync(
 
     Returns ``{"status": ..., "published": {range: data}}`` where status is
     ``done``, ``busy`` (another sync holds the lease), ``continued`` (the time
-    budget ran out and a follow-up was queued) or ``missing``.
+    budget ran out), ``deferred`` (an interactive request is active), or
+    ``missing``.
 
     ``only_ranges`` rebuilds just those ranges, unconditionally; it is the
     inline path the eager/test read and the top-talent upgrade use.
     """
     started = time.monotonic()
     deadline = None if budget_seconds is None else started + budget_seconds
+    yield_to_interactive = budget_seconds is not None and only_ranges is None
+    if yield_to_interactive and interactive_request_active():
+        return {"status": "deferred", "published": {}}
     user_model = apps.get_model(settings.AUTH_USER_MODEL)
     user = user_model.objects.filter(pk=user_id).first()
     if user is None:
@@ -768,7 +800,13 @@ def run_sync(
         # Newest first, so the hot ranges are correct as early as possible.
         work_days = sorted(work, reverse=True)
 
-        credit_hints = _build_days(user, work_days, deadline, dirty_tokens)
+        credit_hints = _build_days(
+            user,
+            work_days,
+            deadline,
+            dirty_tokens,
+            yield_to_interactive=yield_to_interactive,
+        )
         if full:
             cache.set(_day_epoch_key(user_id), now.isoformat(), timeout=None)
 
@@ -792,6 +830,7 @@ def run_sync(
         for range_name in _ordered_ranges(user, heavy_due, only_ranges):
             if not only_ranges and not needs_rebuild(range_name):
                 continue
+            _yield_if_interactive(yield_to_interactive)
             _check_deadline(deadline)
             range_started = time.monotonic()
             data = _aggregate_range(user, range_name, credit_hints, deadline)
@@ -840,7 +879,11 @@ def run_sync(
         len(published),
         (time.monotonic() - started) * 1000,
     )
-    if not only_ranges and (status == "continued" or _has_hot_work(user_id)):
+    if (
+        not only_ranges
+        and not (yield_to_interactive and interactive_request_active())
+        and (status == "continued" or _has_hot_work(user_id))
+    ):
         ensure_sync(user_id, bypass_gate=True)
     return {"status": status, "published": published}
 
