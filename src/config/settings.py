@@ -1710,6 +1710,7 @@ CELERY_TASK_ROUTES = {
     "Import from Radarr (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
     "Import from Sonarr (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
     "Import from Mylar3 (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
+    "Import from Kapowarr (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
     "Import from Audiobookshelf (Recurring)": {
         "priority": CELERY_TASK_PRIORITY_FOLLOWUP,
     },
