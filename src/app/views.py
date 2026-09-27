@@ -1910,7 +1910,7 @@ def cache_status(request):
         # polls this only after a manual Refresh or for a never-built range.
         from app import statistics_sync
 
-        entry = statistics_sync.load_snapshot(request.user.id, range_name)
+        entry = statistics_sync.load_snapshot_meta(request.user.id, range_name)
         is_stale = statistics_sync.entry_is_stale(entry, user_id=request.user.id)
         if is_stale:
             statistics_sync.ensure_sync(request.user.id, urgent=entry is None)

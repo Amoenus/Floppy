@@ -1668,6 +1668,12 @@ CELERY_TASK_ROUTES = {
         "queue": "interactive",
         "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
     },
+    # Rebuilds a talent section the viewer already sees a stale copy of; same
+    # priority as the sync so webhook scrobbles still run first.
+    "Refresh statistics talent fragment": {
+        "queue": "interactive",
+        "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
+    },
     # Cheap (one query, then enqueues). On the interactive worker so a long
     # import on the background worker cannot delay recovery of lost syncs.
     "Reconcile statistics sync": {
