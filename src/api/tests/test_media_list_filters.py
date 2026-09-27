@@ -178,6 +178,35 @@ class MediaListFilterParityTests(FloppyApiTestCase):
             self.assertEqual(self._next_episode_1001()["title"], "Cached Name")
         api_request.assert_not_called()
 
+    def test_next_episode_cached_titles_are_read_once_per_page(self):
+        """A page resolves every cached season in one get_many, not a get per row."""
+        from django.core.cache import cache
+
+        with (
+            mock.patch.object(cache, "get_many", wraps=cache.get_many) as get_many,
+            mock.patch.object(cache, "get", wraps=cache.get) as get,
+        ):
+            self._next_episode_1001()
+        season_keys = [
+            call.args[0]
+            for call in get.call_args_list
+            if "_season_" in str(call.args[0])
+        ]
+        self.assertEqual(season_keys, [])
+        self.assertEqual(get_many.call_count, 1)
+
+    def test_season_row_ignores_the_show_title_placeholder(self):
+        """A season row titled "Season 1" still treats the show title as a placeholder."""
+        from app.media_list_filters import next_episode_for_media
+
+        season = self.season_medias[0]
+        Item.objects.filter(pk=season.item.pk).update(title="Season 1")
+        season.refresh_from_db()
+        season.item.refresh_from_db()
+        next_episode = next_episode_for_media(season)
+        self.assertEqual(next_episode["episode_number"], 2)
+        self.assertIsNone(next_episode["title"])
+
     def test_next_episode_missing_item_degrades_gracefully(self):
         """No matching local Item leaves enrichment fields None/empty, not a 500."""
         tv1 = self.tv_medias[0]
