@@ -514,29 +514,58 @@ def _episode_air_date(season, episode_number):
     return None
 
 
-def _cached_episode_title(source, media_id, season_number, episode_number):
-    """Return an episode name from the cached TMDB season, without a request."""
-    if source != Sources.TMDB.value or season_number is None:
-        return None
+def _fill_cached_episode_titles(pairs):
+    """Name untitled next episodes from cached TMDB seasons, without a request.
+
+    ``pairs`` is ``(item, next_episode)``; one ``get_many`` covers the page.
+    """
     from app.providers.tmdb import _season_cache_key
 
-    season_data = cache.get(_season_cache_key(media_id, season_number))
-    if not isinstance(season_data, dict):
-        return None
-    for episode in season_data.get("episodes") or []:
-        if episode.get("episode_number") == episode_number:
-            title = Item.title_fields_from_episode_metadata(episode)["title"]
-            return title or None
-    return None
+    wanted = {}
+    for item, next_episode in pairs:
+        if (
+            next_episode is None
+            or next_episode.get("title") is not None
+            or item.source != Sources.TMDB.value
+            or next_episode.get("season_number") is None
+            or next_episode.get("episode_number") is None
+        ):
+            continue
+        key = _season_cache_key(item.media_id, next_episode["season_number"])
+        wanted.setdefault(key, []).append(next_episode)
+    if not wanted:
+        return
+    found = cache.get_many(list(wanted)) or {}
+    for key, next_episodes in wanted.items():
+        season_data = found.get(key)
+        if not isinstance(season_data, dict):
+            continue
+        titles = {
+            episode.get("episode_number"): Item.title_fields_from_episode_metadata(
+                episode,
+            )["title"]
+            for episode in season_data.get("episodes") or []
+        }
+        for next_episode in next_episodes:
+            next_episode["title"] = titles.get(next_episode["episode_number"]) or None
 
 
-def _enrich_next_episode(base, item):
+def _show_title(item, media):
+    """Return the show's title for a TV, season, or anime row."""
+    if item.media_type == MediaTypes.SEASON.value:
+        tv_item = getattr(getattr(media, "related_tv", None), "item", None)
+        if tv_item is not None and tv_item.title:
+            return tv_item.title
+    return item.title
+
+
+def _enrich_next_episode(base, item, media):
     """Attach title/code/image/ids/url to a next_episode dict.
 
     Several write paths store an unwatched episode's Item under the show's
     title as a placeholder, so a title equal to the show's is not an episode
-    name. The cached season payload is the fallback; ``title`` is ``None``
-    rather than the show name when neither knows the episode's name.
+    name. ``title`` stays ``None`` here when no Item carries a real name;
+    ``_fill_cached_episode_titles`` then tries the cached season payload.
     """
     if base is None:
         return None
@@ -553,29 +582,28 @@ def _enrich_next_episode(base, item):
                 episode_number=episode_number,
             ).order_by("id")
         )
+    placeholder_titles = {item.title}
+    if any(
+        episode_item.title and episode_item.title != item.title
+        for episode_item in episode_items
+    ):
+        # Only a season row's own title can differ from the show's.
+        placeholder_titles.add(_show_title(item, media))
     named_item = next(
         (
             episode_item
             for episode_item in episode_items
-            if episode_item.title and episode_item.title != item.title
+            if episode_item.title and episode_item.title not in placeholder_titles
         ),
         None,
     )
     episode_item = named_item or next(iter(episode_items), None)
-    title = named_item.title if named_item else None
-    if title is None and episode_number is not None:
-        title = _cached_episode_title(
-            item.source,
-            item.media_id,
-            season_number,
-            episode_number,
-        )
     episode_code = None
     if season_number is not None and episode_number is not None:
         episode_code = f"S{season_number:02d}E{episode_number:02d}"
     return {
         **base,
-        "title": title,
+        "title": named_item.title if named_item else None,
         "episode_code": episode_code,
         "image": episode_item.image if episode_item else None,
         "ids": helpers.build_provider_ids(episode_item) if episode_item else {},
@@ -585,6 +613,14 @@ def _enrich_next_episode(base, item):
 
 def next_episode_for_media(media):
     """Return the first released, unwatched episode for a TV-like row."""
+    next_episode = _next_episode_for_media(media)
+    if next_episode is not None:
+        _fill_cached_episode_titles([(media.item, next_episode)])
+    return next_episode
+
+
+def _next_episode_for_media(media):
+    """Resolve the next episode, before the cached-title fallback."""
     if media is None:
         return None
     item = getattr(media, "item", None)
@@ -619,6 +655,7 @@ def next_episode_for_media(media):
                         "air_date": _episode_air_date(season, episode_number),
                     },
                     item,
+                    media,
                 )
         from events.models import Event
 
@@ -643,6 +680,7 @@ def next_episode_for_media(media):
                     "air_date": event.datetime,
                 },
                 item,
+                media,
             )
         return None
     if media_type == MediaTypes.SEASON.value and hasattr(media, "next_episode_number"):
@@ -656,6 +694,7 @@ def next_episode_for_media(media):
                 "air_date": _episode_air_date(media, episode_number),
             },
             item,
+            media,
         )
     if media_type == MediaTypes.ANIME.value:
         from events.models import Event
@@ -679,6 +718,7 @@ def next_episode_for_media(media):
                     "air_date": event.datetime,
                 },
                 item,
+                media,
             )
     return None
 
@@ -826,8 +866,14 @@ def get_media_list_entries(user, media_type, filters: MediaListFilters, *, limit
 
 def get_next_episode_map(entries):
     """Build the next-episode payload map used by media serializers."""
-    return {
-        entry.item.id: next_episode_for_media(entry.media)
+    next_episodes = {
+        entry.item.id: _next_episode_for_media(entry.media)
         for entry in entries
         if entry.media is not None
     }
+    _fill_cached_episode_titles(
+        (entry.media.item, next_episodes[entry.item.id])
+        for entry in entries
+        if entry.media is not None
+    )
+    return next_episodes
