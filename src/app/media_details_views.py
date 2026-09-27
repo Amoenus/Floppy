@@ -342,12 +342,12 @@ def media_details(
                 # This looks like an iTunes ID, try to enrich
                 from django.contrib import messages
                 from django.shortcuts import redirect
-                from django.utils.text import slugify
 
                 from app.services.podcast_import import (
                     PodcastImportError,
                     import_show_from_itunes_id,
                 )
+                from app.templatetags import app_tags
 
                 try:
                     show = import_show_from_itunes_id(media_id)
@@ -356,7 +356,7 @@ def media_details(
                         source=source,
                         media_type=MediaTypes.PODCAST.value,
                         media_id=show.podcast_uuid,
-                        title=slugify(show.title or "podcast"),
+                        title=app_tags.slug(show.title or "") or "podcast",
                     )
                 except PodcastImportError as e:
                     messages.error(request, str(e))

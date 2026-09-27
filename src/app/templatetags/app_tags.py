@@ -282,17 +282,23 @@ def slug(arg1):
     Sometimes slugify removes all characters from a string, so we need to
     urlencode the special characters first.
     e.g Anime: 31687
+
+    The result must stay a single path segment, so "/" is encoded too and
+    the dot segments "." and ".." are replaced (e.g. episode title "/").
     """
     cleaned = template.defaultfilters.slugify(arg1)
     if cleaned == "":
         cleaned = template.defaultfilters.slugify(
-            template.defaultfilters.urlencode(unidecode(arg1)),
+            template.defaultfilters.urlencode(unidecode(arg1), ""),
         )
         if cleaned == "":
-            cleaned = template.defaultfilters.urlencode(unidecode(arg1))
+            cleaned = template.defaultfilters.urlencode(unidecode(arg1), "")
 
             if cleaned == "":
-                cleaned = template.defaultfilters.urlencode(arg1)
+                cleaned = template.defaultfilters.urlencode(arg1, "")
+
+    if cleaned in {".", ".."}:
+        cleaned = cleaned.replace(".", "2e")
 
     return cleaned
 
