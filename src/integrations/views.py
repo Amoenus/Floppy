@@ -67,6 +67,7 @@ from integrations.imports.audiobookshelf import (
     AudiobookshelfAuthError,
     AudiobookshelfClient,
 )
+from integrations.imports.kapowarr import KapowarrClient
 from integrations.imports.koreader import (
     KoreaderAuthError,
     KoreaderClient,
@@ -107,6 +108,7 @@ from integrations.models import (
     ExternalReferenceReviewStatus,
     GPodderAccount,
     JellyfinAccount,
+    KapowarrInstance,
     KoitoAccount,
     KoreaderAccount,
     KoreaderDocumentLink,
@@ -149,6 +151,7 @@ RADARR_RECURRING_TASK_NAME = "Import from Radarr (Recurring)"
 JELLYFIN_PLAYBACK_REPORTING_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 SONARR_RECURRING_TASK_NAME = "Import from Sonarr (Recurring)"
 MYLAR_RECURRING_TASK_NAME = "Import from Mylar3 (Recurring)"
+KAPOWARR_RECURRING_TASK_NAME = "Import from Kapowarr (Recurring)"
 GPODDER_RECURRING_TASK_NAME = "Import from GPodder (Recurring)"
 TRAKT_DEVICE_SESSION_KEY = "trakt_device_auth"
 
@@ -1903,6 +1906,97 @@ def import_mylar(request):
     _ensure_arr_schedule(instance, MYLAR_RECURRING_TASK_NAME, "Mylar3")
     if queued is not False:
         messages.info(request, "Mylar3 import queued.")
+    return redirect("import_data")
+
+
+@require_POST
+def kapowarr_connect(request):
+    """Connect a new Kapowarr instance using base URL + API key."""
+    base_url = request.POST.get("base_url", "").strip()
+    api_key = request.POST.get("api_key", "").strip()
+    name = request.POST.get("name", "").strip()
+    if not base_url or not api_key:
+        messages.error(request, "Kapowarr base URL and API key are required.")
+        return _integration_redirect(request)
+
+    try:
+        KapowarrClient(base_url, api_key).healthcheck()
+    except helpers.MediaImportError as exc:
+        messages.error(request, f"Failed to connect to Kapowarr: {exc}")
+        return _integration_redirect(request)
+
+    try:
+        instance = _run_with_lock_retry(
+            "create Kapowarr instance",
+            lambda: KapowarrInstance.objects.create(
+                user=request.user,
+                name=name,
+                base_url=base_url,
+                api_key=helpers.encrypt(api_key),
+            ),
+        )
+    except IntegrityError:
+        messages.error(
+            request, "You already have a Kapowarr instance connected at this URL."
+        )
+        return _integration_redirect(request)
+
+    _ensure_arr_schedule(instance, KAPOWARR_RECURRING_TASK_NAME, "Kapowarr")
+    if _queue_task_or_message(request,
+        tasks.import_kapowarr, user_id=request.user.id, mode="new", instance_id=instance.id
+    ) is not False:
+        messages.success(
+            request,
+            "Connected Kapowarr. Initial import queued and recurring sync enabled.",
+        )
+    return _integration_redirect(request, connected_slug="kapowarr")
+
+
+@require_POST
+def kapowarr_disconnect(request):
+    """Disconnect one Kapowarr instance."""
+    from django_celery_beat.models import PeriodicTask
+
+    instance = get_object_or_404(
+        KapowarrInstance, pk=request.POST.get("instance_id"), user=request.user
+    )
+
+    def _disconnect():
+        PeriodicTask.objects.filter(
+            _periodic_task_filter_for_instance(instance.id),
+            task=KAPOWARR_RECURRING_TASK_NAME,
+        ).delete()
+        # Through the reconciling helper, so copies only Kapowarr created go too.
+        states = CollectionSourceState.objects.filter(
+            user=request.user, source="kapowarr", source_instance_id=instance.id
+        ).select_related("item")
+        for state in states:
+            remove_collection_source_state(
+                user=request.user,
+                item=state.item,
+                source="kapowarr",
+                source_instance_id=instance.id,
+            )
+        instance.delete()
+
+    _run_with_lock_retry("disconnect Kapowarr", _disconnect)
+    messages.info(request, "Disconnected Kapowarr.")
+    return redirect("import_data")
+
+
+@require_POST
+def import_kapowarr(request):
+    """Queue Kapowarr import and ensure recurring schedule exists."""
+    instance = get_object_or_404(
+        KapowarrInstance, pk=request.POST.get("instance_id"), user=request.user
+    )
+
+    queued = _queue_task_or_message(request,
+        tasks.import_kapowarr, user_id=request.user.id, mode="new", instance_id=instance.id
+    )
+    _ensure_arr_schedule(instance, KAPOWARR_RECURRING_TASK_NAME, "Kapowarr")
+    if queued is not False:
+        messages.info(request, "Kapowarr import queued.")
     return redirect("import_data")
 
 

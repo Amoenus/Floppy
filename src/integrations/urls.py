@@ -86,6 +86,13 @@ urlpatterns = [
     path("import/mylar/connect", views.mylar_connect, name="mylar_connect"),
     path("import/mylar/disconnect", views.mylar_disconnect, name="mylar_disconnect"),
     path("import/mylar", views.import_mylar, name="import_mylar"),
+    path("import/kapowarr/connect", views.kapowarr_connect, name="kapowarr_connect"),
+    path(
+        "import/kapowarr/disconnect",
+        views.kapowarr_disconnect,
+        name="kapowarr_disconnect",
+    ),
+    path("import/kapowarr", views.import_kapowarr, name="import_kapowarr"),
     path("import/sonarr/connect", views.sonarr_connect, name="sonarr_connect"),
     path("import/sonarr/disconnect", views.sonarr_disconnect, name="sonarr_disconnect"),
     path("import/sonarr", views.import_sonarr, name="import_sonarr"),
