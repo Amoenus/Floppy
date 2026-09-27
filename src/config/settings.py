@@ -537,6 +537,12 @@ else:
             "OPTIONS": {
                 "timeout": SQLITE_BUSY_TIMEOUT_SECONDS,
             },
+            # Reuse a thread's connection across requests instead of opening
+            # one (plus the PRAGMAs below) for every request. Idle autocommit
+            # connections hold no read transaction, so WAL checkpoints are not
+            # held back. Replacing db.sqlite3 already requires stopping Floppy.
+            "CONN_MAX_AGE": 600,
+            "CONN_HEALTH_CHECKS": True,
         },
     }
 

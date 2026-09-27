@@ -16,7 +16,7 @@ from django.contrib.auth.decorators import login_not_required
 from django.contrib.staticfiles.views import serve
 from django.http import JsonResponse
 from django.urls import include, path, re_path
-from django.views.decorators.cache import never_cache
+from django.views.decorators.cache import cache_control
 from django.views.i18n import JavaScriptCatalog
 from health_check.views import MainView
 
@@ -43,7 +43,13 @@ handler500 = "app.error_views.server_error"
 urlpatterns = [
     path(
         "jsi18n/",
-        login_not_required(never_cache(JavaScriptCatalog.as_view())),
+        # Pages link a versioned URL (see javascript_catalog_url), so the
+        # browser keeps the catalog instead of re-requesting it per page.
+        login_not_required(
+            cache_control(public=True, max_age=31536000, immutable=True)(
+                JavaScriptCatalog.as_view(),
+            ),
+        ),
         name="javascript-catalog",
     ),
     path("api/v1/", include("api.urls")),
