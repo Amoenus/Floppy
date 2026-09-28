@@ -2333,13 +2333,13 @@
             </button>
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg"
              x-data="{ traktProfileType: '{% if trakt_configured %}public{% else %}csv{% endif %}' }">
-          <div class="flex items-center mb-3">{% source_display "trakt" %}</div>
+          <div class="flex items-center mb-3">{% source_display "trakt" %}{% include "users/components/import_upload_badge.html" %}</div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import TV shows and movies, including your collection" %}</p>
 
           {% if not trakt_configured %}
             <p class="text-xs text-[var(--color-text-muted)] mb-3">
-              {% translate "Trakt now requires VIP to register new API applications, so username-based import is unavailable unless" %} <code class="text-indigo-200">TRAKT_API</code> {% translate "and" %}
-              <code class="text-indigo-200">TRAKT_API_SECRET</code> {% translate "are already set. Use a Trakt data export instead." %}
+              {% translate "Trakt now requires VIP to register new API applications, so username-based import is unavailable unless" %} <code class="text-[var(--color-link)]">TRAKT_API</code> {% translate "and" %}
+              <code class="text-[var(--color-link)]">TRAKT_API_SECRET</code> {% translate "are already set. Use a Trakt data export instead." %}
             </p>
           {% endif %}
 
@@ -2357,8 +2357,8 @@
               </div>
             </div>
 
-            <div x-show="traktProfileType === 'private'" class="mb-3 rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 text-xs text-gray-300 space-y-2">
-              <p class="text-indigo-200 font-medium">{% translate "Private Profile Import (OAuth)" %}</p>
+            <div x-show="traktProfileType === 'private'" class="mb-3 rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 text-xs text-[var(--color-text-secondary)] space-y-2">
+              <p class="text-[var(--color-link)] font-medium">{% translate "Private Profile Import (OAuth)" %}</p>
               <ol class="list-decimal list-inside space-y-1">
                 <li>
                   {% translate "Create a Trakt application at" %}
@@ -2366,17 +2366,17 @@
                      target="_blank"
                      class="text-[var(--color-link)] underline hover:text-indigo-200">{% translate "Trakt API Apps" %}</a>.
                 </li>
-                <li>{% translate "Set the Redirect URI to" %} <code class="text-indigo-200 break-all">{{ trakt_redirect_uri }}</code>.</li>
-                <li>{% translate "Set" %} <code class="text-indigo-200">TRAKT_API</code> {% translate "and" %} <code class="text-indigo-200">TRAKT_API_SECRET</code> {% translate "in your environment." %}</li>
+                <li>{% translate "Set the Redirect URI to" %} <code class="text-[var(--color-link)] break-all">{{ trakt_redirect_uri }}</code>.</li>
+                <li>{% translate "Set" %} <code class="text-[var(--color-link)]">TRAKT_API</code> {% translate "and" %} <code class="text-[var(--color-link)]">TRAKT_API_SECRET</code> {% translate "in your environment." %}</li>
               </ol>
               {% if trakt_redirect_capable %}
                 <p class="text-[var(--color-text-muted)]">
-                  {% translate "Behind reverse proxies, also set" %} <code class="text-indigo-200">URLS=https://your_domain.com</code> {% translate "so Floppy builds the correct callback URL." %}
+                  {% translate "Behind reverse proxies, also set" %} <code class="text-[var(--color-link)]">URLS=https://your_domain.com</code> {% translate "so Floppy builds the correct callback URL." %}
                 </p>
               {% else %}
                 <p class="text-[var(--color-text-muted)]">
-                  {% translate "This instance is not served over HTTPS, and Trakt only accepts HTTPS redirects, so Floppy will show you a code to enter at" %} <code class="text-indigo-200">trakt.tv/activate</code>
-                  {% translate "instead. Set" %} <code class="text-indigo-200">URLS=https://your_domain.com</code> {% translate "if you would rather use the one-click browser flow." %}
+                  {% translate "This instance is not served over HTTPS, and Trakt only accepts HTTPS redirects, so Floppy will show you a code to enter at" %} <code class="text-[var(--color-link)]">trakt.tv/activate</code>
+                  {% translate "instead. Set" %} <code class="text-[var(--color-link)]">URLS=https://your_domain.com</code> {% translate "if you would rather use the one-click browser flow." %}
                 </p>
               {% endif %}
             </div>
@@ -2423,10 +2423,10 @@
             </form>
           {% endif %}
 
-          <div x-show="traktProfileType === 'csv'" class="mb-3 rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 text-xs text-gray-300 space-y-2">
+          <div x-show="traktProfileType === 'csv'" class="mb-3 rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 text-xs text-[var(--color-text-secondary)] space-y-2">
             <p>
-              {% translate "No Trakt account anymore? Upload the" %} <code class="text-indigo-200">.zip</code> {% translate "from a Trakt data export to import your history, ratings, watchlist, collection and lists. Individual" %} <code class="text-indigo-200">.json</code> {% translate "files and the older" %}
-              <code class="text-indigo-200">.csv</code> {% translate "export also work." %}
+              {% translate "No Trakt account anymore? Upload the" %} <code class="text-[var(--color-link)]">.zip</code> {% translate "from a Trakt data export to import your history, ratings, watchlist, collection and lists. Individual" %} <code class="text-[var(--color-link)]">.json</code> {% translate "files and the older" %}
+              <code class="text-[var(--color-link)]">.csv</code> {% translate "export also work." %}
             </p>
             <p class="text-[var(--color-text-muted)]">{% translate "Importing lists replaces any lists previously imported from Trakt." %}</p>
           </div>
@@ -2437,16 +2437,13 @@
                 enctype="multipart/form-data">
             {% csrf_token %}
             <input type="hidden" name="mode" x-model="importMode">
-            <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors"
-                   :class="importFrequency === 'once' ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
-                   :disabled="importFrequency !== 'once'">
+            <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer">
               <input name="trakt_export"
                      accept=".zip,.json,.csv"
                      multiple
                      class="hidden"
                      type="file"
-                     :disabled="importFrequency !== 'once'"
-                     @change="importFrequency === 'once' && $el.form.submit()">
+                     @change="$el.form.submit()">
               <span>{% translate "Select Export File" %}</span>
             </label>
           </form>
@@ -2530,8 +2527,8 @@
           <div class="flex items-center mb-3">{% source_display "simkl" %}</div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import TV shows, movies and anime" %}</p>
           {% if not simkl_configured %}
-            <div class="mb-3 rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 text-xs text-gray-300 space-y-2">
-              <p class="text-indigo-200 font-medium">{% translate "SIMKL needs your own API app" %}</p>
+            <div class="mb-3 rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 text-xs text-[var(--color-text-secondary)] space-y-2">
+              <p class="text-[var(--color-link)] font-medium">{% translate "SIMKL needs your own API app" %}</p>
               <ol class="list-decimal list-inside space-y-1">
                 <li>
                   {% translate "Create an app at" %}
@@ -2539,7 +2536,7 @@
                      target="_blank"
                      class="text-[var(--color-link)] underline hover:text-indigo-200">{% translate "SIMKL Developer" %}</a>.
                 </li>
-                <li>{% translate "Set the Redirect URI to" %} <code class="text-indigo-200 break-all">{{ simkl_redirect_uri }}</code>.</li>
+                <li>{% translate "Set the Redirect URI to" %} <code class="text-[var(--color-link)] break-all">{{ simkl_redirect_uri }}</code>.</li>
                 <li>
                   {% translate "Add its Client ID and Client secret in" %}
                   <a href="{% url 'metadata_settings' %}"
@@ -2742,15 +2739,13 @@
             </button>
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
           <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center">{% source_display "yamtrack" %}</div>
+            <div class="flex items-center">{% source_display "yamtrack" %}{% include "users/components/import_upload_badge.html" %}</div>
             <a href="https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#csv-import-floppy--yamtrack-format"
                target="_blank"
                class="text-[var(--color-text-muted)] hover:text-[var(--color-link)] transition-colors p-1 rounded-md hover:bg-[var(--color-surface-hover)]"
                title="{% translate "View CSV format documentation" %}">{% include "app/icons/info.svg" with classes="w-4 h-4" %}</a>
           </div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3"
-             x-text="importFrequency === 'once' ? gettext('Import a Floppy backup (media + lists)') : gettext('File uploads are not available for periodic imports')">
-          </p>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import a Floppy backup (media + lists)" %}</p>
           <form method="post"
                 action="{% url 'import_yamtrack' %}"
                 enctype="multipart/form-data">
@@ -2759,14 +2754,14 @@
             <input type="hidden" name="time" x-model="importTime">
             <input type="hidden" name="mode" x-model="importMode">
             <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors"
-                   :class="importFrequency === 'once' && !standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
-                   :disabled="importFrequency !== 'once' || standardImportsDisabled()">
+                   :class="!standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
+                   :disabled="standardImportsDisabled()">
               <input name="yamtrack_csv"
                      accept=".csv"
                      class="hidden"
                      type="file"
-                     :disabled="importFrequency !== 'once' || standardImportsDisabled()"
-                     @change="importFrequency === 'once' && !standardImportsDisabled() && $el.form.submit()">
+                     :disabled="standardImportsDisabled()"
+                     @change="!standardImportsDisabled() && $el.form.submit()">
               {% translate "Select CSV File" %}
             </label>
           </form>
@@ -2792,12 +2787,10 @@
               <div class="flex items-center justify-between mb-3">
                 <div class="flex items-center">
                   {% include "app/icons/import.svg" with classes="w-6 h-6 mr-2" %}
-                  <h4 class="font-medium">CLZ</h4>
+                  <h4 class="font-medium">CLZ</h4>{% include "users/components/import_upload_badge.html" %}
                 </div>
               </div>
-              <p class="text-sm text-[var(--color-text-muted)] mb-3"
-                 x-text="importFrequency === 'once' ? gettext('Import a CLZ CSV or XML export. Columns Floppy has no built-in home for become custom collection fields.') : gettext('File uploads are not available for periodic imports')">
-              </p>
+              <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import a CLZ CSV or XML export. Columns Floppy has no built-in home for become custom collection fields." %}</p>
               <form method="post"
                     action="{% url 'import_clz' %}"
                     enctype="multipart/form-data">
@@ -2823,14 +2816,14 @@
                   </div>
                 </div>
                 <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors"
-                       :class="importFrequency === 'once' && !standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
-                       :disabled="importFrequency !== 'once' || standardImportsDisabled()">
+                       :class="!standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
+                       :disabled="standardImportsDisabled()">
                   <input name="clz_export"
                          accept=".csv,.txt,.xml"
                          class="hidden"
                          type="file"
-                         :disabled="importFrequency !== 'once' || standardImportsDisabled()"
-                         @change="importFrequency === 'once' && !standardImportsDisabled() && $el.form.submit()">
+                         :disabled="standardImportsDisabled()"
+                         @change="!standardImportsDisabled() && $el.form.submit()">
                   {% translate "Select CLZ Export" %}
                 </label>
               </form>
@@ -2854,15 +2847,13 @@
             </button>
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
           <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center">{% source_display "yamtrack_native" %}</div>
+            <div class="flex items-center">{% source_display "yamtrack_native" %}{% include "users/components/import_upload_badge.html" %}</div>
             <a href="https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#csv-import-floppy--yamtrack-format"
                target="_blank"
                class="text-[var(--color-text-muted)] hover:text-[var(--color-link)] transition-colors p-1 rounded-md hover:bg-[var(--color-surface-hover)]"
                title="{% translate "View CSV format documentation" %}">{% include "app/icons/info.svg" with classes="w-4 h-4" %}</a>
           </div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3"
-             x-text="importFrequency === 'once' ? gettext('Import a CSV exported from Yamtrack (media + lists)') : gettext('File uploads are not available for periodic imports')">
-          </p>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import a CSV exported from Yamtrack (media + lists)" %}</p>
           <form method="post"
                 action="{% url 'import_yamtrack' %}"
                 enctype="multipart/form-data">
@@ -2871,14 +2862,14 @@
             <input type="hidden" name="time" x-model="importTime">
             <input type="hidden" name="mode" x-model="importMode">
             <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors"
-                   :class="importFrequency === 'once' && !standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
-                   :disabled="importFrequency !== 'once' || standardImportsDisabled()">
+                   :class="!standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
+                   :disabled="standardImportsDisabled()">
               <input name="yamtrack_csv"
                      accept=".csv"
                      class="hidden"
                      type="file"
-                     :disabled="importFrequency !== 'once' || standardImportsDisabled()"
-                     @change="importFrequency === 'once' && !standardImportsDisabled() && $el.form.submit()">
+                     :disabled="standardImportsDisabled()"
+                     @change="!standardImportsDisabled() && $el.form.submit()">
               {% translate "Select CSV File" %}
             </label>
           </form>
@@ -2901,10 +2892,8 @@
               {% include "app/icons/x.svg" with classes="w-4 h-4" %}
             </button>
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
-          <div class="flex items-center mb-3">{% source_display "hltb" %}</div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3"
-             x-text="importFrequency === 'once' ? gettext('Import games') : gettext('File uploads are not available for periodic imports')">
-          </p>
+          <div class="flex items-center mb-3">{% source_display "hltb" %}{% include "users/components/import_upload_badge.html" %}</div>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import games" %}</p>
           <form method="post"
                 action="{% url 'import_hltb' %}"
                 enctype="multipart/form-data">
@@ -2913,14 +2902,14 @@
             <input type="hidden" name="time" x-model="importTime">
             <input type="hidden" name="mode" x-model="importMode">
             <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors"
-                   :class="importFrequency === 'once' && !standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
-                   :disabled="importFrequency !== 'once' || standardImportsDisabled()">
+                   :class="!standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
+                   :disabled="standardImportsDisabled()">
               <input name="hltb_csv"
                      accept=".csv"
                      class="hidden"
                      type="file"
-                     :disabled="importFrequency !== 'once' || standardImportsDisabled()"
-                     @change="importFrequency === 'once' && !standardImportsDisabled() && $el.form.submit()">
+                     :disabled="standardImportsDisabled()"
+                     @change="!standardImportsDisabled() && $el.form.submit()">
               {% translate "Select CSV File" %}
             </label>
           </form>
@@ -2943,10 +2932,8 @@
               {% include "app/icons/x.svg" with classes="w-4 h-4" %}
             </button>
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
-          <div class="flex items-center mb-3">{% source_display "grouvee" %}</div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3"
-             x-text="importFrequency === 'once' ? gettext('Import games') : gettext('File uploads are not available for periodic imports')">
-          </p>
+          <div class="flex items-center mb-3">{% source_display "grouvee" %}{% include "users/components/import_upload_badge.html" %}</div>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import games" %}</p>
           <form method="post"
                 action="{% url 'import_grouvee' %}"
                 enctype="multipart/form-data">
@@ -2955,14 +2942,14 @@
             <input type="hidden" name="time" x-model="importTime">
             <input type="hidden" name="mode" x-model="importMode">
             <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors"
-                   :class="importFrequency === 'once' && !standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
-                   :disabled="importFrequency !== 'once' || standardImportsDisabled()">
+                   :class="!standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
+                   :disabled="standardImportsDisabled()">
               <input name="grouvee_json"
                      accept=".json,.zip"
                      class="hidden"
                      type="file"
-                     :disabled="importFrequency !== 'once' || standardImportsDisabled()"
-                     @change="importFrequency === 'once' && !standardImportsDisabled() && $el.form.submit()">
+                     :disabled="standardImportsDisabled()"
+                     @change="!standardImportsDisabled() && $el.form.submit()">
               {% translate "Select File" %}
             </label>
           </form>
@@ -3230,11 +3217,9 @@
             </button>
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
           <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center">{% source_display "imdb" %}</div>
+            <div class="flex items-center">{% source_display "imdb" %}{% include "users/components/import_upload_badge.html" %}</div>
           </div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3"
-             x-text="importFrequency === 'once' ? gettext('Import movies and TV shows from your ratings') : gettext('File uploads are not available for periodic imports')">
-          </p>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import movies and TV shows from your ratings" %}</p>
           <form method="post"
                 action="{% url 'import_imdb' %}"
                 enctype="multipart/form-data">
@@ -3243,14 +3228,14 @@
             <input type="hidden" name="time" x-model="importTime">
             <input type="hidden" name="mode" x-model="importMode">
             <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors"
-                   :class="importFrequency === 'once' && !standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
-                   :disabled="importFrequency !== 'once' || standardImportsDisabled()">
+                   :class="!standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
+                   :disabled="standardImportsDisabled()">
               <input name="imdb_csv"
                      accept=".csv"
                      class="hidden"
                      type="file"
-                     :disabled="importFrequency !== 'once' || standardImportsDisabled()"
-                     @change="importFrequency === 'once' && !standardImportsDisabled() && $el.form.submit()">
+                     :disabled="standardImportsDisabled()"
+                     @change="!standardImportsDisabled() && $el.form.submit()">
               {% translate "Select CSV File" %}
             </label>
           </form>
@@ -3273,10 +3258,8 @@
               {% include "app/icons/x.svg" with classes="w-4 h-4" %}
             </button>
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
-          <div class="flex items-center mb-3">{% source_display "goodreads" %}</div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3"
-             x-text="importFrequency === 'once' ? gettext('Import from Goodreads backup') : gettext('File uploads are not available for periodic imports')">
-          </p>
+          <div class="flex items-center mb-3">{% source_display "goodreads" %}{% include "users/components/import_upload_badge.html" %}</div>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import from Goodreads backup" %}</p>
           <form method="post"
                 action="{% url 'import_goodreads' %}"
                 enctype="multipart/form-data">
@@ -3285,14 +3268,14 @@
             <input type="hidden" name="time" x-model="importTime">
             <input type="hidden" name="mode" x-model="importMode">
             <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors"
-                   :class="importFrequency === 'once' && !standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
-                   :disabled="importFrequency !== 'once' || standardImportsDisabled()">
+                   :class="!standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
+                   :disabled="standardImportsDisabled()">
               <input name="goodreads_csv"
                      accept=".csv"
                      class="hidden"
                      type="file"
-                     :disabled="importFrequency !== 'once' || standardImportsDisabled()"
-                     @change="importFrequency === 'once' && !standardImportsDisabled() && $el.form.submit()">
+                     :disabled="standardImportsDisabled()"
+                     @change="!standardImportsDisabled() && $el.form.submit()">
               {% translate "Select CSV File" %}
             </label>
           </form>
@@ -3315,10 +3298,8 @@
               {% include "app/icons/x.svg" with classes="w-4 h-4" %}
             </button>
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
-          <div class="flex items-center mb-3">{% source_display "hardcover" %}</div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3"
-             x-text="importFrequency === 'once' ? gettext('Import from Hardcover export (Account -> Export Data)') : gettext('File uploads are not available for periodic imports')">
-          </p>
+          <div class="flex items-center mb-3">{% source_display "hardcover" %}{% include "users/components/import_upload_badge.html" %}</div>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import from Hardcover export (Account -> Export Data)" %}</p>
           <form method="post"
                 action="{% url 'import_hardcover' %}"
                 enctype="multipart/form-data">
@@ -3333,13 +3314,13 @@
                    class="w-full py-2 px-3 mb-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                    :disabled="standardImportsDisabled()">
             <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors mb-3"
-                   :class="importFrequency === 'once' && !standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
-                   :disabled="importFrequency !== 'once' || standardImportsDisabled()">
+                   :class="!standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
+                   :disabled="standardImportsDisabled()">
               <input name="hardcover_csv"
                      accept=".csv"
                      class="hidden"
                      type="file"
-                     :disabled="importFrequency !== 'once' || standardImportsDisabled()">
+                     :disabled="standardImportsDisabled()">
               {% translate "Select CSV File" %}
             </label>
             <button type="submit"
@@ -3368,10 +3349,8 @@
               {% include "app/icons/x.svg" with classes="w-4 h-4" %}
             </button>
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
-          <div class="flex items-center mb-3">{% source_display "storygraph" %}</div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3"
-             x-text="importFrequency === 'once' ? gettext('Import from StoryGraph export (Profile -> Manage Account -> Export StoryGraph Library)') : gettext('File uploads are not available for periodic imports')">
-          </p>
+          <div class="flex items-center mb-3">{% source_display "storygraph" %}{% include "users/components/import_upload_badge.html" %}</div>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import from StoryGraph export (Profile -> Manage Account -> Export StoryGraph Library)" %}</p>
           <form method="post"
                 action="{% url 'import_storygraph' %}"
                 enctype="multipart/form-data">
@@ -3380,14 +3359,14 @@
             <input type="hidden" name="time" x-model="importTime">
             <input type="hidden" name="mode" x-model="importMode">
             <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors"
-                   :class="importFrequency === 'once' && !standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
-                   :disabled="importFrequency !== 'once' || standardImportsDisabled()">
+                   :class="!standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
+                   :disabled="standardImportsDisabled()">
               <input name="storygraph_csv"
                      accept=".csv"
                      class="hidden"
                      type="file"
-                     :disabled="importFrequency !== 'once' || standardImportsDisabled()"
-                     @change="importFrequency === 'once' && !standardImportsDisabled() && $el.form.submit()">
+                     :disabled="standardImportsDisabled()"
+                     @change="!standardImportsDisabled() && $el.form.submit()">
               {% translate "Select CSV File" %}
             </label>
           </form>
@@ -3410,25 +3389,23 @@
               {% include "app/icons/x.svg" with classes="w-4 h-4" %}
             </button>
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
-          <div class="flex items-center mb-3">{% source_display "wetrakr" %}</div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3"
-             x-text="importFrequency === 'once' ? gettext('Upload the .zip from a WeTrakr data export, or its tracklog, ratings, notes and lists .csv files. Importing lists replaces any lists previously imported from WeTrakr.') : gettext('File uploads are not available for periodic imports')">
-          </p>
+          <div class="flex items-center mb-3">{% source_display "wetrakr" %}{% include "users/components/import_upload_badge.html" %}</div>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Upload the .zip from a WeTrakr data export, or its tracklog, ratings, notes and lists .csv files. Importing lists replaces any lists previously imported from WeTrakr." %}</p>
           <form method="post"
                 action="{% url 'import_wetrakr' %}"
                 enctype="multipart/form-data">
             {% csrf_token %}
             <input type="hidden" name="mode" x-model="importMode">
             <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors"
-                   :class="importFrequency === 'once' && !standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
-                   :disabled="importFrequency !== 'once' || standardImportsDisabled()">
+                   :class="!standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
+                   :disabled="standardImportsDisabled()">
               <input name="wetrakr_export"
                      accept=".zip,.csv"
                      multiple
                      class="hidden"
                      type="file"
-                     :disabled="importFrequency !== 'once' || standardImportsDisabled()"
-                     @change="importFrequency === 'once' && $el.form.submit()">
+                     :disabled="standardImportsDisabled()"
+                     @change="$el.form.submit()">
               <span>{% translate "Select Export File" %}</span>
             </label>
           </form>
@@ -3451,10 +3428,8 @@
               {% include "app/icons/x.svg" with classes="w-4 h-4" %}
             </button>
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
-          <div class="flex items-center mb-3">{% source_display "tvtime" %}</div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3"
-             x-text="importFrequency === 'once' ? gettext('Import from a TV Time GDPR data export (Settings -> Export My Data). Select the shows file, the movies file, or both.') : gettext('File uploads are not available for periodic imports')">
-          </p>
+          <div class="flex items-center mb-3">{% source_display "tvtime" %}{% include "users/components/import_upload_badge.html" %}</div>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import from a TV Time GDPR data export (Settings -> Export My Data). Select the shows file, the movies file, or both." %}</p>
           <form method="post"
                 action="{% url 'import_tvtime' %}"
                 enctype="multipart/form-data">
@@ -3464,30 +3439,30 @@
             <input type="hidden" name="mode" x-model="importMode">
             <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Shows CSV (tracking-prod-records.csv)" %}</label>
             <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors mb-3"
-                   :class="importFrequency === 'once' && !standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
-                   :disabled="importFrequency !== 'once' || standardImportsDisabled()">
+                   :class="!standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
+                   :disabled="standardImportsDisabled()">
               <input name="tvtime_shows_csv"
                      accept=".csv"
                      class="hidden"
                      type="file"
-                     :disabled="importFrequency !== 'once' || standardImportsDisabled()">
+                     :disabled="standardImportsDisabled()">
               {% translate "Select CSV File" %}
             </label>
             <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Movies CSV (tracking-prod-records-v2.csv)" %}</label>
             <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors mb-3"
-                   :class="importFrequency === 'once' && !standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
-                   :disabled="importFrequency !== 'once' || standardImportsDisabled()">
+                   :class="!standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
+                   :disabled="standardImportsDisabled()">
               <input name="tvtime_movies_csv"
                      accept=".csv"
                      class="hidden"
                      type="file"
-                     :disabled="importFrequency !== 'once' || standardImportsDisabled()">
+                     :disabled="standardImportsDisabled()">
               {% translate "Select CSV File" %}
             </label>
             <button type="submit"
                     class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'"
-                    :disabled="importFrequency !== 'once' || standardImportsDisabled()">
+                    :disabled="standardImportsDisabled()">
               {% translate "Import" %}
             </button>
           </form>
