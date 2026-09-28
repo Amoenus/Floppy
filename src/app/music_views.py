@@ -39,12 +39,36 @@ MINUTES_PER_HOUR = 60
 # MBID search when the artist has none, and a discography sync.
 ARTIST_VIEW_MBID_RESOLVE_SECONDS = 24 * 60 * 60
 ARTIST_VIEW_SYNC_SECONDS = 60 * 60
+# The artist page's cover and member-photo pollers run every 5 seconds; this
+# bounds each to about two minutes per page view.
+ARTIST_IMAGE_POLL_MAX_ATTEMPTS = 24
 
 # Lengths of the partial-date strings MusicBrainz can return for a release
 # date: "YYYY", "YYYY-MM", or a full "YYYY-MM-DD" (10+ chars).
 DATE_STR_LEN_YEAR_ONLY = 4
 DATE_STR_LEN_YEAR_MONTH = 7
 DATE_STR_LEN_FULL_DATE = 10
+
+
+def _play_counts_by_music_id(music_entries):
+    """Return each album track's play count in one grouped history query."""
+    return dict(
+        Music.history.model.objects.filter(
+            id__in=[music.id for music in music_entries if music.album_id],
+        )
+        .order_by()
+        .values("id")
+        .annotate(play_count=models.Count("history_id"))
+        .values_list("id", "play_count"),
+    )
+
+
+def _poll_attempt(request):
+    """Return the poll attempt number an HTMX poller sent back."""
+    try:
+        return max(int(request.GET.get("attempt", 0)), 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _music_artist_detail_url(artist):
@@ -540,15 +564,7 @@ def _render_music_artist_details(request, artist):
         ).select_related("album", "item"),
     )
 
-    play_counts_by_music_id = dict(
-        Music.history.model.objects.filter(
-            id__in=[music.id for music in user_music_entries if music.album_id],
-        )
-        .order_by()
-        .values("id")
-        .annotate(play_count=models.Count("history_id"))
-        .values_list("id", "play_count"),
-    )
+    play_counts_by_music_id = _play_counts_by_music_id(user_music_entries)
     album_play_counts = {}
     total_plays = 0
     for music in user_music_entries:
@@ -1310,10 +1326,11 @@ def prefetch_artist_covers(request, artist_id):
         .select_related("album")
     )
 
+    play_counts_by_music_id = _play_counts_by_music_id(user_music_entries)
     album_play_counts = {}
     for music in user_music_entries:
         if music.album_id:
-            play_count = music.history.count()
+            play_count = play_counts_by_music_id.get(music.id, 0)
             album_play_counts[music.album_id] = (
                 album_play_counts.get(music.album_id, 0) + play_count
             )
@@ -1355,6 +1372,7 @@ def prefetch_artist_covers(request, artist_id):
                 exception_summary(exc),
             )
 
+    attempt = _poll_attempt(request)
     return render(
         request,
         "app/components/artist_discography_container.html",
@@ -1362,7 +1380,12 @@ def prefetch_artist_covers(request, artist_id):
             "discography_groups": discography_groups,
             "artist": artist,
             "missing_cover_count": missing_cover_count,
-            "poll_for_covers": poll_for_covers,
+            # Covers the provider cannot find never arrive, so polling stops
+            # after a bounded number of tries rather than for the prefetch
+            # marker's full ten minutes.
+            "poll_for_covers": poll_for_covers
+            and attempt < ARTIST_IMAGE_POLL_MAX_ATTEMPTS,
+            "next_attempt": attempt + 1,
             "user": request.user,
         },
     )
@@ -1391,6 +1414,7 @@ def prefetch_artist_relation_images(request, artist_id):
             cache.get(f"music:artist-image-prefetch:{artist.id}"),
         )
 
+    attempt = _poll_attempt(request)
     return render(
         request,
         "app/components/artist_relations_container.html",
@@ -1399,7 +1423,9 @@ def prefetch_artist_relation_images(request, artist_id):
             "band_members": band_members,
             "member_of_bands": member_of_bands,
             "missing_relation_image_count": missing_relation_image_count,
-            "poll_for_relation_images": poll_for_relation_images,
+            "poll_for_relation_images": poll_for_relation_images
+            and attempt < ARTIST_IMAGE_POLL_MAX_ATTEMPTS,
+            "next_attempt": attempt + 1,
             "user": request.user,
         },
     )

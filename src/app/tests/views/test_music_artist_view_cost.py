@@ -5,7 +5,9 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from app.models import Album, Artist, Item, MediaTypes, Music, Sources, Status
@@ -67,3 +69,61 @@ class ArtistViewProviderCostTests(TestCase):
         self.assertEqual(self._view().status_code, 200)
 
         self.assertEqual(mock_sync.call_count, 1)
+
+
+class ArtistCoverPollerCostTests(TestCase):
+    """The cover poller stops on its own and reads play counts in one query."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = get_user_model().objects.create_user(username="coverpoll")
+        cls.artist = Artist.objects.create(name="Coverless Artist")
+        # No image: the provider cannot find a cover, so it never arrives.
+        cls.album = Album.objects.create(title="Coverless Album", artist=cls.artist)
+        played_at = datetime(2026, 1, 15, 20, 0, tzinfo=UTC)
+        for index in range(5):
+            track = Item.objects.create(
+                media_id=f"cover-poll-track-{index}",
+                source=Sources.MUSICBRAINZ.value,
+                media_type=MediaTypes.MUSIC.value,
+                title=f"Track {index}",
+            )
+            Music.objects.create(
+                user=cls.user,
+                item=track,
+                artist=cls.artist,
+                album=cls.album,
+                status=Status.COMPLETED.value,
+                start_date=played_at,
+                end_date=played_at,
+            )
+
+    def setUp(self):
+        cache.clear()
+        self.client.force_login(self.user)
+
+    @patch("app.tasks.prefetch_album_covers_batch.delay")
+    def test_polling_stops_after_the_attempt_cap(self, _mock_delay):
+        url = reverse("prefetch_artist_covers", args=[self.artist.id])
+
+        first = self.client.get(url).content.decode()
+        last = self.client.get(url, {"attempt": 24}).content.decode()
+
+        self.assertIn("every 5s", first)
+        self.assertIn("?attempt=1", first)
+        self.assertNotIn("every 5s", last)
+
+    @patch("app.tasks.prefetch_album_covers_batch.delay")
+    def test_play_counts_do_not_grow_queries_per_track(self, _mock_delay):
+        url = reverse("prefetch_artist_covers", args=[self.artist.id])
+        self.client.get(url)
+
+        with CaptureQueriesContext(connection) as captured:
+            self.client.get(url)
+
+        history_reads = [
+            query["sql"]
+            for query in captured.captured_queries
+            if "historicalmusic" in query["sql"].lower()
+        ]
+        self.assertEqual(len(history_reads), 1)
