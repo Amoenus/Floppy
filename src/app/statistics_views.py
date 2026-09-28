@@ -926,6 +926,9 @@ def build_talent_fragment(
     )
     cache.set(fragment["cache_key"], context, TALENT_FRAGMENT_CACHE_TTL)
     cache.set(fragment["last_good_key"], context, TALENT_FRAGMENT_LAST_GOOD_TTL)
+    # The section now reflects every change so far; a later change may queue
+    # the next rebuild.
+    cache.delete(_talent_fragment_refresh_lock_key(fragment["last_good_key"]))
     return context
 
 
@@ -1045,7 +1048,7 @@ def statistics_talent_fragment(request):
         if last_good is not None:
             _queue_talent_fragment_refresh(
                 request.user,
-                fragment["cache_key"],
+                fragment["last_good_key"],
                 range_name,
                 start_date_str,
                 end_date_str,
@@ -1070,12 +1073,23 @@ def statistics_talent_fragment(request):
     )
 
 
+def _talent_fragment_refresh_lock_key(last_good_key):
+    # Keyed like the last-good copy, not the per-change key: plays arriving
+    # while a rebuild is queued must not queue more rebuilds of the same
+    # section on the single-concurrency interactive worker.
+    return f"{last_good_key}_refreshing"
+
+
 def _queue_talent_fragment_refresh(
-    user, cache_key, range_name, start_date_str, end_date_str, compare_mode_param
+    user, last_good_key, range_name, start_date_str, end_date_str, compare_mode_param
 ):
     from django.core.cache import cache
 
-    if not cache.add(f"{cache_key}_refreshing", True, TALENT_FRAGMENT_REFRESH_LOCK_TTL):
+    if not cache.add(
+        _talent_fragment_refresh_lock_key(last_good_key),
+        True,
+        TALENT_FRAGMENT_REFRESH_LOCK_TTL,
+    ):
         return
     from app.tasks_interactive import refresh_statistics_talent_fragment_task
 

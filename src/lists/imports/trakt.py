@@ -52,8 +52,6 @@ def import_trakt_lists(user, access_token, client_id=None):
             len(watchlist_items) if watchlist_items else 0,
             user.username,
         )
-        watchlist_resolved, watchlist_skipped = _resolve_entries(watchlist_items or [])
-        skipped_items += watchlist_skipped
         watchlist_fetched = True
     except Exception as e:
         logger.warning(
@@ -62,14 +60,21 @@ def import_trakt_lists(user, access_token, client_id=None):
             e,
             exc_info=True,
         )
-        watchlist_resolved = []
+        watchlist_items = []
         watchlist_fetched = False
         skipped_lists += 1
+    # Outside the try: a TMDB failure while resolving entries aborts the
+    # import before anything is deleted, rather than dropping the Watchlist.
+    watchlist_resolved, watchlist_skipped = _resolve_entries(watchlist_items or [])
+    skipped_items += watchlist_skipped
+
+    previous_lists = CustomList.objects.filter(owner=user, source="trakt")
+    if not watchlist_fetched:
+        # Keep the Watchlist already imported when Trakt would not return it.
+        previous_lists = previous_lists.exclude(source_id="watchlist")
 
     with transaction.atomic():
-        helpers.retry_on_lock(
-            lambda: CustomList.objects.filter(owner=user, source="trakt").delete(),
-        )
+        helpers.retry_on_lock(previous_lists.delete)
 
         for trakt_list, list_id, list_resolved in fetched_lists:
             custom_list = _create_custom_list(user, trakt_list, list_id)

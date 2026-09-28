@@ -243,3 +243,53 @@ class TraktListImportTransactionTests(TestCase):
         self.assertEqual(
             CustomList.objects.filter(owner=self.user, source="trakt").count(), 2
         )
+
+
+class TraktListImportFailureTests(TestCase):
+    """A failed import must not cost the user lists they already imported."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="trakt-fail-user")
+        CustomList.objects.create(
+            name="Watchlist",
+            owner=self.user,
+            source="trakt",
+            source_id="watchlist",
+        )
+        CustomList.objects.create(
+            name="Old List", owner=self.user, source="trakt", source_id="7"
+        )
+
+    def test_resolution_failure_aborts_before_deleting(self):
+        entry = {"type": "movie", "movie": {"title": "Heat", "ids": {"tmdb": 949}}}
+        with (
+            patch.object(trakt, "_get_trakt_lists", return_value=[]),
+            patch.object(trakt, "_get_trakt_watchlist_items", return_value=[entry]),
+            patch.object(
+                trakt, "_get_metadata", side_effect=RuntimeError("TMDB is down")
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            trakt.import_trakt_lists(self.user, "token")
+
+        self.assertEqual(
+            CustomList.objects.filter(owner=self.user, source="trakt").count(), 2
+        )
+
+    def test_watchlist_fetch_failure_keeps_the_existing_watchlist(self):
+        with (
+            patch.object(trakt, "_get_trakt_lists", return_value=[]),
+            patch.object(
+                trakt,
+                "_get_trakt_watchlist_items",
+                side_effect=RuntimeError("Trakt is down"),
+            ),
+        ):
+            trakt.import_trakt_lists(self.user, "token")
+
+        remaining = set(
+            CustomList.objects.filter(owner=self.user, source="trakt").values_list(
+                "source_id", flat=True
+            )
+        )
+        self.assertEqual(remaining, {"watchlist"})

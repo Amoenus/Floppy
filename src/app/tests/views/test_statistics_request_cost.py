@@ -21,6 +21,11 @@ class StatisticsRequestCostTests(TestCase):
         cache.clear()
         self.client.force_login(self.user)
 
+    def tearDown(self):
+        # Tests here stub out the refresh task, so a queued-refresh marker
+        # stays behind; rolled-back test users reuse ids, so drop it.
+        cache.clear()
+
     def test_cache_status_reads_metadata_not_the_snapshot(self):
         statistics_sync.publish_snapshot(
             self.user.id, "Last 7 Days", {"hours_per_media_type": {}}, generation=0
@@ -69,4 +74,18 @@ class StatisticsRequestCostTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         build.assert_not_called()
+        queued.assert_called_once()
+
+    def test_plays_during_a_queued_rebuild_do_not_queue_more(self):
+        url = reverse("statistics_talent_fragment") + "?start-date=all&end-date=all"
+        self.assertEqual(self.client.get(url).status_code, 200)
+
+        with patch(
+            "app.tasks_interactive.refresh_statistics_talent_fragment_task.delay"
+        ) as queued:
+            # Two plays, each a new history version, before the rebuild runs.
+            for _ in range(2):
+                statistics_cache.invalidate_statistics_cache(self.user.id)
+                self.assertEqual(self.client.get(url).status_code, 200)
+
         queued.assert_called_once()

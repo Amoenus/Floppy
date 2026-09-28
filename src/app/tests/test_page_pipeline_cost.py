@@ -32,6 +32,22 @@ class PagePipelineCostTests(TestCase):
         self.assertIn("immutable", cache_control)
         self.assertIn("max-age=31536000", cache_control)
 
+    def test_versioned_catalog_is_built_in_the_language_it_names(self):
+        # The browser asks for English; the URL names German, and a shared
+        # cache stores the response under that URL.
+        response = self.client.get(
+            reverse("javascript-catalog") + "?v=1&l=de", HTTP_ACCEPT_LANGUAGE="en"
+        )
+
+        self.assertContains(response, "Heute")
+        self.assertIn("immutable", response["Cache-Control"])
+
+    def test_unsupported_catalog_language_is_not_long_cached(self):
+        response = self.client.get(reverse("javascript-catalog") + "?v=1&l=xx")
+
+        self.assertNotIn("immutable", response["Cache-Control"])
+        self.assertIn("no-store", response["Cache-Control"])
+
     def test_barcode_library_is_not_loaded_on_every_page(self):
         page = self.client.get(reverse("home")).content.decode()
 
