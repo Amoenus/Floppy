@@ -295,6 +295,7 @@ RELEASE_BACKFILL_SOURCES = (
     Sources.OPENLIBRARY.value,
     Sources.HARDCOVER.value,
     Sources.COMICVINE.value,
+    Sources.GCD.value,
     Sources.BGG.value,
     Sources.MUSICBRAINZ.value,
 )

@@ -15,6 +15,7 @@ class Sources(models.TextChoices):
     HARDCOVER = "hardcover", "Hardcover"
     GOOGLEBOOKS = "googlebooks", "Google Books"
     COMICVINE = "comicvine", "Comic Vine"
+    GCD = "gcd", "Grand Comics Database"
     BGG = "bgg", "BoardGameGeek"
     MUSICBRAINZ = "musicbrainz", "MusicBrainz"
     POCKETCASTS = "pocketcasts", "Pocket Casts"

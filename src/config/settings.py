@@ -1292,6 +1292,11 @@ COMICVINE_API = config(
     ),
 )
 
+# Grand Comics Database login. No default: GCD limits anonymous API access to
+# 30 requests an hour, and a login is tied to one person's account.
+GCD_USERNAME = config("GCD_USERNAME", default=secret("GCD_USERNAME_FILE", ""))
+GCD_PASSWORD = config("GCD_PASSWORD", default=secret("GCD_PASSWORD_FILE", ""))
+
 TRAKT_API = config(
     "TRAKT_API",
     default=secret(
