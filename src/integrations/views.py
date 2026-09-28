@@ -1215,6 +1215,14 @@ def plex_disable_watchlist(request):
 @require_POST
 def simkl_oauth(request):
     """View for initiating the SIMKL OAuth2 authorization flow."""
+    if not credentials.is_configured("simkl", request.user):
+        messages.error(
+            request,
+            "SIMKL needs your own Client ID and Client secret. "
+            "Add them in Settings > Metadata, then connect again.",
+        )
+        return _integration_redirect(request)
+
     redirect_uri = app_helpers.build_absolute_app_url(
         request,
         reverse("import_simkl_private"),
@@ -1244,13 +1252,17 @@ def import_simkl_private(request):
         return _integration_redirect(request)
 
     redirect_uri = state_data.get("redirect_uri")
-    oauth_callback = simkl.get_token(request, redirect_uri=redirect_uri)
+    return_to = state_data.get("return_to")
+    try:
+        oauth_callback = simkl.get_token(request, redirect_uri=redirect_uri)
+    except helpers.MediaImportError as error:
+        messages.error(request, str(error))
+        return _integration_redirect(request, next_url=return_to)
     enc_token = helpers.encrypt(oauth_callback["access_token"])
 
     frequency = state_data["frequency"]
     mode = state_data["mode"]
     import_time = state_data["time"]
-    return_to = state_data.get("return_to")
 
     if frequency == "once":
         if _queue_task_or_message(request,

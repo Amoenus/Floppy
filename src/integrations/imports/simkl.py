@@ -25,6 +25,8 @@ def get_token(request, redirect_uri=None):
 
     headers = {
         "Content-Type": "application/json",
+        "simkl-api-key": credentials.get("simkl", "client_id"),
+        "User-Agent": f"Floppy/{settings.VERSION}",
     }
 
     params = {
@@ -47,9 +49,18 @@ def get_token(request, redirect_uri=None):
             headers=headers,
             params=params,
         )
-    except services.ProviderAPIError as error:
-        if error.status_code == requests.codes.unauthorized:
-            msg = "Invalid SIMKL secret key."
+    except requests.exceptions.HTTPError as error:
+        # api_request re-raises HTTP errors as-is, so a rejected exchange
+        # surfaced as a 500 page instead of this message (#1318).
+        if error.response.status_code in (
+            requests.codes.unauthorized,
+            requests.codes.forbidden,
+        ):
+            msg = (
+                "SIMKL rejected the Client ID and Client secret. Check them in "
+                "Settings > Metadata, and that the SIMKL app's redirect URI "
+                "matches this Floppy address."
+            )
             raise MediaImportError(msg) from error
         raise
 
