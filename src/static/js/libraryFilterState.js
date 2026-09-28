@@ -2,13 +2,21 @@
 // (templates/app/components/filter_menu.html and filter_form.html).
 //
 // A page spreads it into its own x-data:
-//   x-data="{ ...libraryFilterState(rules, filterData), sort: ..., ... }"
+//   x-data="{ ...libraryFilterState(rules, filterData, mediaTypes), sort: ..., ... }"
 // `rules` is the server's normalized filter rules (lists.smart_rules keys:
-// status, tag, tag_mode, rating, genre, year, ...). `filterData` is the menu's
-// option payload; only its show_* flags are read here.
+// status, tag, tag_mode, rating, genre, year, media_types, ...). `filterData`
+// is the menu's option payload; only its show_* flags are read here.
+// `mediaTypes` feeds the menu's Media Types pane (filter_show_media_types):
+// `available` is [{value, label}], and `granular` lists types (season,
+// episode) that "all types" leaves out.
 // eslint-disable-next-line no-unused-vars
-function libraryFilterState(rules = {}, filterData = {}) {
+function libraryFilterState(rules = {}, filterData = {}, mediaTypes = {}) {
   const value = (key, fallback = '') => rules[key] || fallback;
+  const availableMediaTypes = mediaTypes.available || [];
+  const granularMediaTypes = mediaTypes.granular || [];
+  const broadMediaTypes = availableMediaTypes
+    .map((type) => type.value)
+    .filter((type) => !granularMediaTypes.includes(type));
   return {
     statuses: [...(rules.status || [])],
     rating: value('rating', 'all'),
@@ -48,6 +56,10 @@ function libraryFilterState(rules = {}, filterData = {}) {
     selectedTags: [...(rules.tag || [])],
     tagMode: value('tag_mode', 'or'),
     selectedLists: [...(rules.list || [])],
+    availableMediaTypes,
+    granularMediaTypes,
+    // No saved selection means every broad type.
+    selectedTypes: (rules.media_types || []).length ? [...rules.media_types] : broadMediaTypes,
     showLanguages: Boolean(filterData.show_languages),
     showCountries: Boolean(filterData.show_countries),
     showPlatforms: Boolean(filterData.show_platforms),
@@ -106,6 +118,43 @@ function libraryFilterState(rules = {}, filterData = {}) {
     cycleTagMode() {
       this.tagMode = this.tagMode === 'and' ? 'or' : (this.tagMode === 'or' ? 'not' : 'and');
     },
+    broadMediaTypes() {
+      return broadMediaTypes;
+    },
+    hasGranularTypeSelected() {
+      return this.selectedTypes.some((type) => this.granularMediaTypes.includes(type));
+    },
+    allTypesSelected() {
+      return broadMediaTypes.length > 0 && broadMediaTypes.every((type) => this.selectedTypes.includes(type));
+    },
+    isTypeSelected(mediaType) {
+      return this.selectedTypes.includes(mediaType);
+    },
+    toggleMediaType(mediaType) {
+      this.selectedTypes = this.selectedTypes.includes(mediaType)
+        ? this.selectedTypes.filter((type) => type !== mediaType)
+        : [...this.selectedTypes, mediaType];
+    },
+    toggleAllTypes() {
+      const granular = this.selectedTypes.filter((type) => this.granularMediaTypes.includes(type));
+      this.selectedTypes = this.allTypesSelected() ? granular : [...broadMediaTypes, ...granular];
+    },
+    typesFiltered() {
+      return !this.allTypesSelected() || this.hasGranularTypeSelected();
+    },
+    dropdownLabel() {
+      if (!this.typesFiltered()) return gettext('All Types');
+      if (this.selectedTypes.length === 0) return gettext('No Types');
+      if (this.selectedTypes.length === 1) {
+        const match = this.availableMediaTypes.find((type) => type.value === this.selectedTypes[0]);
+        return match ? match.label : gettext('1 Type');
+      }
+      return interpolate(gettext('%(count)s Types'), { count: this.selectedTypes.length }, true);
+    },
+    // All broad types submit as no type filter.
+    selectedTypesForSubmit() {
+      return this.typesFiltered() ? this.selectedTypes : [];
+    },
     formatRangeLabel(minValue, maxValue) {
       if (minValue && maxValue) return `${minValue}-${maxValue}`;
       if (minValue) return `>=${minValue}`;
@@ -131,10 +180,11 @@ function libraryFilterState(rules = {}, filterData = {}) {
       return gettext('Pick a year…');
     },
     // Labels for the active attribute filters, in menu order. A page adds its
-    // own (media types, linked lists) through extraFilterLabels().
+    // own (linked lists) through extraFilterLabels().
     filterLabel() {
       const upperCode = (code) => (code.length <= 3 ? code.toUpperCase() : code);
       const labels = [...(this.extraFilterLabels ? this.extraFilterLabels() : [])];
+      if (this.availableMediaTypes.length && this.typesFiltered()) labels.unshift(this.dropdownLabel());
       if (this.rating && this.rating !== 'all') labels.push(this.ratingLabels[this.rating]);
       labels.push(this.formatRangeLabel(this.rating_min, this.rating_max));
       if (this.collection && this.collection !== 'all') labels.push(this.collectionLabels[this.collection]);

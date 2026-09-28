@@ -237,6 +237,9 @@ def list_detail(request, list_reference):
 
     if params["media_types"]:
         items = items.filter(media_type__in=params["media_types"])
+    elif request.GET.get("type_mode") == "subset":
+        # The filter menu's "Hide all" leaves no type selected.
+        items = items.none()
     filtered_media_types = list(
         items.order_by().values_list("media_type", flat=True).distinct(),
     )
@@ -416,7 +419,10 @@ def list_detail(request, list_reference):
                     precomputed_tags=[] if is_public_view else None,
                     include_list_options=False,
                 ),
-                "list_filter_state": parsed_filters.menu_state(),
+                "list_filter_state": {
+                    **parsed_filters.menu_state(),
+                    "media_types": params["media_types"],
+                },
             },
         )
         return render(request, "lists/list_detail.html", context)
