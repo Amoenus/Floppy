@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
+from contextvars import ContextVar
 from datetime import timedelta
 
 from django.conf import settings
@@ -827,9 +829,30 @@ def _blocked_statuses_for_row(row_definition: RowDefinition) -> set[str] | None:
     return None
 
 
+# Set while a refresh task re-renders the tab after rebuilding its own rows.
+# That render meets every other stale row; queueing a refresh for each chained
+# task after task (286 in four hours of one log), and a row that cannot be
+# rebuilt kept the chain alive. Page views still queue stale rows.
+_stale_refresh_suppressed: ContextVar[bool] = ContextVar(
+    "discover_stale_refresh_suppressed", default=False
+)
+
+
+@contextlib.contextmanager
+def stale_refresh_suppressed():
+    """Render rows without queueing refreshes for the stale ones met."""
+    token = _stale_refresh_suppressed.set(True)
+    try:
+        yield
+    finally:
+        _stale_refresh_suppressed.reset(token)
+
+
 def _queue_stale_refresh(
     user_id: int, media_type: str, row_key: str, show_more: bool
 ) -> None:
+    if _stale_refresh_suppressed.get():
+        return
     lock_key = f"discover:refresh:{user_id}:{media_type}:{row_key}:{int(show_more)}"
     if not cache.add(lock_key, True, timeout=STALE_REFRESH_LOCK_SECONDS):
         return

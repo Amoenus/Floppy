@@ -31,7 +31,10 @@ def refresh_discover_rows(
 ):
     """Refresh selected Discover rows for a user."""
     from app.discover import tab_cache as discover_tab_cache
-    from app.discover.service import refresh_rows_for_user
+    from app.discover.service import (
+        refresh_rows_for_user,
+        stale_refresh_suppressed,
+    )
     from app.discover.tab_cache import refresh_tab_cache
 
     user_model = get_user_model()
@@ -63,13 +66,14 @@ def refresh_discover_rows(
         show_more=show_more,
     )
     # Keep the higher-level tab cache aligned with refreshed row caches.
-    refresh_tab_cache(
-        user,
-        requested_media_type,
-        show_more=show_more,
-        force=False,
-        clear_provider_cache=False,
-    )
+    with stale_refresh_suppressed():
+        refresh_tab_cache(
+            user,
+            requested_media_type,
+            show_more=show_more,
+            force=False,
+            clear_provider_cache=False,
+        )
     return {
         "refreshed": refreshed,
         "user_id": user_id,
