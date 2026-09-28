@@ -329,6 +329,7 @@ def _parse_date_ranges(params: _Params) -> dict[str, str]:
     """
     from lists.smart_rules import (
         RELATIVE_DATE_FIELDS,
+        RELATIVE_DATE_UNITS,
         _normalize_relative_amount,
         normalize_relative_unit,
         resolve_relative_date_windows,
@@ -338,12 +339,22 @@ def _parse_date_ranges(params: _Params) -> dict[str, str]:
     for field in RELATIVE_DATE_FIELDS:
         ranges[f"{field}_from"] = _parse_date(params, f"{field}_from")
         ranges[f"{field}_to"] = _parse_date(params, f"{field}_to")
-        ranges[f"{field}_within"] = _normalize_relative_amount(
-            params.text(f"{field}_within"),
-        )
-        ranges[f"{field}_within_unit"] = normalize_relative_unit(
-            params.text(f"{field}_within_unit"),
-        )
+        amount = params.text(f"{field}_within")
+        ranges[f"{field}_within"] = _normalize_relative_amount(amount)
+        if amount and not ranges[f"{field}_within"]:
+            params.invalid(
+                f"{field}_within",
+                f"{field}_within must be a whole number from 1 to 999",
+                "",
+            )
+        unit = params.text(f"{field}_within_unit")
+        ranges[f"{field}_within_unit"] = normalize_relative_unit(unit)
+        if unit and unit.lower() not in RELATIVE_DATE_UNITS:
+            params.invalid(
+                f"{field}_within_unit",
+                f"{field}_within_unit must be one of: days, months, weeks, years",
+                "",
+            )
     return resolve_relative_date_windows(ranges)
 
 

@@ -5,6 +5,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from types import SimpleNamespace
 
 from django.apps import apps as django_apps
@@ -1079,16 +1080,53 @@ def media_list(request, media_type):
         """
         if not range_cache_key:
             return media_items
-        item_ids = {entry.item_id for entry in media_items}
-        allowed = LibraryQueryExecutor(
-            request.user,
-            LibraryQuery(
-                media_types=(media_type,),
-                filters=FilterValues(**range_filters),
-                within=item_ids,
-            ),
-        ).ids()
-        return [entry for entry in media_items if entry.item_id in allowed]
+        separate = entry_grouping_is_separate()
+        # One card per row: rating and date added are judged per row below,
+        # so the item-level engine only answers the release date.
+        item_ranges = {
+            name: "" if separate and not name.startswith("release") else value
+            for name, value in range_filters.items()
+        }
+        if any(item_ranges.values()):
+            allowed = LibraryQueryExecutor(
+                request.user,
+                LibraryQuery(
+                    media_types=(media_type,),
+                    filters=FilterValues(**item_ranges),
+                    within={entry.item_id for entry in media_items},
+                ),
+            ).ids()
+            media_items = [entry for entry in media_items if entry.item_id in allowed]
+        if separate:
+            media_items = [
+                entry for entry in media_items if _entry_in_row_ranges(entry.media)
+            ]
+        return media_items
+
+    def _entry_in_row_ranges(media):
+        """Check one tracker row against the ranges that belong to a row.
+
+        Rating and date added are per row, so with one card per entry the
+        item-level answer above is not enough: a 5-rated play must not show
+        under ``rating_min=8`` because another play of the title scored 9.
+        """
+        score = getattr(media, "score", None)
+        rating_min = range_filters["rating_min"]
+        rating_max = range_filters["rating_max"]
+        if rating_min or rating_max:
+            if score is None:
+                return False
+            if rating_min and score < Decimal(rating_min):
+                return False
+            if rating_max and score > Decimal(rating_max):
+                return False
+        added_from = range_filters["date_added_from"]
+        added_to = range_filters["date_added_to"]
+        if added_from or added_to:
+            added = timezone.localtime(media.created_at).date().isoformat()
+            if (added_from and added < added_from) or (added_to and added > added_to):
+                return False
+        return True
 
     def apply_rating_filter(media_items, filter_value):
         return apply_media_list_rating_filter(media_items, filter_value)
@@ -1705,6 +1743,12 @@ def media_list(request, media_type):
             menu_filters = replace(
                 sql_media_filters,
                 rating="all",
+                rating_min="",
+                rating_max="",
+                release_date_from="",
+                release_date_to="",
+                date_added_from="",
+                date_added_to="",
                 collection="all",
                 progress="all",
                 author="",

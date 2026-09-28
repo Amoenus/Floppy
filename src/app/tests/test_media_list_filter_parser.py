@@ -34,6 +34,24 @@ class ParserContractTests(SimpleTestCase):
             with self.subTest(query=query), self.assertRaises(MediaListFilterError):
                 parse_media_list_filters(_api_request(query))
 
+    def test_api_rejects_an_invalid_relative_window(self):
+        for query in (
+            {"date_added_within": "abc"},
+            {"date_added_within": "0"},
+            {"date_added_within": "7", "date_added_within_unit": "fortnights"},
+        ):
+            with self.subTest(query=query), self.assertRaises(MediaListFilterError):
+                parse_media_list_filters(_api_request(query))
+
+    def test_web_ignores_an_invalid_relative_window(self):
+        filters = parse_media_list_filters(
+            _web_request({"date_added_within": "abc"}),
+            strict=False,
+        )
+
+        self.assertEqual(filters.date_added_within, "")
+        self.assertEqual(filters.date_added_from, "")
+
     def test_web_ignores_an_invalid_value(self):
         filters = parse_media_list_filters(
             _web_request(
@@ -157,6 +175,36 @@ class MediaListRangeFilterTests(TestCase):
             self._ids({"rating_min": "8"}),
             {self.movies[(9, 2020)], self.movies[(8, 2015)]},
         )
+
+    def test_separate_entry_mode_filters_each_row(self):
+        """A title's low-rated play stays hidden when another play scores high."""
+        self.user.movie_show_each_play = True
+        self.user.save(update_fields=["movie_show_each_play"])
+        item_id = self.movies[(9, 2020)]
+        Movie.objects.create(
+            item_id=item_id,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            score=5,
+        )
+
+        response = self.client.get(self.url, {"rating_min": "8"})
+
+        scores = sorted(
+            entry.media.score
+            for entry in response.context["media_list"]
+            if entry.item_id == item_id
+        )
+        self.assertEqual(scores, [9])
+
+    def test_range_does_not_narrow_the_menu_options(self):
+        """Filter-menu options are cached per user, so a range must not shape them."""
+        self.client.get(self.url, {"rating_min": "9"})
+
+        response = self.client.get(self.url)
+
+        years = {year["value"] for year in response.context["filter_data"]["years"]}
+        self.assertEqual(years, {"2020", "2015"})
 
     def test_filter_state_reaches_the_page(self):
         response = self.client.get(self.url, {"rating_min": "8", "release_date_within": "2"})
