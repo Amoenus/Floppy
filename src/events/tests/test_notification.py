@@ -624,6 +624,54 @@ class NotificationTests(TestCase):
         self.assertTrue(season1_event_found)
         self.assertFalse(season2_event_found)
 
+    def _digest_recipients(self, event):
+        """Return which of user1/user2 get `event` in a digest, by user id."""
+        users = get_user_model().objects.filter(id__in=[self.user1.id, self.user2.id])
+        target_events = {(event.item.id, event.content_number): event}
+        return set(
+            get_user_releases(
+                users,
+                target_events,
+                skip_alerted_for_instant_users=True,
+            ),
+        )
+
+    def test_digest_skips_alerted_event_for_instant_users_only(self):
+        """An already-alerted event is dropped only for users with instant alerts."""
+        self.user1.release_notifications_enabled = True
+        self.user1.save()
+        self.user2.release_notifications_enabled = False
+        self.user2.save()
+
+        self.anime_event.notification_sent = True
+        self.anime_event.save()
+
+        # user1 was already alerted in real time; user2 never was
+        self.assertEqual(self._digest_recipients(self.anime_event), {self.user2.id})
+
+    def test_digest_keeps_never_alerted_event_for_instant_users(self):
+        """An event no alert covered (e.g. missed window) still reaches the digest."""
+        self.user1.release_notifications_enabled = True
+        self.user1.save()
+
+        self.anime_event.notification_sent = False
+        self.anime_event.save()
+
+        self.assertIn(self.user1.id, self._digest_recipients(self.anime_event))
+
+    def test_get_user_releases_default_ignores_notification_sent(self):
+        """Other callers (real-time, premiere digest) are unaffected by the flag."""
+        self.anime_event.notification_sent = True
+        self.anime_event.save()
+        users = get_user_model().objects.filter(id=self.user1.id)
+        target_events = {
+            (self.anime_event.item.id, self.anime_event.content_number): (
+                self.anime_event
+            ),
+        }
+
+        self.assertIn(self.user1.id, get_user_releases(users, target_events))
+
     def test_is_user_tracking_item(self):
         """Test the is_user_tracking_item function."""
         # Create tracking data

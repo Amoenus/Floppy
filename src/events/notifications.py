@@ -127,6 +127,7 @@ def send_daily_digest():
         events=events,
         users=users,
         title=title,
+        skip_alerted_for_instant_users=True,
     )
 
     return f"Daily digest sent for {result['event_count']} releases"
@@ -182,7 +183,13 @@ def send_premiere_digest():
     return f"Premiere digest sent for {result['event_count']} premieres"
 
 
-def send_notifications(events, users, title, formatter=None):
+def send_notifications(
+    events,
+    users,
+    title,
+    formatter=None,
+    skip_alerted_for_instant_users=False,
+):
     """Process events and send notifications to appropriate users.
 
     Args:
@@ -191,6 +198,8 @@ def send_notifications(events, users, title, formatter=None):
         title: Notification title
         formatter: Callable(releases) -> HTML body. Defaults to
             format_notification_html.
+        skip_alerted_for_instant_users: Leave out events already announced by
+            send_releases() for users who have release notifications on.
 
     Returns:
         Dictionary with results information
@@ -216,6 +225,7 @@ def send_notifications(events, users, title, formatter=None):
     user_releases = get_user_releases(
         users=users,
         target_events=events_by_item_and_content,
+        skip_alerted_for_instant_users=skip_alerted_for_instant_users,
     )
 
     deliver_notifications(user_releases, users, title, formatter=formatter)
@@ -226,8 +236,12 @@ def send_notifications(events, users, title, formatter=None):
     }
 
 
-def get_user_releases(users, target_events):
-    """Get user releases with optimized queries that avoid N+1 problems."""
+def get_user_releases(users, target_events, skip_alerted_for_instant_users=False):
+    """Get user releases with optimized queries that avoid N+1 problems.
+
+    notification_sent is global, so it only counts as "already alerted" for
+    users who receive release notifications; everyone else still sees the event.
+    """
     user_exclusions = {}
     for user in users:
         user_exclusions[user.id] = set(
@@ -253,7 +267,14 @@ def get_user_releases(users, target_events):
             enabled_types,
         )
 
+        skip_alerted = (
+            skip_alerted_for_instant_users and user.release_notifications_enabled
+        )
+
         for event in target_events.values():
+            if skip_alerted and event.notification_sent:
+                continue
+
             # Check if a preferred cross-provider/cross-bucket duplicate exists
             if event.item.id in hidden_item_ids:
                 continue
