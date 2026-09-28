@@ -17,6 +17,7 @@ import requests
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required, login_required
+from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError, transaction
 from django.db.models import Q
@@ -66,6 +67,7 @@ from integrations.imports.audiobookshelf import (
     AudiobookshelfAuthError,
     AudiobookshelfClient,
 )
+from integrations.imports.kapowarr import KapowarrClient
 from integrations.imports.koreader import (
     KoreaderAuthError,
     KoreaderClient,
@@ -106,6 +108,7 @@ from integrations.models import (
     ExternalReferenceReviewStatus,
     GPodderAccount,
     JellyfinAccount,
+    KapowarrInstance,
     KoitoAccount,
     KoreaderAccount,
     KoreaderDocumentLink,
@@ -148,6 +151,7 @@ RADARR_RECURRING_TASK_NAME = "Import from Radarr (Recurring)"
 JELLYFIN_PLAYBACK_REPORTING_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 SONARR_RECURRING_TASK_NAME = "Import from Sonarr (Recurring)"
 MYLAR_RECURRING_TASK_NAME = "Import from Mylar3 (Recurring)"
+KAPOWARR_RECURRING_TASK_NAME = "Import from Kapowarr (Recurring)"
 GPODDER_RECURRING_TASK_NAME = "Import from GPodder (Recurring)"
 TRAKT_DEVICE_SESSION_KEY = "trakt_device_auth"
 
@@ -1906,6 +1910,97 @@ def import_mylar(request):
 
 
 @require_POST
+def kapowarr_connect(request):
+    """Connect a new Kapowarr instance using base URL + API key."""
+    base_url = request.POST.get("base_url", "").strip()
+    api_key = request.POST.get("api_key", "").strip()
+    name = request.POST.get("name", "").strip()
+    if not base_url or not api_key:
+        messages.error(request, "Kapowarr base URL and API key are required.")
+        return _integration_redirect(request)
+
+    try:
+        KapowarrClient(base_url, api_key).healthcheck()
+    except helpers.MediaImportError as exc:
+        messages.error(request, f"Failed to connect to Kapowarr: {exc}")
+        return _integration_redirect(request)
+
+    try:
+        instance = _run_with_lock_retry(
+            "create Kapowarr instance",
+            lambda: KapowarrInstance.objects.create(
+                user=request.user,
+                name=name,
+                base_url=base_url,
+                api_key=helpers.encrypt(api_key),
+            ),
+        )
+    except IntegrityError:
+        messages.error(
+            request, "You already have a Kapowarr instance connected at this URL."
+        )
+        return _integration_redirect(request)
+
+    _ensure_arr_schedule(instance, KAPOWARR_RECURRING_TASK_NAME, "Kapowarr")
+    if _queue_task_or_message(request,
+        tasks.import_kapowarr, user_id=request.user.id, mode="new", instance_id=instance.id
+    ) is not False:
+        messages.success(
+            request,
+            "Connected Kapowarr. Initial import queued and recurring sync enabled.",
+        )
+    return _integration_redirect(request, connected_slug="kapowarr")
+
+
+@require_POST
+def kapowarr_disconnect(request):
+    """Disconnect one Kapowarr instance."""
+    from django_celery_beat.models import PeriodicTask
+
+    instance = get_object_or_404(
+        KapowarrInstance, pk=request.POST.get("instance_id"), user=request.user
+    )
+
+    def _disconnect():
+        PeriodicTask.objects.filter(
+            _periodic_task_filter_for_instance(instance.id),
+            task=KAPOWARR_RECURRING_TASK_NAME,
+        ).delete()
+        # Through the reconciling helper, so copies only Kapowarr created go too.
+        states = CollectionSourceState.objects.filter(
+            user=request.user, source="kapowarr", source_instance_id=instance.id
+        ).select_related("item")
+        for state in states:
+            remove_collection_source_state(
+                user=request.user,
+                item=state.item,
+                source="kapowarr",
+                source_instance_id=instance.id,
+            )
+        instance.delete()
+
+    _run_with_lock_retry("disconnect Kapowarr", _disconnect)
+    messages.info(request, "Disconnected Kapowarr.")
+    return redirect("import_data")
+
+
+@require_POST
+def import_kapowarr(request):
+    """Queue Kapowarr import and ensure recurring schedule exists."""
+    instance = get_object_or_404(
+        KapowarrInstance, pk=request.POST.get("instance_id"), user=request.user
+    )
+
+    queued = _queue_task_or_message(request,
+        tasks.import_kapowarr, user_id=request.user.id, mode="new", instance_id=instance.id
+    )
+    _ensure_arr_schedule(instance, KAPOWARR_RECURRING_TASK_NAME, "Kapowarr")
+    if queued is not False:
+        messages.info(request, "Kapowarr import queued.")
+    return redirect("import_data")
+
+
+@require_POST
 def sonarr_connect(request):
     """Connect a new Sonarr instance using base URL + API key."""
     base_url = request.POST.get("base_url", "").strip()
@@ -2318,6 +2413,10 @@ def import_audiobookshelf(request):
 
 
 AUDIOBOOKSHELF_COVER_TIMEOUT = 15
+# After one failed cover fetch, the account's remaining covers skip ABS for this
+# long. Otherwise every poster on a page holds a web worker for the full
+# timeout while the server is down (#1307).
+AUDIOBOOKSHELF_COVER_BACKOFF_SECONDS = 60
 # Plain raster types only - an upstream ABS server (attacker-controlled, or
 # just compromised) returning e.g. text/html or image/svg+xml would have it
 # served as active content from Floppy's own origin to anyone holding the
@@ -2474,6 +2573,16 @@ def audiobookshelf_cover(request, token):
         )
         return _placeholder_image_response()
 
+    backoff_key = f"abs_cover_backoff:{account_id}"
+    if cache.get(backoff_key):
+        logger.debug(
+            "Audiobookshelf cover skipped: server recently unreachable "
+            "account=%s item=%s",
+            account_id,
+            library_item_id,
+        )
+        return _placeholder_image_response()
+
     cover_url = f"{account.base_url.rstrip('/')}/api/items/{library_item_id}/cover"
     try:
         upstream = send_to_self_hosted(
@@ -2484,6 +2593,7 @@ def audiobookshelf_cover(request, token):
             stream=True,
         )
     except requests.RequestException as error:
+        cache.set(backoff_key, 1, AUDIOBOOKSHELF_COVER_BACKOFF_SECONDS)
         logger.warning(
             "Audiobookshelf cover unavailable: request failed "
             "account=%s item=%s error=%s",
@@ -2536,13 +2646,26 @@ def audiobookshelf_cover(request, token):
 
         body = bytearray()
         oversized = False
-        for chunk in upstream.iter_content(chunk_size=64 * 1024):
-            if not chunk:
-                continue
-            body.extend(chunk)
-            if len(body) > image_cache.MAX_IMAGE_BYTES:
-                oversized = True
-                break
+        try:
+            for chunk in upstream.iter_content(chunk_size=64 * 1024):
+                if not chunk:
+                    continue
+                body.extend(chunk)
+                if len(body) > image_cache.MAX_IMAGE_BYTES:
+                    oversized = True
+                    break
+        except requests.RequestException as error:
+            # With stream=True a server that stalls after the headers fails
+            # here rather than at send time, so it gets the same backoff.
+            cache.set(backoff_key, 1, AUDIOBOOKSHELF_COVER_BACKOFF_SECONDS)
+            logger.warning(
+                "Audiobookshelf cover unavailable: body read failed "
+                "account=%s item=%s error=%s",
+                account_id,
+                library_item_id,
+                exception_summary(error),
+            )
+            return _placeholder_image_response()
     finally:
         upstream.close()
 

@@ -69,6 +69,11 @@ request a full sweep (imports, provider migrations, preference changes).
 follow-up imports and backfills (3+). That matters on the minimal tier, where
 one worker consumes every queue.
 
+When an interactive browser request is active, the background task yields before
+claiming its database lease or between day slices and ranges. The reconciler
+finds deferred work after browsing quiets down. Snapshot publication uses one
+database upsert per range to avoid a read-then-write lock upgrade.
+
 1. Claim the database lease (a sync already running → return).
 2. Read the generation and the dirty rows (with tokens).
 3. Build days, newest first, in prefetched slices of

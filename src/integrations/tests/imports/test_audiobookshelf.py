@@ -1578,6 +1578,23 @@ class AudiobookshelfImporterTests(TestCase):
             self.user.audiobookshelf_account.last_error_message,
         )
 
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_unresponsive_server_is_a_clear_error_not_a_broken_account(
+        self,
+        mock_me,
+    ):
+        """A timeout reports a readable error without marking the account broken."""
+        mock_me.side_effect = requests.exceptions.ReadTimeout("Read timed out.")
+
+        with self.assertRaises(MediaImportError) as raised:
+            AudiobookshelfImporter(self.user).import_data()
+
+        self.assertIn("did not respond", str(raised.exception))
+        account = self.user.audiobookshelf_account
+        account.refresh_from_db()
+        self.assertFalse(account.connection_broken)
+        self.assertIn("did not respond", account.last_error_message)
+
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
     def test_does_not_refetch_unchanged_books_that_are_already_hydrated(

@@ -376,7 +376,6 @@ def _render_standard_track_modal(
                         ).get("number_of_pages")
                         if number_of_pages:
                             media.item.number_of_pages = number_of_pages
-                            media.item.save(update_fields=["number_of_pages"])
                             max_progress = number_of_pages
                     except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
                         pass
@@ -595,6 +594,7 @@ def _render_standard_track_modal(
             media_id=media_id,
             source=source,
             base_metadata=base_metadata,
+            persist_links=False,
         )
         display_provider = metadata_resolution_result.display_provider
         identity_provider = metadata_resolution_result.identity_provider
@@ -1102,18 +1102,18 @@ def track_modal(
                 ).order_by("-end_date")
             )
 
-            # Get or create Item for this episode
-            item, _ = Item.objects.get_or_create(
+            # Render without creating a tracking Item during this GET.
+            item = Item.objects.filter(
                 media_id=episode.episode_uuid,
                 source=source,
                 media_type=media_type,
-                defaults={
-                    "title": episode.title,
-                    "image": show.image or settings.IMG_NONE,
-                    "runtime_minutes": (episode.duration // 60)
-                    if episode.duration
-                    else None,
-                },
+            ).first() or Item(
+                media_id=episode.episode_uuid,
+                source=source,
+                media_type=media_type,
+                title=episode.title,
+                image=show.image or settings.IMG_NONE,
+                runtime_minutes=(episode.duration // 60) if episode.duration else None,
             )
 
             # Create adapter objects to match template expectations

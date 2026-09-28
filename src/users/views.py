@@ -257,6 +257,7 @@ def _get_import_data_user(user):
         "radarr_instances",
         "sonarr_instances",
         "mylar_instances",
+        "kapowarr_instances",
     ).get(pk=user.pk)
 
 
@@ -1572,6 +1573,7 @@ def import_data(request):
     radarr_instances = list(user.radarr_instances.order_by("created_at"))
     sonarr_instances = list(user.sonarr_instances.order_by("created_at"))
     mylar_instances = list(user.mylar_instances.order_by("created_at"))
+    kapowarr_instances = list(user.kapowarr_instances.order_by("created_at"))
     stremio_account = getattr(user, "stremio_account", None)
     xbox_account = getattr(user, "xbox_account", None)
     psn_account = getattr(user, "psn_account", None)
@@ -1658,6 +1660,8 @@ def import_data(request):
         "radarr_connected": any(i.is_connected() for i in radarr_instances),
         "sonarr_connected": any(i.is_connected() for i in sonarr_instances),
         "mylar_connected": any(i.is_connected() for i in mylar_instances),
+        "kapowarr_instances": kapowarr_instances,
+        "kapowarr_connected": any(i.is_connected() for i in kapowarr_instances),
         "stremio_account": stremio_account,
         "xbox_account": xbox_account,
         "psn_account": psn_account,

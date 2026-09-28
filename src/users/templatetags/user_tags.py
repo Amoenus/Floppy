@@ -268,6 +268,10 @@ SOURCES_CONFIG = {
         "name": "Mylar3",
         "logo": static("img/mylar-logo.png"),
     },
+    "kapowarr": {
+        "name": "Kapowarr",
+        "logo": static("img/kapowarr-logo.png"),
+    },
 }
 
 

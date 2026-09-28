@@ -16,7 +16,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from app import statistics_cache, statistics_sync
+from app import statistics_cache, statistics_day_builder, statistics_sync
 from app.models import (
     Item,
     MediaTypes,
@@ -122,6 +122,54 @@ class MarkingTests(StatisticsSyncTestCase):
 
 
 class SyncTests(StatisticsSyncTestCase):
+    @NON_EAGER
+    @patch("app.statistics_sync.interactive_request_active", return_value=True)
+    def test_background_sync_defers_before_claiming_lease(self, _active):
+        self.mark([self.day(3)])
+        result = statistics_sync.run_sync(self.user.id, budget_seconds=10)
+        self.assertEqual(result["status"], "deferred")
+        self.assertIsNone(self.state().lease_expires_at)
+        self.assertTrue(StatisticsDirtyDay.objects.filter(user=self.user).exists())
+
+        with patch("app.statistics_sync.interactive_request_active", return_value=False):
+            resumed = statistics_sync.run_sync(self.user.id, budget_seconds=60)
+        self.assertEqual(resumed["status"], "done")
+        self.assertFalse(StatisticsDirtyDay.objects.filter(user=self.user).exists())
+
+    @NON_EAGER
+    @patch(SYNC_TASK)
+    def test_background_sync_yields_mid_slice_without_losing_dirty_days(self, _enqueue):
+        self.mark([self.day(3)])
+        active = False
+        real_build = statistics_day_builder.build_stats_for_day
+
+        def build_then_mark_active(*args, **kwargs):
+            nonlocal active
+            result = real_build(*args, **kwargs)
+            active = True
+            return result
+
+        with (
+            patch(
+                "app.statistics_sync.interactive_request_active",
+                side_effect=lambda: active,
+            ),
+            patch(
+                "app.statistics_day_builder.build_stats_for_day",
+                side_effect=build_then_mark_active,
+            ),
+        ):
+            result = statistics_sync.run_sync(self.user.id, budget_seconds=60)
+
+        self.assertEqual(result["status"], "continued")
+        self.assertTrue(
+            StatisticsDirtyDay.objects.filter(user=self.user, day=self.day(3)).exists()
+        )
+        with patch("app.statistics_sync.interactive_request_active", return_value=False):
+            resumed = statistics_sync.run_sync(self.user.id, budget_seconds=60)
+        self.assertEqual(resumed["status"], "done")
+        self.assertFalse(StatisticsDirtyDay.objects.filter(user=self.user).exists())
+
     def test_a_full_sync_publishes_every_range_and_clears_dirty_days(self):
         self.mark([self.day(3)])
         result = self.full_sync()
@@ -142,8 +190,8 @@ class SyncTests(StatisticsSyncTestCase):
         self.mark([self.day(40)])
         real_build = statistics_sync._build_days
 
-        def build_then_remark(user, days, deadline, tokens):
-            hints = real_build(user, days, deadline, tokens)
+        def build_then_remark(user, days, deadline, tokens, **kwargs):
+            hints = real_build(user, days, deadline, tokens, **kwargs)
             # Would have landed while the rebuild was running.
             self.mark([self.day(40)])
             return hints

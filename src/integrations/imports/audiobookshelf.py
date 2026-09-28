@@ -159,6 +159,15 @@ class AudiobookshelfImporter:
         except AudiobookshelfAuthError as error:
             connection_health.record_failure(self.account, str(error), auth=True)
             raise MediaImportError(str(error)) from error
+        except requests.exceptions.RequestException as error:
+            # An unreachable or unresponsive server is not a rejected token, so
+            # the account is not marked broken (see connection-health.md).
+            msg = (
+                "Audiobookshelf server did not respond "
+                f"({exception_summary(error)})"
+            )
+            connection_health.record_failure(self.account, msg, auth=False)
+            raise MediaImportError(msg) from error
 
         progress_entries = me.get("mediaProgress") or []
         last_sync_ms = self.account.last_sync_ms or 0

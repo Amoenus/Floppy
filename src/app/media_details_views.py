@@ -360,12 +360,12 @@ def media_details(
                 # This looks like an iTunes ID, try to enrich
                 from django.contrib import messages
                 from django.shortcuts import redirect
-                from django.utils.text import slugify
 
                 from app.services.podcast_import import (
                     PodcastImportError,
                     import_show_from_itunes_id,
                 )
+                from app.templatetags import app_tags
 
                 try:
                     show = import_show_from_itunes_id(media_id)
@@ -374,7 +374,7 @@ def media_details(
                         source=source,
                         media_type=MediaTypes.PODCAST.value,
                         media_id=show.podcast_uuid,
-                        title=slugify(show.title or "podcast"),
+                        title=app_tags.slug(show.title or "") or "podcast",
                     )
                 except PodcastImportError as e:
                     messages.error(request, str(e))
@@ -1093,6 +1093,7 @@ def media_details(
             persistence_mode="best_effort",
             retry_max_retries=detail_db_max_retries,
             on_persistence_deferred=_mark_detail_persistence_deferred,
+            persist_links=False,
         )
         media_metadata = metadata_resolution_result.header_metadata
         media_metadata.update(
@@ -1800,14 +1801,6 @@ def media_details(
             if identity:
                 tmdb_media_id = identity.media_id
                 tmdb_media_type = identity.media_type
-                if detail_item:
-                    metadata_resolution.persist_mal_tmdb_identity(
-                        detail_item,
-                        identity,
-                        persistence_mode="best_effort",
-                        retry_max_retries=detail_db_max_retries,
-                        on_deferred=_mark_detail_persistence_deferred,
-                    )
         elif (
             render_secondary_only
             and detail_item
@@ -1821,6 +1814,7 @@ def media_details(
                 persistence_mode="best_effort",
                 retry_max_retries=detail_db_max_retries,
                 on_deferred=_mark_detail_persistence_deferred,
+                persist_links=False,
             )
 
         if tmdb_media_id:

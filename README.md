@@ -838,7 +838,7 @@ Options:
 | `--json` | Print one JSON object and nothing else. |
 | `--no-redis` | Do not check Redis. |
 | `--auto-migrate` | Apply the pending migrations, then check again. |
-| `--timeout SECONDS` | Bound the database storage check. The default matches the startup entrypoint's own bound (`integrity_timeout` in `entrypoint.sh`), currently 600 seconds. |
+| `--timeout SECONDS` | Bound the database storage check (default 600 seconds). Startup does not use a fixed bound. It stops its own check only when the check stops making progress; see `docs/architecture/sqlite-recovery-decisions.md`. |
 
 The command reads only. `--auto-migrate` is the one exception, and it is for an
 operator at a terminal. Containers do not need it, because the startup sequence

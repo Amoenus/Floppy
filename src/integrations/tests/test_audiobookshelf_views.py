@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 
 import requests
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
@@ -136,6 +137,7 @@ class AudiobookshelfCoverProxyTests(TestCase):
 
     def setUp(self):
         """Create a connected Audiobookshelf account to proxy covers for."""
+        cache.clear()
         self.user = get_user_model().objects.create_user(username="abs-cover")
         self.account = AudiobookshelfAccount.objects.create(
             user=self.user,
@@ -241,6 +243,65 @@ class AudiobookshelfCoverProxyTests(TestCase):
 
         self.assertPlaceholder(response)
         self.assertIn("request failed", "\n".join(logs.output))
+
+    @patch("integrations.views.requests.get")
+    def test_unreachable_server_backs_off_the_remaining_covers(self, mock_get):
+        """After one timeout, the next covers skip ABS instead of each waiting.
+
+        Every poster on a page held a web worker for the full timeout while
+        the server was down (#1307).
+        """
+        mock_get.side_effect = requests.ReadTimeout("Read timed out.")
+
+        with self.assertLogs("integrations.views", level="WARNING"):
+            first = self.client.get(self._cover_url("item-1"))
+        second = self.client.get(self._cover_url("item-2"))
+
+        self.assertPlaceholder(first)
+        self.assertPlaceholder(second)
+        mock_get.assert_called_once()
+
+    @patch("integrations.views.requests.get")
+    def test_body_stalling_mid_stream_serves_placeholder_and_backs_off(
+        self,
+        mock_get,
+    ):
+        """Headers arrive but the body stalls: same placeholder and backoff."""
+        upstream = self._mock_upstream(headers={"Content-Type": "image/jpeg"})
+
+        def stalled(chunk_size):
+            yield b"partial"
+            raise requests.ConnectionError("Read timed out.")
+
+        upstream.iter_content = stalled
+        mock_get.return_value = upstream
+
+        with self.assertLogs("integrations.views", level="WARNING"):
+            first = self.client.get(self._cover_url("item-1"))
+        second = self.client.get(self._cover_url("item-2"))
+
+        self.assertPlaceholder(first)
+        self.assertPlaceholder(second)
+        mock_get.assert_called_once()
+        upstream.close.assert_called_once()
+
+    @patch("integrations.views.requests.get")
+    def test_backoff_lapses_and_covers_load_again(self, mock_get):
+        """Once the backoff expires the real cover is fetched again."""
+        mock_get.side_effect = requests.ReadTimeout("Read timed out.")
+        with self.assertLogs("integrations.views", level="WARNING"):
+            self.client.get(self._cover_url("item-1"))
+
+        cache.delete(f"abs_cover_backoff:{self.account.id}")
+        mock_get.side_effect = None
+        mock_get.return_value = self._mock_upstream(
+            content=b"fake-image-bytes",
+            headers={"Content-Type": "image/webp"},
+        )
+
+        response = self.client.get(self._cover_url("item-2"))
+
+        self.assertEqual(response.content, b"fake-image-bytes")
 
     @patch("integrations.views.requests.get")
     def test_cover_is_not_fetched_from_a_forbidden_server_address(self, mock_get):

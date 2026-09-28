@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import requests
 from django.contrib.auth import get_user_model
+from django.db import OperationalError
 from django.template.loader import render_to_string
 from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
@@ -138,6 +139,40 @@ class TrackModalViewTests(TestCase):
             content.count("suggestionLabel: 'Release Date'"),
             count,
         )
+
+    @patch("app.services.metadata_resolution.ItemProviderLink.objects.update_or_create")
+    def test_existing_tv_modal_does_not_write_provider_links(self, upsert):
+        """Opening a home card editor must not wait on optional persistence."""
+        upsert.side_effect = OperationalError("database is locked")
+        item = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+        )
+        tracked = TV.objects.create(
+            user=self.user,
+            item=item,
+            status=Status.IN_PROGRESS.value,
+        )
+        with patch(
+            "app.providers.services.get_media_metadata",
+            return_value=_tv_with_seasons_payload("1396", Sources.TMDB.value),
+        ):
+            response = self.client.get(
+                reverse(
+                    "track_modal",
+                    kwargs={
+                        "source": Sources.TMDB.value,
+                        "media_type": MediaTypes.TV.value,
+                        "media_id": item.media_id,
+                    },
+                ),
+                {"instance_id": tracked.id, "home_row_id": "continue"},
+                HTTP_HX_REQUEST="true",
+            )
+        self.assertEqual(response.status_code, 200)
+        upsert.assert_not_called()
 
     def test_track_modal_view_existing_media(self):
         """Test the track modal view for existing media."""

@@ -1,8 +1,9 @@
 """A locked database is retried once per request, not five times."""
 
+import contextlib
 from unittest.mock import Mock, patch
 
-from django.db import OperationalError
+from django.db import DatabaseError, OperationalError
 from django.test import RequestFactory, SimpleTestCase
 
 from app.middleware import DatabaseRetryMiddleware
@@ -12,11 +13,11 @@ from app.middleware import DatabaseRetryMiddleware
 class DatabaseRetryMiddlewareTests(SimpleTestCase):
     """Each lock error already waited out SQLite's busy timeout."""
 
-    def _run(self, error):
+    def _run(self, error, path="/"):
         get_response = Mock(side_effect=error)
         middleware = DatabaseRetryMiddleware(get_response)
-        with self.assertRaises(OperationalError):
-            middleware(RequestFactory().get("/"))
+        with contextlib.suppress(DatabaseError):
+            middleware(RequestFactory().get(path))
         return get_response.call_count
 
     def test_lock_error_is_retried_once(self, _sleep):

@@ -6189,7 +6189,7 @@ class MediaDetailsViewTests(TestCase):
     @patch("app.db_retry.time.sleep")
     @patch("app.services.metadata_resolution.ItemProviderLink.objects.update_or_create")
     @patch("app.providers.services.get_media_metadata")
-    def test_anime_media_details_renders_when_provider_link_upsert_locks(
+    def test_anime_media_details_does_not_upsert_provider_links(
         self,
         mock_get_metadata,
         mock_update_or_create,
@@ -6239,7 +6239,8 @@ class MediaDetailsViewTests(TestCase):
             response,
             "Some metadata updates were deferred because the database is busy.",
         )
-        self.assertTrue(response.context["detail_persistence_deferred"])
+        self.assertFalse(response.context["detail_persistence_deferred"])
+        mock_update_or_create.assert_not_called()
         _mock_sleep.assert_not_called()
 
     def test_game_media_details_renders_when_metadata_save_hits_retryable_lock(self):
