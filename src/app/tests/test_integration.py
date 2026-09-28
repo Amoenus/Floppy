@@ -5,7 +5,6 @@ from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 from django.contrib.auth import get_user_model
-from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.db import OperationalError
 from django.test import RequestFactory, tag
 from django.urls import reverse
@@ -15,12 +14,13 @@ from playwright.sync_api import expect, sync_playwright
 from app.discover.schemas import RowResult
 from app.middleware import DatabaseRetryMiddleware
 from app.models import Game, Item, MediaTypes, Movie, Sources, Status
+from app.tests.live_server import SerialStaticLiveServerTestCase
 from app.tests.views.test_track_modal import _tv_with_seasons_payload
 from users.models import DateFormatChoices, HomeScreenRow, HomeScreenRowTypeChoices
 
 
 @tag("slow", "playwright")
-class IntegrationTest(StaticLiveServerTestCase):
+class IntegrationTest(SerialStaticLiveServerTestCase):
     """Integration tests for the application."""
 
     @classmethod
