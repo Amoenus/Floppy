@@ -2020,11 +2020,9 @@ class MediaManager(models.Manager):
         batched_sources = {Sources.TMDB.value, Sources.TVDB.value}
         seasons_by_show = defaultdict(list)
         fallback = []
-        for season in season_list:
+
+        def annotate_from_season_lookup(season):
             item = season.item
-            if item.source in batched_sources and item.season_number is not None:
-                seasons_by_show[(item.source, item.media_id)].append(season)
-                continue
             try:
                 season_metadata = services.get_media_metadata(
                     MediaTypes.SEASON.value,
@@ -2034,12 +2032,19 @@ class MediaManager(models.Manager):
                 )
             except Exception:
                 fallback.append(season)
-                continue
+                return
             metadata_max_progress = season_metadata.get("max_progress")
             if metadata_max_progress is None:
                 fallback.append(season)
             else:
                 season.max_progress = metadata_max_progress
+
+        for season in season_list:
+            item = season.item
+            if item.source in batched_sources and item.season_number is not None:
+                seasons_by_show[(item.source, item.media_id)].append(season)
+            else:
+                annotate_from_season_lookup(season)
 
         for (source, media_id), seasons in seasons_by_show.items():
             failed_key = f"season_max_progress_failed:{source}:{media_id}"
@@ -2059,10 +2064,17 @@ class MediaManager(models.Manager):
                 fallback.extend(seasons)
                 continue
             for season in seasons:
-                season_data = bundle.get(f"season/{season.item.season_number}") or {}
-                metadata_max_progress = season_data.get("max_progress")
+                season_data = bundle.get(f"season/{season.item.season_number}")
+                metadata_max_progress = (
+                    season_data.get("max_progress")
+                    if isinstance(season_data, dict)
+                    else None
+                )
                 if metadata_max_progress is None:
-                    fallback.append(season)
+                    # Not answered by the bundle: ask for the season on its
+                    # own, as before, so the result never differs from a
+                    # direct read.
+                    annotate_from_season_lookup(season)
                 else:
                     season.max_progress = metadata_max_progress
 
