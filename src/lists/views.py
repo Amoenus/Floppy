@@ -236,6 +236,9 @@ def list_detail(request, list_reference):
 
     if params["media_types"]:
         items = items.filter(media_type__in=params["media_types"])
+    elif request.GET.get("type_mode") == "subset":
+        # The filter menu's "Hide all" leaves no type selected.
+        items = items.none()
     filtered_media_types = list(
         items.order_by().values_list("media_type", flat=True).distinct(),
     )
@@ -418,6 +421,7 @@ def list_detail(request, list_reference):
                 "list_filter_state": {
                     **filter_rules,
                     "status": list(status_filter),
+                    "media_types": params["media_types"],
                     "search": params["search_query"],
                 },
             },

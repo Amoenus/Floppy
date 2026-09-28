@@ -113,6 +113,42 @@ class ListDetailFilterTests(TestCase):
         self.assertEqual(state["year"], "2020")
         self.assertEqual(state["genre"], "Drama")
 
+    def test_media_types_come_from_the_filter_menu(self):
+        movie = self._add(_movie(1, 2020))
+        show = self._add(
+            Item.objects.create(
+                media_id="10",
+                source=Sources.MANUAL.value,
+                media_type=MediaTypes.TV.value,
+                title="Show",
+            ),
+            status=None,
+        )
+
+        response = self.client.get(self.url)
+        # One type picker: the menu's Media Types pane, not a separate dropdown.
+        self.assertContains(response, "view = 'mediaTypes'")
+        self.assertNotContains(response, "getMediaTypeLabel")
+        self.assertEqual(self._item_ids(response), {movie.id, show.id})
+
+        only_movies = self.client.get(
+            self.url,
+            {"type_mode": "subset", "type": MediaTypes.MOVIE.value},
+        )
+        self.assertEqual(self._item_ids(only_movies), {movie.id})
+        self.assertEqual(
+            only_movies.context["list_filter_state"]["media_types"],
+            [MediaTypes.MOVIE.value],
+        )
+
+        # "Hide all" submits a subset with no types.
+        hidden = self.client.get(self.url, {"type_mode": "subset"})
+        self.assertEqual(self._item_ids(hidden), set())
+        self.assertEqual(
+            self._item_ids(self.client.get(self.url, {"type_mode": "all"})),
+            {movie.id, show.id},
+        )
+
     def test_public_view_filters_by_year_and_hides_owner_tags(self):
         from app.models import Tag
 
