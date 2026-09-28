@@ -226,7 +226,11 @@ class DetailScoreChipStatesTests(SimpleTestCase):
 
     def test_both_scores_show_coverage_only_on_hover(self):
         html = self._render(score=Decimal(8), derived=self.derived)
-        self.assertRegex(html, r">8</span><span[^>]*>\|</span><span[^>]*>7\.6<span")
+        self.assertRegex(
+            html,
+            r">8</span><span[^>]*>\|</span>"
+            r'<span class="sr-only">Derived rating</span><span[^>]*>7\.6<span',
+        )
         # Coverage starts collapsed and slides open while hovered.
         self.assertRegex(
             html,
@@ -235,3 +239,20 @@ class DetailScoreChipStatesTests(SimpleTestCase):
         )
         self.assertIn('@mouseenter="showCoverage = true"', html)
         self.assertNotIn("Edit rating", html)
+
+    def test_screen_readers_can_tell_the_two_scores_apart(self):
+        both = self._render(score=Decimal(8), derived=self.derived)
+        self.assertRegex(
+            both,
+            r'<span class="sr-only">Your score</span><span[^>]*>8</span>.*'
+            r'<span class="sr-only">Derived rating</span><span[^>]*>7\.6',
+        )
+        self.assertEqual(both.count('class="sr-only"'), 2)
+
+        derived_only = self._render(derived=self.derived)
+        self.assertIn('<span class="sr-only">Derived rating</span>', derived_only)
+        self.assertNotIn("Your score", derived_only)
+
+        manual_only = self._render(score=Decimal(8), derived=self.no_data)
+        self.assertIn('<span class="sr-only">Your score</span>', manual_only)
+        self.assertNotIn("Derived rating", manual_only)
