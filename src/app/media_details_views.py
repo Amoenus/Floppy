@@ -89,6 +89,20 @@ RUNTIME_UNKNOWN_AIRED = 999998  # aired but runtime unknown
 # re-reads the feed.
 PODCAST_DETAIL_RSS_REFRESH_SECONDS = 15 * 60
 
+# How often the details fragment may drop an item's provider cache and refetch
+# because a field is missing. When the provider has no such data, the refetch
+# returns the same gap, so without a limit every visit paid for a live call.
+DETAIL_FORCED_REFETCH_SECONDS = 24 * 60 * 60
+
+
+def _detail_refetch_allowed(reason, source, media_type, media_id):
+    """Return True at most once per window for this item and reason."""
+    return cache.add(
+        f"detail_forced_refetch:{reason}:{source}:{media_type}:{media_id}",
+        True,
+        DETAIL_FORCED_REFETCH_SECONDS,
+    )
+
 
 def _enrich_comic_issues(issues, user):
     """Attach user tracking history to each issue dict from the volume issues list."""
@@ -937,7 +951,11 @@ def media_details(
         and isinstance(media_metadata, dict)
         and not media_metadata.get("original_title")
     )
-    if render_secondary_only and should_refresh_tmdb_titles:
+    if (
+        render_secondary_only
+        and should_refresh_tmdb_titles
+        and _detail_refetch_allowed("titles", source, tracking_media_type, media_id)
+    ):
         cache.delete(tmdb_detail_cache_key)
         media_metadata = services.get_media_metadata(
             media_type,
@@ -959,7 +977,11 @@ def media_details(
         and not media_metadata.get("cast")
         and not media_metadata.get("crew")
     )
-    if render_secondary_only and should_refresh_tmdb_tv_credits:
+    if (
+        render_secondary_only
+        and should_refresh_tmdb_tv_credits
+        and _detail_refetch_allowed("credits", source, tracking_media_type, media_id)
+    ):
         cache.delete(tmdb_detail_cache_key)
         media_metadata = services.get_media_metadata(
             media_type,
@@ -1136,7 +1158,11 @@ def media_details(
         and detail_item is not None
         and igdb_game_studios_missing
     )
-    if render_secondary_only and should_refresh_igdb_game_studios:
+    if (
+        render_secondary_only
+        and should_refresh_igdb_game_studios
+        and _detail_refetch_allowed("studios", source, tracking_media_type, media_id)
+    ):
         cache.delete(f"{source}_{tracking_media_type}_{media_id}")
         media_metadata = services.get_media_metadata(media_type, media_id, source)
         if isinstance(media_metadata, dict):
@@ -1320,7 +1346,9 @@ def media_details(
             and any(details_payload.get(key) for key in author_detail_keys)
             and not isinstance(media_metadata.get("authors_full"), list)
         )
-        if should_refresh_author_cache:
+        if should_refresh_author_cache and _detail_refetch_allowed(
+            "authors", source, media_type, media_id
+        ):
             cache_key = f"{source}_{media_type}_{media_id}"
             cache.delete(cache_key)
             media_metadata = services.get_media_metadata(
