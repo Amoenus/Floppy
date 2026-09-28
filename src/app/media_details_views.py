@@ -85,6 +85,24 @@ logger = logging.getLogger(__name__)
 
 RUNTIME_UNKNOWN_AIRED = 999998  # aired but runtime unknown
 
+# How long a podcast show's page renders its stored episodes before a view
+# re-reads the feed.
+PODCAST_DETAIL_RSS_REFRESH_SECONDS = 15 * 60
+
+# How often the details fragment may drop an item's provider cache and refetch
+# because a field is missing. When the provider has no such data, the refetch
+# returns the same gap, so without a limit every visit paid for a live call.
+DETAIL_FORCED_REFETCH_SECONDS = 24 * 60 * 60
+
+
+def _detail_refetch_allowed(reason, source, media_type, media_id):
+    """Return True at most once per window for this item and reason."""
+    return cache.add(
+        f"detail_forced_refetch:{reason}:{source}:{media_type}:{media_id}",
+        True,
+        DETAIL_FORCED_REFETCH_SECONDS,
+    )
+
 
 def _enrich_comic_issues(issues, user):
     """Attach user tracking history to each issue dict from the volume issues list."""
@@ -342,12 +360,12 @@ def media_details(
                 # This looks like an iTunes ID, try to enrich
                 from django.contrib import messages
                 from django.shortcuts import redirect
-                from django.utils.text import slugify
 
                 from app.services.podcast_import import (
                     PodcastImportError,
                     import_show_from_itunes_id,
                 )
+                from app.templatetags import app_tags
 
                 try:
                     show = import_show_from_itunes_id(media_id)
@@ -356,7 +374,7 @@ def media_details(
                         source=source,
                         media_type=MediaTypes.PODCAST.value,
                         media_id=show.podcast_uuid,
-                        title=slugify(show.title or "podcast"),
+                        title=app_tags.slug(show.title or "") or "podcast",
                     )
                 except PodcastImportError as e:
                     messages.error(request, str(e))
@@ -384,7 +402,17 @@ def media_details(
             # published since the last visit, and backfill website_url on the
             # ones already stored, which is the only path that repairs rows
             # created before podcast website links existed (issue #1014).
-            if show.rss_feed_url and not public_view:
+            # The feed is a full third-party download plus episode writes, so
+            # repeat views inside the window render the stored episodes.
+            if (
+                show.rss_feed_url
+                and not public_view
+                and cache.add(
+                    f"podcast:detail-rss-refresh:{show.id}",
+                    True,
+                    PODCAST_DETAIL_RSS_REFRESH_SECONDS,
+                )
+            ):
                 from app.fork_services_podcast import refresh_show_from_rss
 
                 _best_effort_detail_followup(
@@ -923,7 +951,11 @@ def media_details(
         and isinstance(media_metadata, dict)
         and not media_metadata.get("original_title")
     )
-    if render_secondary_only and should_refresh_tmdb_titles:
+    if (
+        render_secondary_only
+        and should_refresh_tmdb_titles
+        and _detail_refetch_allowed("titles", source, tracking_media_type, media_id)
+    ):
         cache.delete(tmdb_detail_cache_key)
         media_metadata = services.get_media_metadata(
             media_type,
@@ -945,7 +977,11 @@ def media_details(
         and not media_metadata.get("cast")
         and not media_metadata.get("crew")
     )
-    if render_secondary_only and should_refresh_tmdb_tv_credits:
+    if (
+        render_secondary_only
+        and should_refresh_tmdb_tv_credits
+        and _detail_refetch_allowed("credits", source, tracking_media_type, media_id)
+    ):
         cache.delete(tmdb_detail_cache_key)
         media_metadata = services.get_media_metadata(
             media_type,
@@ -1123,7 +1159,11 @@ def media_details(
         and detail_item is not None
         and igdb_game_studios_missing
     )
-    if render_secondary_only and should_refresh_igdb_game_studios:
+    if (
+        render_secondary_only
+        and should_refresh_igdb_game_studios
+        and _detail_refetch_allowed("studios", source, tracking_media_type, media_id)
+    ):
         cache.delete(f"{source}_{tracking_media_type}_{media_id}")
         media_metadata = services.get_media_metadata(media_type, media_id, source)
         if isinstance(media_metadata, dict):
@@ -1307,7 +1347,9 @@ def media_details(
             and any(details_payload.get(key) for key in author_detail_keys)
             and not isinstance(media_metadata.get("authors_full"), list)
         )
-        if should_refresh_author_cache:
+        if should_refresh_author_cache and _detail_refetch_allowed(
+            "authors", source, media_type, media_id
+        ):
             cache_key = f"{source}_{media_type}_{media_id}"
             cache.delete(cache_key)
             media_metadata = services.get_media_metadata(

@@ -1682,6 +1682,11 @@ def import_data(request):
         ),
         "trakt_redirect_uri": trakt_redirect_uri,
         "trakt_redirect_capable": trakt_redirect_capable,
+        "simkl_configured": credentials.is_configured("simkl", user),
+        "simkl_redirect_uri": app_helpers.build_absolute_app_url(
+            request,
+            reverse("import_simkl_private"),
+        ),
     }
     return render(request, "users/import_data.html", context)
 

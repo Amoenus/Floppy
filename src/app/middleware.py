@@ -13,7 +13,7 @@ from django.shortcuts import redirect, resolve_url
 from django.urls import reverse
 from django.utils import translation
 
-from app.db_retry import is_contention_error, is_retryable_error
+from app.db_retry import is_contention_error, is_lock_error, is_retryable_error
 from app.discover import tab_cache as discover_tab_cache
 from app.error_views import format_exception_traceback, render_error_page
 from app.interactive_requests import (
@@ -193,6 +193,11 @@ class DatabaseRetryMiddleware:
     def __call__(self, request):
         """Process the request with retry logic for database errors."""
         max_retries = 5
+        # A lock error arrives only after SQLite's busy_timeout (30 s by
+        # default) ran out, so each retry of the whole view can wait that
+        # long again; five of them outlasted the gunicorn timeout. One retry
+        # still covers a writer that just finished.
+        max_lock_retries = 1
         base_delay = 0.1
         backoff = 2.0
         attempt = 0
@@ -212,7 +217,8 @@ class DatabaseRetryMiddleware:
                     )
                     raise
 
-                if attempt >= max_retries:
+                retry_cap = max_lock_retries if is_lock_error(error) else max_retries
+                if attempt >= retry_cap:
                     response = self._contention_response(request, error)
                     if response is not None:
                         return response
@@ -225,7 +231,7 @@ class DatabaseRetryMiddleware:
                     request.path,
                     error_type,
                     attempt + 1,
-                    max_retries,
+                    retry_cap,
                     sleep_for,
                 )
                 time.sleep(sleep_for)

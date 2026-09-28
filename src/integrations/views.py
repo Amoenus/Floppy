@@ -1215,6 +1215,14 @@ def plex_disable_watchlist(request):
 @require_POST
 def simkl_oauth(request):
     """View for initiating the SIMKL OAuth2 authorization flow."""
+    if not credentials.is_configured("simkl", request.user):
+        messages.error(
+            request,
+            "SIMKL needs your own Client ID and Client secret. "
+            "Add them in Settings > Metadata, then connect again.",
+        )
+        return _integration_redirect(request)
+
     redirect_uri = app_helpers.build_absolute_app_url(
         request,
         reverse("import_simkl_private"),
@@ -1244,13 +1252,17 @@ def import_simkl_private(request):
         return _integration_redirect(request)
 
     redirect_uri = state_data.get("redirect_uri")
-    oauth_callback = simkl.get_token(request, redirect_uri=redirect_uri)
+    return_to = state_data.get("return_to")
+    try:
+        oauth_callback = simkl.get_token(request, redirect_uri=redirect_uri)
+    except helpers.MediaImportError as error:
+        messages.error(request, str(error))
+        return _integration_redirect(request, next_url=return_to)
     enc_token = helpers.encrypt(oauth_callback["access_token"])
 
     frequency = state_data["frequency"]
     mode = state_data["mode"]
     import_time = state_data["time"]
-    return_to = state_data.get("return_to")
 
     if frequency == "once":
         if _queue_task_or_message(request,
@@ -2561,6 +2573,18 @@ def audiobookshelf_cover(request, token):
         )
         return _placeholder_image_response()
 
+    # The last good copy is served while fresh, and whenever ABS cannot answer
+    # (#1307), so a slow server no longer blanks every poster.
+    stored_key = f"abs-cover:{account_id}:{library_item_id}"
+    stored = image_cache.load_stored_cover(stored_key)
+    if stored is not None and stored[2]:
+        return image_cache.stored_cover_response(stored)
+
+    def fallback():
+        if stored is not None:
+            return image_cache.stored_cover_response(stored)
+        return _placeholder_image_response()
+
     try:
         api_token = helpers.decrypt(account.api_token)
     except Exception as error:
@@ -2571,7 +2595,7 @@ def audiobookshelf_cover(request, token):
             library_item_id,
             exception_summary(error),
         )
-        return _placeholder_image_response()
+        return fallback()
 
     backoff_key = f"abs_cover_backoff:{account_id}"
     if cache.get(backoff_key):
@@ -2581,7 +2605,7 @@ def audiobookshelf_cover(request, token):
             account_id,
             library_item_id,
         )
-        return _placeholder_image_response()
+        return fallback()
 
     cover_url = f"{account.base_url.rstrip('/')}/api/items/{library_item_id}/cover"
     try:
@@ -2601,7 +2625,7 @@ def audiobookshelf_cover(request, token):
             library_item_id,
             exception_summary(error),
         )
-        return _placeholder_image_response()
+        return fallback()
 
     try:
         if upstream.status_code != HTTPStatus.OK:
@@ -2612,7 +2636,7 @@ def audiobookshelf_cover(request, token):
                 account_id,
                 library_item_id,
             )
-            return _placeholder_image_response()
+            return fallback()
 
         content_type = (
             upstream.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
@@ -2628,7 +2652,7 @@ def audiobookshelf_cover(request, token):
                 account_id,
                 library_item_id,
             )
-            return _placeholder_image_response()
+            return fallback()
 
         try:
             content_length = int(upstream.headers.get("Content-Length", "0"))
@@ -2642,7 +2666,7 @@ def audiobookshelf_cover(request, token):
                 account_id,
                 library_item_id,
             )
-            return _placeholder_image_response()
+            return fallback()
 
         body = bytearray()
         oversized = False
@@ -2665,7 +2689,7 @@ def audiobookshelf_cover(request, token):
                 library_item_id,
                 exception_summary(error),
             )
-            return _placeholder_image_response()
+            return fallback()
     finally:
         upstream.close()
 
@@ -2677,7 +2701,7 @@ def audiobookshelf_cover(request, token):
             account_id,
             library_item_id,
         )
-        return _placeholder_image_response()
+        return fallback()
 
     body = bytes(body)
     # An upstream that declares nothing useful still has to prove it sent a
@@ -2692,9 +2716,10 @@ def audiobookshelf_cover(request, token):
                 account_id,
                 library_item_id,
             )
-            return _placeholder_image_response()
+            return fallback()
         content_type = sniffed
 
+    image_cache.store_cover(stored_key, body, content_type)
     response = HttpResponse(body, content_type=content_type)
     response["Cache-Control"] = "private, max-age=3600"
     response["X-Content-Type-Options"] = "nosniff"
@@ -2730,13 +2755,24 @@ def plex_cover(request, token):
     if account is None:
         return HttpResponseNotFound()
 
+    # Same last-good-copy rule as the Audiobookshelf proxy (#1307).
+    stored_key = f"plex-cover:{account_id}:{machine_identifier}:{thumb_path}"
+    stored = image_cache.load_stored_cover(stored_key)
+    if stored is not None and stored[2]:
+        return image_cache.stored_cover_response(stored)
+
+    def fallback():
+        if stored is not None:
+            return image_cache.stored_cover_response(stored)
+        return HttpResponseNotFound()
+
     uri, plex_token = plex_api.connection_for_machine(
         account.sections,
         machine_identifier,
         account.plex_token,
     )
     if not uri or not plex_token:
-        return HttpResponseNotFound()
+        return fallback()
 
     try:
         upstream = requests.get(
@@ -2747,24 +2783,24 @@ def plex_cover(request, token):
             verify=settings.PLEX_SSL_VERIFY,
         )
     except requests.RequestException:
-        return HttpResponseNotFound()
+        return fallback()
 
     try:
         if upstream.status_code != HTTPStatus.OK:
-            return HttpResponseNotFound()
+            return fallback()
 
         content_type = (
             upstream.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
         )
         if content_type not in PLEX_COVER_CONTENT_TYPES:
-            return HttpResponseNotFound()
+            return fallback()
 
         try:
             content_length = int(upstream.headers.get("Content-Length", "0"))
         except ValueError:
             content_length = 0
         if content_length > image_cache.MAX_IMAGE_BYTES:
-            return HttpResponseNotFound()
+            return fallback()
 
         body = bytearray()
         for chunk in upstream.iter_content(chunk_size=64 * 1024):
@@ -2772,11 +2808,13 @@ def plex_cover(request, token):
                 continue
             body.extend(chunk)
             if len(body) > image_cache.MAX_IMAGE_BYTES:
-                return HttpResponseNotFound()
+                return fallback()
     finally:
         upstream.close()
 
-    response = HttpResponse(bytes(body), content_type=content_type)
+    body = bytes(body)
+    image_cache.store_cover(stored_key, body, content_type)
+    response = HttpResponse(body, content_type=content_type)
     response["Cache-Control"] = "private, max-age=3600"
     return response
 

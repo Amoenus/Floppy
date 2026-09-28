@@ -29,6 +29,7 @@ from app.models import (
     Status,
 )
 from app.providers import services
+from app.services.synced_status import keep_held_status
 from integrations import audiobookshelf_cover, connection_health, import_progress
 from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 from integrations.models import AudiobookshelfAccount
@@ -410,16 +411,22 @@ class AudiobookshelfImporter:
         finished_at = self._parse_datetime(progress_entry.get("finishedAt"))
         started_at = self._parse_datetime(progress_entry.get("startedAt"))
 
-        media, _ = app.models.Book.objects.update_or_create(
-            user=self.user,
-            item=item,
-            defaults={
+        existing = app.models.Book.objects.filter(user=self.user, item=item).first()
+        defaults = keep_held_status(
+            existing,
+            {
                 "progress": progress_minutes,
                 "status": status,
                 "start_date": started_at,
                 "end_date": finished_at if is_finished else None,
                 "notes": "Format: Audiobook (Audiobookshelf)",
             },
+            self._parse_datetime(progress_entry.get("lastUpdate")),
+        )
+        media, _ = app.models.Book.objects.update_or_create(
+            user=self.user,
+            item=item,
+            defaults=defaults,
         )
         return media
 

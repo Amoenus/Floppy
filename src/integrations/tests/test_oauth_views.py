@@ -8,12 +8,14 @@ from django.contrib.sessions.backends.cached_db import SessionStore
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from requests import Response
 
 from integrations.imports.helpers import MediaImportError
 from integrations.models import PlexAccount
 from integrations.views import TRAKT_DEVICE_SESSION_KEY
 
 
+@override_settings(SIMKL_ID="test-simkl-id", SIMKL_SECRET="test-simkl-secret")
 class OAuthStateViewTests(TestCase):
     """Exercise provider OAuth state storage, consumption, and replay guards."""
 
@@ -84,6 +86,43 @@ class OAuthStateViewTests(TestCase):
 
         self.assertContains(replay, "Invalid or expired SIMKL authorization request.")
         self.assertNotIn(state_token, "\n".join(logs.output))
+
+    @override_settings(SIMKL_ID="", SIMKL_SECRET="")
+    def test_simkl_without_credentials_never_leaves_floppy(self):
+        # Floppy used to ship a SIMKL client ID with no secret, so users
+        # approved on SIMKL and only then hit a 403 at token exchange (#1318).
+        response = self.client.post(
+            reverse("simkl_oauth"),
+            data={"mode": "new", "frequency": "once", "time": "00:00"},
+            follow=True,
+        )
+
+        self.assertEqual(response.redirect_chain, [(reverse("import_data"), 302)])
+        self.assertContains(response, "SIMKL needs your own Client ID and Client secret.")
+        self.assertContains(response, "SIMKL needs your own API app")
+
+    def test_simkl_rejected_token_exchange_shows_message_not_500(self):
+        state_token = self._start_oauth("simkl_oauth")
+        callback_url = self._callback_url("import_simkl_private", state_token)
+        rejected = Response()
+        rejected.status_code = 403
+        rejected.url = "https://api.simkl.com/oauth/token"
+
+        with patch(
+            "app.providers.services.resilient_request",
+            return_value=rejected,
+        ) as provider_request:
+            response = self.client.get(callback_url, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "SIMKL rejected the Client ID and Client secret.")
+        headers = provider_request.call_args.kwargs["headers"]
+        self.assertEqual(headers["simkl-api-key"], "test-simkl-id")
+        self.assertTrue(headers["User-Agent"].startswith("Floppy/"))
+        self.assertEqual(
+            provider_request.call_args.kwargs["json"]["client_secret"],
+            "test-simkl-secret",
+        )
 
     @override_settings(URLS=["https://floppy.example.com"])
     def test_trakt_state_is_consumed_and_replay_is_rejected(self):

@@ -7,6 +7,7 @@ import icalendar
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
+from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q
 from django.http import HttpResponse
@@ -21,6 +22,8 @@ from events.models import INACTIVE_TRACKING_STATUSES, Event
 from users.models import User, WeekStartDayChoices
 
 logger = logging.getLogger(__name__)
+
+CALENDAR_FEED_CACHE_SECONDS = 15 * 60
 
 
 @require_GET
@@ -234,6 +237,15 @@ def download_calendar(request, token: str):
 
     now = timezone.now()
 
+    # Calendar apps poll this feed on their own schedule, and each build walks
+    # the whole event window, so a rendered feed is reused briefly per filter.
+    feed_cache_key = (
+        f"calendar_feed:{user.id}:{now.date().isoformat()}:{request.GET.urlencode()}"
+    )
+    cached_feed = cache.get(feed_cache_key)
+    if cached_feed is not None:
+        return _calendar_feed_response(cached_feed)
+
     # Define default start and end date (from past 30 days to incoming 90 days)
     start_date = now.date() - timedelta(days=30)
     end_date = now.date() + timedelta(days=90)
@@ -259,7 +271,9 @@ def download_calendar(request, token: str):
     selected_statuses = request.GET.getlist("status")
     if selected_statuses:
         valid_statuses = {
-            status for status in selected_statuses if status in {c.value for c in Status}
+            status
+            for status in selected_statuses
+            if status in {c.value for c in Status}
         }
 
         if valid_statuses:
@@ -293,7 +307,13 @@ def download_calendar(request, token: str):
         cal_event.add("dtstamp", now)
         cal.add_component(cal_event)
 
-    # Return the iCal file
-    response = HttpResponse(cal.to_ical(), content_type="text/calendar")
+    feed = cal.to_ical()
+    cache.set(feed_cache_key, feed, CALENDAR_FEED_CACHE_SECONDS)
+    return _calendar_feed_response(feed)
+
+
+def _calendar_feed_response(feed):
+    """Return the iCal file."""
+    response = HttpResponse(feed, content_type="text/calendar")
     response["Content-Disposition"] = 'attachment; filename="calendar.ics"'
     return response

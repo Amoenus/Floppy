@@ -174,9 +174,7 @@ def metadata_default_source(user, media_type: str) -> str:
         # rows, silently changing the shape of their library. Keep them on a
         # grouped provider whenever one is usable.
         grouped = [
-            source
-            for source in available
-            if source.value in GROUPED_ANIME_PROVIDERS
+            source for source in available if source.value in GROUPED_ANIME_PROVIDERS
         ]
         if grouped:
             return grouped[0].value
@@ -187,10 +185,14 @@ def metadata_default_source(user, media_type: str) -> str:
 def metadata_language_default(user, item: Item | None = None) -> str:
     """Return the effective preferred metadata language for a user/item."""
     if item is not None and user and getattr(user, "is_authenticated", False):
-        preference = MetadataProviderPreference.objects.filter(
-            user=user,
-            item=item,
-        ).only("language").first()
+        preference = (
+            MetadataProviderPreference.objects.filter(
+                user=user,
+                item=item,
+            )
+            .only("language")
+            .first()
+        )
         if preference and preference.language:
             return preference.language
 
@@ -275,8 +277,7 @@ def prefers_grouped_anime(user) -> bool:
     if not getattr(user, "anime_enabled", False):
         return False
     return (
-        metadata_default_source(user, MediaTypes.ANIME.value)
-        in GROUPED_ANIME_PROVIDERS
+        metadata_default_source(user, MediaTypes.ANIME.value) in GROUPED_ANIME_PROVIDERS
     )
 
 
@@ -453,6 +454,25 @@ def _normalize_external_ids(
     }
 
 
+def _upsert_provider_link(*, defaults: dict, **lookup):
+    """Upsert one provider link, skipping the write when nothing changed.
+
+    Detail pages and the track modal call this on GET. update_or_create saves
+    an existing row even when every field matches, and on SQLite that write
+    queues behind any background writer; a matching row needs no write.
+    """
+    existing = ItemProviderLink.objects.filter(**lookup).first()
+    if existing is not None and all(
+        getattr(existing, field) == value for field, value in defaults.items()
+    ):
+        return existing, False
+    return update_or_create_race_safe(
+        ItemProviderLink.objects,
+        defaults=defaults,
+        **lookup,
+    )
+
+
 def upsert_provider_links(
     item: Item | None,
     metadata: dict | None,
@@ -492,8 +512,7 @@ def upsert_provider_links(
         if episode_offset is not None:
             link_defaults["episode_offset"] = episode_offset
         provider_link_outcome = run_retryable_db_operation(
-            lambda: update_or_create_race_safe(
-                ItemProviderLink.objects,
+            lambda: _upsert_provider_link(
                 item=item,
                 provider=normalized_provider,
                 provider_media_type=normalized_media_type,
@@ -525,8 +544,7 @@ def upsert_provider_links(
             candidate_provider=candidate_provider,
             external_id=external_id,
         ):
-            return update_or_create_race_safe(
-                ItemProviderLink.objects,
+            return _upsert_provider_link(
                 item=item,
                 provider=candidate_provider,
                 provider_media_type=normalized_media_type,

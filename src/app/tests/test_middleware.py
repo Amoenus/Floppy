@@ -55,7 +55,9 @@ class DatabaseContentionMiddlewareTest(TestCase):
 
         response = DatabaseRetryMiddleware(locked)(self.factory.get("/medialist/tv"))
         self.assertEqual(response["X-Floppy-Transient-DB"], "contention")
-        self.assertEqual(_sleep.call_count, 5)
+        # Each SQLite lock error already waited out busy_timeout, so the
+        # server retries once and then hands over to the page's own reload.
+        self.assertEqual(_sleep.call_count, 1)
 
     def test_post_does_not_receive_automatic_retry(self):
         request = self.factory.post("/media_save")

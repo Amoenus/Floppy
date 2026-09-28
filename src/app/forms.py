@@ -416,6 +416,14 @@ class MediaForm(RatingScaleFormMixin, forms.ModelForm):
             current_image = self.instance.item.image
             if current_image and current_image != settings.IMG_NONE:
                 self.initial.setdefault("image_url", current_image)
+        # Audiobookshelf and Plex covers are Floppy's own proxy paths, which the
+        # URL field rejects. Prefilling one made every save of that item fail,
+        # with the error hidden on the Metadata tab (#1316). Blank means
+        # "keep the current image".
+        if not str(self.initial.get("image_url") or "").startswith(
+            ("http://", "https://"),
+        ):
+            self.initial.pop("image_url", None)
 
     def clean_image_url(self):
         """Normalize optional image URL input."""

@@ -48,6 +48,7 @@ from app.history_cache_utils import (
     apply_history_entry_cap,
     expand_history_media_types,
 )
+from app.task_cooperation import CooperativeRun
 
 logger = logging.getLogger(__name__)
 
@@ -925,13 +926,17 @@ def repair_history_day_cache_coverage(
     )
     rebuilt = 0
     populated = 0
-    for day_key in target_day_keys:
+    # A batch runs for tens of seconds on a large history; stop between days
+    # when someone is browsing so the rebuild does not compete with their
+    # page loads. The unbuilt days stay missing and are picked up next run.
+    run = CooperativeRun("history_day_coverage_repair")
+    for day_key in run.iter(target_day_keys):
         day_payload = _build_and_cache_history_day(user, day_key, logging_style)
         rebuilt += 1
         if day_payload and day_payload.get("entries"):
             populated += 1
 
-    remaining = max(len(missing_day_keys) - len(target_day_keys), 0)
+    remaining = max(len(missing_day_keys) - rebuilt, 0)
     logger.info(
         "history_day_coverage_repair user_id=%s logging_style=%s rebuilt=%s populated=%s remaining=%s days=%s",
         user_id,

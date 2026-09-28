@@ -4069,6 +4069,59 @@ class MediaDetailsViewTests(TestCase):
                 )
 
     @patch("app.providers.services.get_media_metadata")
+    def test_audiobook_activity_subtitle_shows_total_as_listening_time(
+        self,
+        mock_get_metadata,
+    ):
+        """An audiobook's total is minutes, so it reads like its progress."""
+        self._use_iso_dates()
+        mock_get_metadata.return_value = {
+            "media_id": "abs-1",
+            "title": "Project Hail Mary",
+            "media_type": MediaTypes.BOOK.value,
+            "source": Sources.AUDIOBOOKSHELF.value,
+            "image": "http://example.com/cover.jpg",
+            "max_progress": 966,
+            "details": {"format": "audiobook"},
+            "related": {},
+        }
+        item = Item.objects.create(
+            media_id="abs-1",
+            source=Sources.AUDIOBOOKSHELF.value,
+            media_type=MediaTypes.BOOK.value,
+            title="Project Hail Mary",
+            image="http://example.com/cover.jpg",
+            format="audiobook",
+            runtime_minutes=966,
+        )
+        Book.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=358,
+            start_date=datetime(2026, 3, 1, 12, 0, tzinfo=UTC),
+            end_date=datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.AUDIOBOOKSHELF.value,
+                    "media_type": MediaTypes.BOOK.value,
+                    "media_id": "abs-1",
+                    "title": "project-hail-mary",
+                },
+            ),
+        )
+
+        self._assert_activity_subtitle_without_stats_cards(
+            response,
+            "Progress: 5h 58min/16h 06min",
+            "2026-03-01 - 2026-03-12",
+        )
+
+    @patch("app.providers.services.get_media_metadata")
     def test_game_media_details_renders_activity_subtitle_without_stats_cards(
         self,
         mock_get_metadata,
