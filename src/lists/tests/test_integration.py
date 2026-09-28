@@ -4,12 +4,12 @@ import re
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.test import tag
 from django.urls import reverse
 from playwright.sync_api import expect, sync_playwright
 
 from app.models import Item, MediaTypes
+from app.tests.live_server import SerialStaticLiveServerTestCase
 from lists.models import CustomList, CustomListItem
 
 PERFECT_BLUE_MEDIA_ID = "437"
@@ -63,7 +63,7 @@ PERFECT_BLUE_METADATA = {
 
 
 @tag("slow", "playwright")
-class IntegrationTest(StaticLiveServerTestCase):
+class IntegrationTest(SerialStaticLiveServerTestCase):
     """Integration tests for the application."""
 
     @classmethod

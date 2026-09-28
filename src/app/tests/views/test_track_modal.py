@@ -17,6 +17,7 @@ from app.models import (
     Anime,
     Artist,
     ArtistTracker,
+    Book,
     CollectionEntry,
     DiscoverFeedback,
     DiscoverFeedbackType,
@@ -1806,3 +1807,84 @@ class EpisodeTrackButtonTests(TestCase):
 
         self.assertIn('"instance_id": "7"', markup)
         self.assertNotIn("is_create", markup)
+
+
+class ProxyCoverSaveTests(TestCase):
+    """Books whose cover is a Floppy proxy path can still be edited (#1316)."""
+
+    def setUp(self):
+        """Log in a user tracking an audiobook."""
+        self.credentials = {"username": "proxy", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+
+    def _book(self, source, image):
+        item = Item.objects.create(
+            media_id=f"{source}-1",
+            source=source,
+            media_type=MediaTypes.BOOK.value,
+            title="Project Hail Mary",
+            image=image,
+            format="audiobook",
+            runtime_minutes=960,
+        )
+        return Book.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=300,
+        )
+
+    def _save_status_from_modal(self, book, status):
+        """Post the modal's own initial values back with a new status."""
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": book.item.source,
+                    "media_type": MediaTypes.BOOK.value,
+                    "media_id": book.item.media_id,
+                },
+            )
+            + f"?instance_id={book.id}",
+        )
+        form = response.context["form"]
+        self.assertNotIn("image_url", form.initial)
+        data = {
+            name: form.initial.get(name, field.initial) or ""
+            for name, field in form.fields.items()
+        }
+        data.update(
+            {
+                "instance_id": book.id,
+                "status": status,
+                "start_date": "",
+                "end_date": "",
+            },
+        )
+        self.client.post(reverse("media_save"), data)
+        book.refresh_from_db()
+        return book
+
+    def test_audiobookshelf_book_status_saves(self):
+        """The ABS cover proxy path no longer blocks the save."""
+        book = self._book(
+            Sources.AUDIOBOOKSHELF.value,
+            "/import/audiobookshelf/cover/MTppdGVtLTE=:sig",
+        )
+
+        book = self._save_status_from_modal(book, Status.PAUSED.value)
+
+        self.assertEqual(book.status, Status.PAUSED.value)
+        self.assertEqual(
+            book.item.image,
+            "/import/audiobookshelf/cover/MTppdGVtLTE=:sig",
+        )
+
+    def test_plex_book_status_saves(self):
+        """Plex covers use the same kind of proxy path."""
+        book = self._book(Sources.PLEX.value, "/import/plex/cover/abc:sig")
+
+        book = self._save_status_from_modal(book, Status.DROPPED.value)
+
+        self.assertEqual(book.status, Status.DROPPED.value)
