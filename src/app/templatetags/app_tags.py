@@ -9,7 +9,12 @@ from django.urls import reverse
 from django.utils import formats, timezone
 from django.utils.dateparse import parse_date
 from django.utils.html import format_html
-from django.utils.translation import get_language_info, npgettext, pgettext
+from django.utils.translation import (
+    get_language,
+    get_language_info,
+    npgettext,
+    pgettext,
+)
 from django.utils.translation import gettext as _
 from unidecode import unidecode
 
@@ -144,6 +149,28 @@ def absolute_app_url(context, path):
 def djdt_enabled():
     """Return the djdt enabled."""
     return getattr(settings, "ENABLE_DEBUG_TOOLBAR", False)
+
+
+@register.simple_tag
+def javascript_catalog_url():
+    """Return the translation catalog URL, versioned for long browser caching.
+
+    The catalog is a blocking script in every page's head. Keyed by release,
+    language and the compiled catalogs' mtime, the browser can keep it for a
+    year and still pick up a new release, a language switch or a recompile.
+    """
+    language = get_language() or settings.LANGUAGE_CODE
+    compiled_mtime = 0
+    for locale_dir in settings.LOCALE_PATHS:
+        for mo_file in Path(locale_dir).glob("*/LC_MESSAGES/djangojs.mo"):
+            try:
+                compiled_mtime = max(compiled_mtime, int(mo_file.stat().st_mtime))
+            except OSError:
+                continue
+    return (
+        f"{reverse('javascript-catalog')}"
+        f"?v={settings.VERSION}.{compiled_mtime}&l={language}"
+    )
 
 
 @register.simple_tag
@@ -1216,14 +1243,18 @@ def _next_episode_number_for_season_item(item, media):
 
     from events.models import Event
 
-    event_numbers = Event.objects.filter(
-        item__media_id=media_id,
-        item__source=source,
-        item__media_type=MediaTypes.SEASON.value,
-        item__season_number=season_number,
-        content_number__isnull=False,
-        datetime__lte=timezone.now(),
-    ).exclude(datetime__year__lt=1900).values_list("content_number", flat=True)
+    event_numbers = (
+        Event.objects.filter(
+            item__media_id=media_id,
+            item__source=source,
+            item__media_type=MediaTypes.SEASON.value,
+            item__season_number=season_number,
+            content_number__isnull=False,
+            datetime__lte=timezone.now(),
+        )
+        .exclude(datetime__year__lt=1900)
+        .values_list("content_number", flat=True)
+    )
     episode_numbers = sorted({int(number) for number in event_numbers})
     if not episode_numbers:
         max_progress = getattr(media, "max_progress", None)

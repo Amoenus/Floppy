@@ -537,6 +537,12 @@ else:
             "OPTIONS": {
                 "timeout": SQLITE_BUSY_TIMEOUT_SECONDS,
             },
+            # Reuse a thread's connection across requests instead of opening
+            # one (plus the PRAGMAs below) for every request. Idle autocommit
+            # connections hold no read transaction, so WAL checkpoints are not
+            # held back. Replacing db.sqlite3 already requires stopping Floppy.
+            "CONN_MAX_AGE": 600,
+            "CONN_HEALTH_CHECKS": True,
         },
     }
 
@@ -1667,6 +1673,12 @@ CELERY_TASK_ROUTES = {
     # Budget-bounded, and yields to webhooks. See
     # docs/architecture/statistics-sync.md.
     "app.tasks.statistics_sync_task": {
+        "queue": "interactive",
+        "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
+    },
+    # Rebuilds a talent section the viewer already sees a stale copy of; same
+    # priority as the sync so webhook scrobbles still run first.
+    "Refresh statistics talent fragment": {
         "queue": "interactive",
         "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
     },

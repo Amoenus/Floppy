@@ -2201,6 +2201,11 @@ class Episode(models.Model):
             "-end_date",
             "-created_at",
         ]
+        # History and Statistics build one day at a time with an end_date
+        # range; without this they walked every episode the user watched.
+        indexes = [
+            models.Index(fields=["end_date"], name="app_episode_end_date_idx"),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["related_season", "item", "external_id"],

@@ -405,6 +405,10 @@ from users.models import (
 
 logger = logging.getLogger(__name__)
 
+# The Trakt series graph polls every 5 seconds while ratings are missing; this
+# bounds it to about a minute per page view.
+TRAKT_SERIES_GRAPH_MAX_POLLS = 12
+
 
 @login_not_required
 @require_GET
@@ -727,13 +731,25 @@ def trakt_series_graph_fragment(request, source, media_id):
         include_unrated=True,
     )
 
-    poll_for_graph = Item.objects.filter(
-        media_id=str(media_id),
-        source=source,
-        media_type=MediaTypes.EPISODE.value,
-        season_number__gt=0,
-        trakt_rating__isnull=True,
-    ).exists()
+    # Unaired episodes never get a Trakt rating, and some aired ones never
+    # collect votes, so polling stops on its own after a bounded number of
+    # tries instead of every 5 seconds for as long as the page stays open.
+    try:
+        attempt = max(int(request.GET.get("attempt", 0)), 0)
+    except (TypeError, ValueError):
+        attempt = 0
+    poll_for_graph = (
+        attempt < TRAKT_SERIES_GRAPH_MAX_POLLS
+        and Item.objects.filter(
+            media_id=str(media_id),
+            source=source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number__gt=0,
+            trakt_rating__isnull=True,
+        )
+        .exclude(release_datetime__gt=timezone.now())
+        .exists()
+    )
 
     return render(
         request,
@@ -741,6 +757,7 @@ def trakt_series_graph_fragment(request, source, media_id):
         {
             "graph_data": graph_data,
             "poll_for_graph": poll_for_graph,
+            "next_attempt": attempt + 1,
             "source": source,
             "media_id": media_id,
         },
@@ -1893,7 +1910,7 @@ def cache_status(request):
         # polls this only after a manual Refresh or for a never-built range.
         from app import statistics_sync
 
-        entry = statistics_sync.load_snapshot(request.user.id, range_name)
+        entry = statistics_sync.load_snapshot_meta(request.user.id, range_name)
         is_stale = statistics_sync.entry_is_stale(entry, user_id=request.user.id)
         if is_stale:
             statistics_sync.ensure_sync(request.user.id, urgent=entry is None)

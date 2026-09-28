@@ -33,7 +33,7 @@
 
     <link rel="stylesheet" type="text/css" href="{% static 'css/main.css' %}{% get_static_file_mtime 'css/main.css' %}">
 
-    <script src="{% url 'javascript-catalog' %}"></script>
+    <script src="{% javascript_catalog_url %}"></script>
     <script src="{% static 'js/libraries/htmx-2.0.4.min.js' %}"></script>
     <script>
       // Boosted navigation: never serve history entries from the local

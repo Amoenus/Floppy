@@ -138,7 +138,10 @@ def _after_mark(user_id: int, reason: str | None, days: int) -> None:
     # Still the change token for the per-person talent caches.
     _set_history_version(user_id)
     logger.info(
-        "stats_mark user_id=%s days=%s reason=%s", user_id, days, reason or "unspecified"
+        "stats_mark user_id=%s days=%s reason=%s",
+        user_id,
+        days,
+        reason or "unspecified",
     )
     transaction.on_commit(lambda: ensure_sync(user_id))
 
@@ -452,9 +455,7 @@ def _hydrate_tag(tag, inner, instances):
         return {_hydrate(item, instances) for item in inner}
     if tag == "__stats_ns__":
         return SimpleNamespace(**_hydrate(inner, instances))
-    return {
-        _hydrate(key, instances): _hydrate(item, instances) for key, item in inner
-    }
+    return {_hydrate(key, instances): _hydrate(item, instances) for key, item in inner}
 
 
 _MISSING = object()
@@ -477,6 +478,19 @@ def _snapshot_entry(data, generation, built_day, built_at, schema_version):
     }
 
 
+_SNAPSHOT_META_FIELDS = ("built_at", "built_day", "generation", "schema_version")
+
+
+def _meta_cache_key(user_id: int, range_name: str) -> str:
+    from app.statistics_cache import _cache_key
+
+    return f"{_cache_key(user_id, range_name)}_meta"
+
+
+def _snapshot_meta(entry: dict) -> dict:
+    return {field: entry.get(field) for field in _SNAPSHOT_META_FIELDS}
+
+
 def publish_snapshot(user_id: int, range_name: str, data: dict, generation: int):
     """Publish a range payload to the cache and, durably, the database."""
     from app.statistics_cache import (
@@ -491,8 +505,12 @@ def publish_snapshot(user_id: int, range_name: str, data: dict, generation: int)
     entry = _snapshot_entry(
         data, generation, built_day, built_at, SNAPSHOT_SCHEMA_VERSION
     )
-    cache.set(
-        _cache_key(user_id, range_name), entry, timeout=STATISTICS_RANGE_CACHE_TIMEOUT
+    cache.set_many(
+        {
+            _cache_key(user_id, range_name): entry,
+            _meta_cache_key(user_id, range_name): _snapshot_meta(entry),
+        },
+        timeout=STATISTICS_RANGE_CACHE_TIMEOUT,
     )
     try:
         payload = dehydrate_payload(data)
@@ -549,8 +567,36 @@ def load_snapshot(user_id: int, range_name: str) -> dict | None:
         snapshot.built_at,
         snapshot.schema_version,
     )
-    cache.set(key, entry, timeout=STATISTICS_RANGE_CACHE_TIMEOUT)
+    cache.set_many(
+        {key: entry, _meta_cache_key(user_id, range_name): _snapshot_meta(entry)},
+        timeout=STATISTICS_RANGE_CACHE_TIMEOUT,
+    )
     return entry
+
+
+def load_snapshot_meta(user_id: int, range_name: str) -> dict | None:
+    """Return a range's build time, day, generation and schema, not its data.
+
+    Pollers and the page header only need to know when a snapshot was built
+    and whether it is stale. Loading the full entry for that unpickles every
+    chart and list in the range, which on a large library is the cost of the
+    whole page, so the fields are kept under their own small key.
+    """
+    from app.statistics_cache import STATISTICS_RANGE_CACHE_TIMEOUT
+
+    key = _meta_cache_key(user_id, range_name)
+    meta = cache.get(key)
+    if isinstance(meta, dict) and "generation" in meta:
+        return meta
+    meta = (
+        StatisticsSnapshot.objects.filter(user_id=user_id, range_name=range_name)
+        .values(*_SNAPSHOT_META_FIELDS)
+        .first()
+    )
+    if meta is None:
+        return None
+    cache.set(key, meta, timeout=STATISTICS_RANGE_CACHE_TIMEOUT)
+    return meta
 
 
 def current_generation(user_id: int) -> int:
@@ -775,9 +821,10 @@ def run_sync(
     try:
         state = StatisticsSyncState.objects.get(user_id=user_id)
         generation = state.generation
-        full = state.full_sweep_requested_at is not None or cache.get(
-            _day_epoch_key(user_id)
-        ) is None
+        full = (
+            state.full_sweep_requested_at is not None
+            or cache.get(_day_epoch_key(user_id)) is None
+        )
 
         dirty_tokens = dict(
             StatisticsDirtyDay.objects.filter(user_id=user_id).values_list(
@@ -966,7 +1013,5 @@ def reconcile() -> int:
     user_ids = users_needing_sync(limit)
     queued = sum(1 for user_id in user_ids if ensure_sync(user_id, bypass_gate=True))
     if user_ids:
-        logger.info(
-            "stats_reconcile candidates=%s queued=%s", len(user_ids), queued
-        )
+        logger.info("stats_reconcile candidates=%s queued=%s", len(user_ids), queued)
     return queued
