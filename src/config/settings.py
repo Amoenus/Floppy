@@ -1180,7 +1180,6 @@ SHARED_DEFAULT_CREDENTIALS = {
     "IGDB_ID": "8wqmm7x1n2xxtnz94lb8mthadhtgrt",
     "BGG_API_TOKEN": "92f43ab1-d1d5-4e18-8b82-d1f56dc12927",
     "COMICVINE_API": "cdab0706269e4bca03a096fbc39920dadf7e4992",
-    "SIMKL_ID": "a973e57e85d94068315d5ac29669d85da8abc0fb7aff1d22e00e04bdf1882578",
 }
 
 TMDB_API = config(
@@ -1319,11 +1318,14 @@ ANILIST_SECRET = config(
     ),
 )
 
+# No shared SIMKL default: the token exchange needs the app's secret, which
+# cannot ship, and a bundled ID without it only fails after the user approves
+# on SIMKL (#1318). Operators or users supply both.
 SIMKL_ID = config(
     "SIMKL_ID",
     default=secret(
         "SIMKL_ID_FILE",
-        SHARED_DEFAULT_CREDENTIALS["SIMKL_ID"],
+        "",
     ),
 )
 SIMKL_SECRET = config(

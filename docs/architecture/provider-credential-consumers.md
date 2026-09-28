@@ -61,7 +61,7 @@ stripped. Last.fm is the only family below without a `_FILE` input.
 | Trakt | `TRAKT_API_SECRET` | `TRAKT_API_SECRET_FILE` | empty |
 | AniList | `ANILIST_ID` | `ANILIST_ID_FILE` | empty |
 | AniList | `ANILIST_SECRET` | `ANILIST_SECRET_FILE` | empty |
-| SIMKL | `SIMKL_ID` | `SIMKL_ID_FILE` | non-empty shared client ID |
+| SIMKL | `SIMKL_ID` | `SIMKL_ID_FILE` | empty; operator/user supplied |
 | SIMKL | `SIMKL_SECRET` | `SIMKL_SECRET_FILE` | empty; operator/user supplied |
 
 ### Shared-default security boundary
@@ -70,13 +70,17 @@ stripped. Last.fm is the only family below without a `_FILE` input.
 credentials intended for the free-tier defaults. They are public repository
 content by design and must never be treated as user or account credentials.
 The current shared-default settings are `TMDB_API`, `MAL_API`, `IGDB_ID`,
-`BGG_API_TOKEN`, `COMICVINE_API`, and `SIMKL_ID`.
+`BGG_API_TOKEN`, and `COMICVINE_API`.
 
 `IGDB_SECRET` and `SIMKL_SECRET` are deliberately excluded from that map. Their
 `*_FILE` and environment inputs remain supported, but no private provider
 secret may be added to the source-level shared-default map. A provider key
 that is tied to an individual account, paid quota, or private scope follows
 the same rule even if the provider offers a free tier.
+
+`SIMKL_ID` is not shared either. SIMKL only works with the secret, so a bundled
+ID on its own let users approve on SIMKL and then fail the token exchange
+(#1318). The SIMKL import stays blocked until both values resolve.
 
 Personal and instance credentials entered through Settings > Metadata are
 stored as Fernet ciphertext in `UserProviderCredential` and
