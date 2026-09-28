@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.conf import settings
+from django.template.loader import render_to_string
 from django.test import SimpleTestCase
 
 from app.models import MediaTypes
@@ -172,3 +173,60 @@ class DerivedTVRatingsTests(SimpleTestCase):
             'include "app/components/derived_tv_rating_detail.html"',
             template,
         )
+
+
+class DetailScoreChipStatesTests(SimpleTestCase):
+    """The detail rating chip merges the manual score with the derived one."""
+
+    derived = {
+        "score": "7.60",
+        "rated": 5,
+        "total": 8,
+        "label": "Season 1",
+        "title": "Derived from rated episodes.",
+    }
+    no_data = {**derived, "score": None, "rated": 0}
+
+    def _render(self, *, score=None, derived=None):
+        """Return the chip button's markup, whitespace-collapsed, without the popup."""
+        html = render_to_string(
+            "app/components/detail_score_chip.html",
+            {
+                "current_instance": SimpleNamespace(id=7, score=score),
+                "media_type": MediaTypes.SEASON.value,
+                "user": _user(),
+                "csrf_token": "token",
+                "derived_tv_score": derived,
+            },
+        )
+        self.assertIn("/update-score/season/7", html)
+        button = html.split('x-show="showRatingPopup"')[0]
+        return " ".join(button.split()).replace("> ", ">").replace(" <", "<")
+
+    def test_blank_rating_when_neither_score_exists(self):
+        for derived in (None, self.no_data):
+            html = self._render(derived=derived)
+            self.assertIn("Add rating", html)
+            self.assertNotIn("episodes", html)
+
+    def test_manual_score_only(self):
+        html = self._render(score=Decimal(8), derived=self.no_data)
+        self.assertIn(">8</span>", html)
+        self.assertIn("Edit rating", html)
+        self.assertNotIn("episodes", html)
+
+    def test_derived_only_shows_score_and_coverage(self):
+        html = self._render(derived=self.derived)
+        self.assertIn(">7.6</span>", html)
+        self.assertIn(">5/8 episodes</span>", html)
+        self.assertNotIn("Derived ·", html)
+        self.assertNotIn("Add rating", html)
+        # Still the popup button, so a manual rating can be set from here.
+        self.assertIn('@click="showRatingPopup = !showRatingPopup"', html)
+
+    def test_both_scores_show_coverage_only_on_hover(self):
+        html = self._render(score=Decimal(8), derived=self.derived)
+        self.assertRegex(html, r">8</span><span[^>]*>\|</span><span[^>]*>7\.6</span>")
+        self.assertRegex(html, r'x-show="showCoverage"[^>]*>· 5/8 episodes</span>')
+        self.assertIn('@mouseenter="showCoverage = true"', html)
+        self.assertNotIn("Edit rating", html)
