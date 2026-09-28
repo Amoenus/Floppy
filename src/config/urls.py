@@ -16,7 +16,7 @@ from django.contrib.auth.decorators import login_not_required
 from django.contrib.staticfiles.views import serve
 from django.http import JsonResponse
 from django.urls import include, path, re_path
-from django.views.decorators.cache import cache_control
+from django.utils.cache import add_never_cache_headers, patch_cache_control
 from django.views.i18n import JavaScriptCatalog
 from health_check.views import MainView
 
@@ -40,16 +40,28 @@ handler403 = "app.error_views.permission_denied"
 handler404 = "app.error_views.page_not_found"
 handler500 = "app.error_views.server_error"
 
+_javascript_catalog_view = JavaScriptCatalog.as_view()
+
+
+def javascript_catalog(request):
+    """Serve the translation catalog, browser-cached only when versioned.
+
+    Pages link it with a release and language token (javascript_catalog_url),
+    so that URL can be kept for a year: a new release or a language switch
+    changes the URL. A bare URL names neither, so it is never cached.
+    """
+    response = _javascript_catalog_view(request)
+    if request.GET.get("v"):
+        patch_cache_control(response, public=True, max_age=31536000, immutable=True)
+    else:
+        add_never_cache_headers(response)
+    return response
+
+
 urlpatterns = [
     path(
         "jsi18n/",
-        # Pages link a versioned URL (see javascript_catalog_url), so the
-        # browser keeps the catalog instead of re-requesting it per page.
-        login_not_required(
-            cache_control(public=True, max_age=31536000, immutable=True)(
-                JavaScriptCatalog.as_view(),
-            ),
-        ),
+        login_not_required(javascript_catalog),
         name="javascript-catalog",
     ),
     path("api/v1/", include("api.urls")),
