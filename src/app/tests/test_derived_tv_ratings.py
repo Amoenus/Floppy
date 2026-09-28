@@ -226,7 +226,12 @@ class DetailScoreChipStatesTests(SimpleTestCase):
 
     def test_both_scores_show_coverage_only_on_hover(self):
         html = self._render(score=Decimal(8), derived=self.derived)
-        self.assertRegex(html, r">8</span><span[^>]*>\|</span><span[^>]*>7\.6</span>")
-        self.assertRegex(html, r'x-show="showCoverage"[^>]*>· 5/8 episodes</span>')
+        self.assertRegex(html, r">8</span><span[^>]*>\|</span><span[^>]*>7\.6<span")
+        # Coverage starts collapsed and slides open while hovered.
+        self.assertRegex(
+            html,
+            r'data-derived-coverage[^>]*style="max-width: 0; opacity: 0;[^"]*transition'
+            r'[^>]*:style="showCoverage \? \{ maxWidth[^>]*>&nbsp;· 5/8 episodes</span>',
+        )
         self.assertIn('@mouseenter="showCoverage = true"', html)
         self.assertNotIn("Edit rating", html)

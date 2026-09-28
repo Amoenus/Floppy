@@ -21,10 +21,10 @@
         {% if current_instance.score is not None %}
           <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{% if user|rating_scale_max == 5 %}{{ current_instance.score|score_display:user }}/5{% else %}{{ current_instance.score|score_display:user }}{% endif %}</span>
           <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
-          <span class="text-[12px] font-medium text-[var(--color-text-secondary)] sm:text-sm">{{ derived_tv_score.score|floatformat:"-1" }}</span>
-          <span x-show="showCoverage"
-                x-cloak
-                class="text-[12px] font-medium text-[var(--color-text-secondary)] sm:text-sm">· {% include "app/components/derived_tv_rating_coverage.html" with derived_tv_score=derived_tv_score only %}</span>
+          <span class="text-[12px] font-medium text-[var(--color-text-secondary)] sm:text-sm">{{ derived_tv_score.score|floatformat:"-1" }}<span data-derived-coverage
+                  class="inline-block overflow-hidden whitespace-nowrap align-bottom"
+                  style="max-width: 0; opacity: 0; transition: max-width 250ms ease, opacity 200ms ease"
+                  :style="showCoverage ? { maxWidth: '12rem', opacity: 1 } : { maxWidth: '0', opacity: 0 }">&nbsp;· {% include "app/components/derived_tv_rating_coverage.html" with derived_tv_score=derived_tv_score only %}</span></span>
         {% else %}
           <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ derived_tv_score.score|floatformat:"-1" }}</span>
           <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
