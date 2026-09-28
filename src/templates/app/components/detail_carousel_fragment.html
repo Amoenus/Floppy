@@ -1,7 +1,7 @@
 
 {% load i18n %}
 {% if carousel %}
-  <div class="w-full h-full flex flex-col gap-2" x-data="{ selected: 0, mode: 'image', videoPlaying: false, items: [], lightboxOpen: false, fit: localStorage.getItem('gallery-fit') || 'contain', select(i) { this.selected = i; this.mode = this.items[i].kind; this.videoPlaying = false }, next() { this.select((this.selected + 1) % this.items.length) }, prev() { this.select((this.selected - 1 + this.items.length) % this.items.length) }, toggleFit() { this.fit = this.fit === 'cover' ? 'contain' : 'cover'; localStorage.setItem('gallery-fit', this.fit) }, }" x-init="items = [ {% if carousel.video %}{ kind: 'video', key: '{{ carousel.video.key|escapejs }}' },{% endif %}
+  <div class="w-full h-full flex flex-col gap-2" x-data="{ selected: 0, mode: 'image', videoPlaying: false, items: [], lightboxOpen: false, fit: localStorage.getItem('gallery-fit') || 'contain', select(i) { this.selected = i; this.mode = this.items[i].kind; this.videoPlaying = false; this.$nextTick(() => { this.$refs['thumb_' + i]?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }) }) }, next() { this.select((this.selected + 1) % this.items.length) }, prev() { this.select((this.selected - 1 + this.items.length) % this.items.length) }, toggleFit() { this.fit = this.fit === 'cover' ? 'contain' : 'cover'; localStorage.setItem('gallery-fit', this.fit) }, }" x-init="items = [ {% if carousel.video %}{ kind: 'video', key: '{{ carousel.video.key|escapejs }}' },{% endif %}
 
   {% for photo in carousel.photos %}{ kind: 'image', url: '{{ photo.url|escapejs }}' },{% endfor %}
   ]; mode = items[0].kind" @keydown.escape.window="lightboxOpen = false" @keydown.arrow-left.window="if (lightboxOpen) prev()" @keydown.arrow-right.window="if (lightboxOpen) next()">
@@ -70,6 +70,7 @@
   <div class="flex shrink-0 gap-2 overflow-x-auto py-1 home-row-scrollbar-hidden">
     {% if carousel.video %}
       <button type="button"
+              x-ref="thumb_0"
               class="relative shrink-0 w-20 h-14 rounded-md overflow-hidden border-2 cursor-pointer"
               :class="selected === 0 ? 'border-indigo-500' : 'border-transparent'"
               @click="select(0)">
@@ -85,6 +86,7 @@
       {% if carousel.video %}
         {% with index=forloop.counter %}
           <button type="button"
+                  x-ref="thumb_{{ index }}"
                   class="shrink-0 w-20 h-14 rounded-md overflow-hidden border-2 cursor-pointer"
                   :class="selected === {{ index }} ? 'border-indigo-500' : 'border-transparent'"
                   @click="select({{ index }})">
@@ -94,6 +96,7 @@
       {% else %}
         {% with index=forloop.counter0 %}
           <button type="button"
+                  x-ref="thumb_{{ index }}"
                   class="shrink-0 w-20 h-14 rounded-md overflow-hidden border-2 cursor-pointer"
                   :class="selected === {{ index }} ? 'border-indigo-500' : 'border-transparent'"
                   @click="select({{ index }})">
@@ -104,7 +107,7 @@
     {% endfor %}
     {% if carousel.photos %}
       <button type="button"
-              class="shrink-0 w-20 h-14 rounded-md flex items-center justify-center bg-[var(--color-surface)] px-1 text-center text-[10px] leading-tight text-[var(--color-text-muted)] cursor-pointer hover:bg-[var(--color-surface-muted)] transition-colors"
+              class="sticky right-0 z-10 shrink-0 w-20 h-14 rounded-md flex items-center justify-center bg-[var(--color-surface)] px-1 text-center text-[10px] leading-tight text-[var(--color-text-muted)] cursor-pointer hover:bg-[var(--color-surface-muted)] transition-colors"
               @click="lightboxOpen = true">
         {% blocktranslate trimmed with value_1=carousel.photos|length count count=carousel.photos|length %}View all {{ value_1 }} photo{% plural %}View all {{ value_1 }} photos{% endblocktranslate %}
       </button>
