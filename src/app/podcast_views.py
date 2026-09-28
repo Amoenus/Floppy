@@ -7,13 +7,13 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.utils.text import slugify
 from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_GET, require_POST
 
 from app import helpers
 from app.discover import tab_cache as discover_tab_cache
 from app.models import Item, MediaTypes
+from app.templatetags import app_tags
 from app.track_modal_views import _DummyPodcastWrapper, _render_podcast_show_track_modal
 
 logger = logging.getLogger(__name__)
@@ -530,7 +530,7 @@ def podcast_save(request):
                 source=show.source,
                 media_type=MediaTypes.PODCAST.value,
                 media_id=show.podcast_uuid,
-                title=show.slug or slugify(show.title),
+                title=show.slug or app_tags.slug(show.title or "") or "podcast",
             )
 
     # FORK: play-recording core shared with the REST API.
@@ -708,5 +708,5 @@ def podcast_save(request):
         source=show.source,
         media_type=MediaTypes.PODCAST.value,
         media_id=show.podcast_uuid,
-        title=show.slug or slugify(show.title),
+        title=show.slug or app_tags.slug(show.title or "") or "podcast",
     )
