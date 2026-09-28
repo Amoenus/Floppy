@@ -12,6 +12,7 @@ function libraryFilterState(rules = {}, filterData = {}) {
   return {
     statuses: [...(rules.status || [])],
     rating: value('rating', 'all'),
+    progress: value('progress', 'all'),
     rating_min: value('rating_min'),
     rating_max: value('rating_max'),
     collection: value('collection', 'all'),
@@ -33,9 +34,14 @@ function libraryFilterState(rules = {}, filterData = {}) {
     completed_date_within_unit: value('completed_date_within_unit', 'days'),
     author: value('author'),
     source: value('source'),
+    media_status: value('media_status'),
+    department: value('department'),
     language: value('language'),
     country: value('country'),
     platform: value('platform'),
+    // Pages with a multi-select platform pane (the media list) use these.
+    selectedPlatforms: [...(rules.platforms || [])],
+    platformMode: value('platform_mode', 'or'),
     origin: value('origin'),
     format: value('format'),
     provider: value('provider'),
@@ -48,6 +54,8 @@ function libraryFilterState(rules = {}, filterData = {}) {
     showOrigins: Boolean(filterData.show_origins),
     showFormats: Boolean(filterData.show_formats),
     showProviders: Boolean(filterData.show_providers),
+    showAuthors: Boolean(filterData.show_authors),
+    showProgress: Boolean(filterData.show_progress),
     ratingLabels: {
       all: gettext('All'),
       rated: gettext('Rated'),
@@ -57,6 +65,11 @@ function libraryFilterState(rules = {}, filterData = {}) {
       all: gettext('All'),
       collected: gettext('Collected'),
       not_collected: gettext('Not Collected'),
+    },
+    progressLabels: {
+      all: gettext('Any'),
+      not_caught_up: gettext('Not Caught Up'),
+      caught_up: gettext('Caught Up'),
     },
     releaseLabels: {
       all: gettext('Any'),
@@ -78,6 +91,17 @@ function libraryFilterState(rules = {}, filterData = {}) {
       this.selectedTags = this.selectedTags.includes(tag)
         ? this.selectedTags.filter((t) => t !== tag)
         : [...this.selectedTags, tag];
+    },
+    isPlatformSelected(platform) {
+      return this.selectedPlatforms.includes(platform);
+    },
+    togglePlatform(platform) {
+      this.selectedPlatforms = this.selectedPlatforms.includes(platform)
+        ? this.selectedPlatforms.filter((p) => p !== platform)
+        : [...this.selectedPlatforms, platform];
+    },
+    cyclePlatformMode() {
+      this.platformMode = this.platformMode === 'and' ? 'or' : (this.platformMode === 'or' ? 'not' : 'and');
     },
     cycleTagMode() {
       this.tagMode = this.tagMode === 'and' ? 'or' : (this.tagMode === 'or' ? 'not' : 'and');
@@ -114,6 +138,7 @@ function libraryFilterState(rules = {}, filterData = {}) {
       if (this.rating && this.rating !== 'all') labels.push(this.ratingLabels[this.rating]);
       labels.push(this.formatRangeLabel(this.rating_min, this.rating_max));
       if (this.collection && this.collection !== 'all') labels.push(this.collectionLabels[this.collection]);
+      if (this.progress && this.progress !== 'all') labels.push(this.progressLabels[this.progress]);
       labels.push(this.genre);
       if (this.implied_genre) labels.push(gettext('Implied: ') + this.implied_genre);
       if (this.year) labels.push(this.year === 'unknown' ? gettext('Unknown Year') : this.year);
@@ -127,10 +152,17 @@ function libraryFilterState(rules = {}, filterData = {}) {
           || this.formatDateRangeLabel(gettext('Completed'), this.completed_date_from, this.completed_date_to),
         this.author,
         this.source.toUpperCase(),
+        this.media_status,
+        this.department,
       );
       if (this.showLanguages && this.language) labels.push(upperCode(this.language));
       if (this.showCountries && this.country) labels.push(upperCode(this.country));
-      if (this.showPlatforms) labels.push(this.platform);
+      if (this.showPlatforms && this.selectedPlatforms.length) {
+        const prefix = this.platformMode === 'not' ? '-' : '+';
+        labels.push(prefix + this.selectedPlatforms.join(this.platformMode === 'and' ? ' & ' : ', '));
+      } else if (this.showPlatforms) {
+        labels.push(this.platform);
+      }
       if (this.showOrigins && this.origin) labels.push(upperCode(this.origin));
       if (this.showFormats && this.format) {
         labels.push(this.format === 'ebook' ? 'eBook' : this.format.charAt(0).toUpperCase() + this.format.slice(1));
@@ -150,6 +182,7 @@ function libraryFilterState(rules = {}, filterData = {}) {
         rating_min: '',
         rating_max: '',
         collection: 'all',
+        progress: 'all',
         genre: '',
         implied_genre: '',
         year: '',
@@ -165,9 +198,13 @@ function libraryFilterState(rules = {}, filterData = {}) {
         completed_date_within: '',
         author: '',
         source: '',
+        media_status: '',
+        department: '',
         language: '',
         country: '',
         platform: '',
+        selectedPlatforms: [],
+        platformMode: 'or',
         origin: '',
         format: '',
         provider: '',

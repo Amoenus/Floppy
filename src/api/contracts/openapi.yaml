@@ -687,9 +687,49 @@ paths:
           type: string
         description: Match items completed on or before this date (YYYY-MM-DD).
       - in: query
+        name: completed_date_within
+        schema:
+          type: integer
+        description: Match the last N units instead of a completed_date_from/_to range
+          (1-999); see completed_date_within_unit.
+      - in: query
+        name: completed_date_within_unit
+        schema:
+          type: string
+          enum:
+          - days
+          - months
+          - weeks
+          - years
+      - in: query
         name: country
         schema:
           type: string
+      - in: query
+        name: date_added_from
+        schema:
+          type: string
+        description: Match items added to the library on or after this date (YYYY-MM-DD).
+      - in: query
+        name: date_added_to
+        schema:
+          type: string
+        description: Match items added to the library on or before this date (YYYY-MM-DD).
+      - in: query
+        name: date_added_within
+        schema:
+          type: integer
+        description: Match the last N units instead of a date_added_from/_to range
+          (1-999); see date_added_within_unit.
+      - in: query
+        name: date_added_within_unit
+        schema:
+          type: string
+          enum:
+          - days
+          - months
+          - weeks
+          - years
       - in: query
         name: direction
         schema:
@@ -799,6 +839,18 @@ paths:
           - not_rated
           - rated
       - in: query
+        name: rating_max
+        schema:
+          type: number
+          format: double
+        description: Match items rated at or below this score (0-10).
+      - in: query
+        name: rating_min
+        schema:
+          type: number
+          format: double
+        description: Match items rated at or above this score (0-10).
+      - in: query
         name: release
         schema:
           type: string
@@ -806,6 +858,31 @@ paths:
           - all
           - not_released
           - released
+      - in: query
+        name: release_date_from
+        schema:
+          type: string
+        description: Match items released on or after this date (YYYY-MM-DD).
+      - in: query
+        name: release_date_to
+        schema:
+          type: string
+        description: Match items released on or before this date (YYYY-MM-DD).
+      - in: query
+        name: release_date_within
+        schema:
+          type: integer
+        description: Match the last N units instead of a release_date_from/_to range
+          (1-999); see release_date_within_unit.
+      - in: query
+        name: release_date_within_unit
+        schema:
+          type: string
+          enum:
+          - days
+          - months
+          - weeks
+          - years
       - in: query
         name: search
         schema:
@@ -920,9 +997,49 @@ paths:
           type: string
         description: Match items completed on or before this date (YYYY-MM-DD).
       - in: query
+        name: completed_date_within
+        schema:
+          type: integer
+        description: Match the last N units instead of a completed_date_from/_to range
+          (1-999); see completed_date_within_unit.
+      - in: query
+        name: completed_date_within_unit
+        schema:
+          type: string
+          enum:
+          - days
+          - months
+          - weeks
+          - years
+      - in: query
         name: country
         schema:
           type: string
+      - in: query
+        name: date_added_from
+        schema:
+          type: string
+        description: Match items added to the library on or after this date (YYYY-MM-DD).
+      - in: query
+        name: date_added_to
+        schema:
+          type: string
+        description: Match items added to the library on or before this date (YYYY-MM-DD).
+      - in: query
+        name: date_added_within
+        schema:
+          type: integer
+        description: Match the last N units instead of a date_added_from/_to range
+          (1-999); see date_added_within_unit.
+      - in: query
+        name: date_added_within_unit
+        schema:
+          type: string
+          enum:
+          - days
+          - months
+          - weeks
+          - years
       - in: query
         name: direction
         schema:
@@ -1026,6 +1143,18 @@ paths:
           - not_rated
           - rated
       - in: query
+        name: rating_max
+        schema:
+          type: number
+          format: double
+        description: Match items rated at or below this score (0-10).
+      - in: query
+        name: rating_min
+        schema:
+          type: number
+          format: double
+        description: Match items rated at or above this score (0-10).
+      - in: query
         name: release
         schema:
           type: string
@@ -1033,6 +1162,31 @@ paths:
           - all
           - not_released
           - released
+      - in: query
+        name: release_date_from
+        schema:
+          type: string
+        description: Match items released on or after this date (YYYY-MM-DD).
+      - in: query
+        name: release_date_to
+        schema:
+          type: string
+        description: Match items released on or before this date (YYYY-MM-DD).
+      - in: query
+        name: release_date_within
+        schema:
+          type: integer
+        description: Match the last N units instead of a release_date_from/_to range
+          (1-999); see release_date_within_unit.
+      - in: query
+        name: release_date_within_unit
+        schema:
+          type: string
+          enum:
+          - days
+          - months
+          - weeks
+          - years
       - in: query
         name: search
         schema:
