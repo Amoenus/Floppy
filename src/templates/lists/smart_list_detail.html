@@ -25,6 +25,15 @@
     ...libraryFilterState(
       JSON.parse(document.getElementById('smart-filter-state').textContent),
       JSON.parse(document.getElementById('smart-filter-data')?.textContent || '{}'),
+      {
+        available: [{% for media_type in available_media_types %}{ value: '{{ media_type }}', label: '{{ media_type|media_type_readable|escapejs }}' }{% if not forloop.last %}, {% endif %}{% endfor %}],
+        // Season and episode are offered in the picker but stay out of 'all
+        // types': the server expands an empty media_types rule to the broad
+        // types only (IMPLICIT_ALL_EXCLUDED_MEDIA_TYPES in lists/smart_rules.py),
+        // so a list that did not ask for episodes never materialises the
+        // whole library.
+        granular: ['season', 'episode'],
+      },
     ),
     showModal: false,
     isOrderEditing: false,
@@ -39,16 +48,6 @@
     layout: '{{ current_layout }}',
     renderedLayout: '{{ current_layout }}',
     search: '{{ active_smart_rules.search|default:''|escapejs }}',
-    availableMediaTypes: [
-      {% for media_type in available_media_types %}
-        { value: '{{ media_type }}', label: '{{ media_type|media_type_readable|escapejs }}' }{% if not forloop.last %},{% endif %}
-      {% endfor %}
-    ],
-    selectedTypes: [
-      {% for media_type in active_smart_rules.media_types %}
-        '{{ media_type }}'{% if not forloop.last %},{% endif %}
-      {% endfor %}
-    ],
     statusLabels: {
       {% for value, label in status_choices %}'{{ value }}': '{% translate label as media_dynamic_label %}{{ media_dynamic_label|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}
     },
@@ -73,63 +72,6 @@
       this.isOrderEditing = false;
       if (this.editMode) this.onRuleChange(350);
     },
-    init() {
-      if (this.selectedTypes.length === 0 && this.availableMediaTypes.length > 0) {
-        this.selectedTypes = this.broadMediaTypes();
-      }
-    },
-    // Season and episode are offered in the picker but stay out of 'all types':
-    // the server expands an empty media_types rule to the broad types only, so a
-    // list that did not ask for episodes never materialises the whole library.
-    broadMediaTypes() {
-      return this.availableMediaTypes
-        .map((type) => type.value)
-        .filter((value) => !GRANULAR_MEDIA_TYPES.includes(value));
-    },
-    hasGranularTypeSelected() {
-      return this.selectedTypes.some((value) => GRANULAR_MEDIA_TYPES.includes(value));
-    },
-    allTypesSelected() {
-      const broad = this.broadMediaTypes();
-      return broad.length > 0 && broad.every((value) => this.selectedTypes.includes(value));
-    },
-    isTypeSelected(mediaType) {
-      return this.selectedTypes.includes(mediaType);
-    },
-    toggleMediaType(mediaType) {
-      if (this.isTypeSelected(mediaType)) {
-        this.selectedTypes = this.selectedTypes.filter((type) => type !== mediaType);
-        return;
-      }
-      this.selectedTypes = [...this.selectedTypes, mediaType];
-    },
-    toggleAllTypes() {
-      const granular = this.selectedTypes.filter((value) => GRANULAR_MEDIA_TYPES.includes(value));
-      if (this.allTypesSelected()) {
-        this.selectedTypes = granular;
-        return;
-      }
-      this.selectedTypes = [...this.broadMediaTypes(), ...granular];
-    },
-    dropdownLabel() {
-      if (this.allTypesSelected() && !this.hasGranularTypeSelected()) {
-        return '{{ media_i18n_16|escapejs }}';
-      }
-      if (this.selectedTypes.length === 0) {
-        return '{{ media_i18n_80|escapejs }}';
-      }
-      if (this.selectedTypes.length === 1) {
-        const mediaType = this.availableMediaTypes.find((type) => type.value === this.selectedTypes[0]);
-        return mediaType ? mediaType.label : '{{ media_i18n_81|escapejs }}';
-      }
-      {% blocktranslate with count="__COUNT__" asvar media_types_count_label %}{{ count }} Types{% endblocktranslate %}return '{{ media_types_count_label|escapejs }}'.replace('__COUNT__', this.selectedTypes.length);
-    },
-    selectedTypesForSubmit() {
-      if (this.allTypesSelected() && !this.hasGranularTypeSelected()) {
-        return [];
-      }
-      return this.selectedTypes;
-    },
     isListSelected(id) { return this.selectedLists.includes(id); },
     toggleList(id) {
       if (this.selectedLists.includes(id)) {
@@ -146,9 +88,6 @@
     },
     extraFilterLabels() {
       const labels = [];
-      if (!this.allTypesSelected() || this.hasGranularTypeSelected()) {
-        labels.push(this.dropdownLabel());
-      }
       if (this.selectedLists.length) {
         labels.push(this.selectedLists.map((id) => this.listLabelFor(id)).join(', '));
       }
@@ -214,7 +153,6 @@
     }
   }"
   x-init="
-    init();
     document.getElementById('items-view').addEventListener('htmx:afterSwap', () => {
       renderedLayout = layout;
       if (isOrderEditing) initListSortable(layout);
@@ -586,9 +524,6 @@
     // Rule keys whose Alpine state name matches the persisted smart_filters key
     // one-for-one. Keys needing a rename or a shape change (media_types, status,
     // tag, list, search, sort_direction) are set explicitly in saveSmartRules().
-    // Mirrors IMPLICIT_ALL_EXCLUDED_MEDIA_TYPES in lists/smart_rules.py.
-    const GRANULAR_MEDIA_TYPES = ['season', 'episode'];
-
     const SMART_RULE_KEYS = [
       'rating', 'rating_min', 'rating_max', 'collection', 'genre', 'implied_genre',
       'year', 'release', 'release_date_from', 'release_date_to',
