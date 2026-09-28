@@ -130,9 +130,13 @@ def _refresh_redirect_uri():
     Celery worker) or because it is plain HTTP on a non-loopback host, which is
     also how the connection was made in the first place.
     """
+    # Runs in a Celery worker, whose ROOT_URLCONF is empty and whose
+    # INSTALLED_APPS lack allauth, so neither the default urlconf nor
+    # ``config.urls`` can be resolved there. ``integrations.urls`` holds the
+    # route, mounted at the root, and imports fine in every process.
     redirect_uri = app_helpers.build_absolute_app_url(
         None,
-        reverse("import_trakt_private"),
+        reverse("import_trakt_private", urlconf="integrations.urls"),
     )
     if not app_helpers.supports_oauth_redirect(redirect_uri):
         return TRAKT_OOB_REDIRECT_URI
