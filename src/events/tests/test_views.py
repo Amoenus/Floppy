@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -554,6 +555,8 @@ class DownloadCalendarViewTests(TestCase):
 
     def setUp(self):
         """Set up test data."""
+        # The rendered feed is cached per user; rolled-back test users reuse ids.
+        cache.clear()
         self.credentials = {"username": "caluser", "password": "testpassword"}
         self.user = get_user_model().objects.create_user(**self.credentials)
 
@@ -790,3 +793,21 @@ class DownloadCalendarViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 405)
+
+
+class CalendarFeedCacheTests(TestCase):
+    """Calendar apps poll the feed; a repeat fetch reuses the rendered file."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(username="feedcache")
+
+    def test_repeat_fetch_skips_the_event_query(self):
+        url = reverse("download_calendar", kwargs={"token": self.user.token})
+        self.assertEqual(self.client.get(url).status_code, 200)
+
+        with self.assertNumQueries(1):  # the token lookup only
+            response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"BEGIN:VCALENDAR", response.content)
