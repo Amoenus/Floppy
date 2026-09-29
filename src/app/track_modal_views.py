@@ -441,7 +441,12 @@ def _render_standard_track_modal(
                 .filter(status=Status.IN_PROGRESS.value)
                 .exists()
             )
-            if existing_in_progress:
+            # An episode form logs a watch, so it keeps the Completed default.
+            if media_type != MediaTypes.EPISODE.value:
+                initial_data["status"] = helpers.default_status_for_new_entry(
+                    has_in_progress_entry=existing_in_progress,
+                )
+            elif existing_in_progress:
                 initial_data["status"] = Status.IN_PROGRESS.value
 
     title_subtitle = ""
