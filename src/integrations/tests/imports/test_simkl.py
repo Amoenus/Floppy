@@ -63,7 +63,9 @@ class ImportSimkl(TestCase):
             )
 
         self.assertEqual(importer.token, "new-access")
-        self.assertEqual(api_request.call_args.args[2], "https://api.simkl.com/oauth2/token")
+        self.assertEqual(
+            api_request.call_args.args[2], "https://api.simkl.com/oauth2/token"
+        )
         self.assertEqual(
             api_request.call_args.kwargs["data"],
             {

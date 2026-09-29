@@ -2556,6 +2556,13 @@
                     :disabled="standardImportsDisabled() || !{{ simkl_configured|yesno:'true,false' }}">
               {% translate "Connect with Simkl & Import" %}
             </button>
+            <button type="submit"
+                    name="auth_version"
+                    value="v1"
+                    class="w-full mt-2 text-xs text-[var(--color-text-muted)] underline hover:text-[var(--color-text)] cursor-pointer disabled:cursor-not-allowed"
+                    :disabled="standardImportsDisabled() || !{{ simkl_configured|yesno:'true,false' }}">
+              {% translate "SIMKL app created before 18 September 2026? Connect with it here (AUTH V1, until about April 2027)" %}
+            </button>
           </form>
         </div>
           </div>

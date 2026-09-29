@@ -147,6 +147,46 @@ class OAuthStateViewTests(TestCase):
         self.assertEqual(query["code_challenge_method"], ["S256"])
         self.assertEqual(query["code_challenge"], [expected_challenge])
 
+    def test_simkl_v1_option_keeps_the_original_flow(self):
+        # SIMKL apps made before AUTH V2 keep working until V1 retires
+        response = self.client.post(
+            reverse("simkl_oauth"),
+            data={
+                "mode": "new",
+                "frequency": "daily",
+                "time": "03:00",
+                "auth_version": "v1",
+            },
+        )
+        parsed = urlparse(response["Location"])
+        query = parse_qs(parsed.query)
+        state_token = query["state"][0]
+
+        self.assertEqual(f"{parsed.netloc}{parsed.path}", "simkl.com/oauth/authorize")
+        self.assertNotIn("code_challenge", query)
+        self.assertNotIn("code_verifier", self.client.session[state_token])
+
+        with patch(
+            "app.providers.services.api_request",
+            side_effect=[
+                {"access_token": "v1-access"},
+                {"user": {"name": "simkl-user"}},
+            ],
+        ) as api_request:
+            self.client.get(self._callback_url("import_simkl_private", state_token))
+
+        token_call = api_request.call_args_list[0]
+        self.assertEqual(token_call.args[2], "https://api.simkl.com/oauth/token")
+        self.assertEqual(
+            token_call.kwargs["params"]["client_secret"], "test-simkl-secret"
+        )
+        self.assertNotIn("code_verifier", token_call.kwargs["params"])
+        task_kwargs = json.loads(
+            PeriodicTask.objects.get(task="Import from SIMKL").kwargs,
+        )
+        self.assertEqual(helpers.decrypt(task_kwargs["token"]), "v1-access")
+        self.assertNotIn("refresh_token", task_kwargs)
+
     def test_simkl_schedule_keeps_the_refresh_token(self):
         response = self.client.post(
             reverse("simkl_oauth"),

@@ -19,23 +19,26 @@ logger = logging.getLogger(__name__)
 
 
 def get_token(request, redirect_uri=None, code_verifier=None):
-    """View for getting the SIMKL OAuth2 token."""
-    token_response = _request_token(
-        {
-            "code": request.GET["code"],
-            "code_verifier": code_verifier,
-            "grant_type": "authorization_code",
-            "redirect_uri": redirect_uri
-            or app_helpers.build_absolute_app_url(
-                request,
-                reverse("import_simkl_private"),
-            ),
-        },
-    )
+    """View for getting the SIMKL OAuth2 token.
+
+    AUTH V2 sends a PKCE verifier; AUTH V1 apps have none and no refresh token.
+    """
+    data = {
+        "code": request.GET["code"],
+        "grant_type": "authorization_code",
+        "redirect_uri": redirect_uri
+        or app_helpers.build_absolute_app_url(
+            request,
+            reverse("import_simkl_private"),
+        ),
+    }
+    if code_verifier:
+        data["code_verifier"] = code_verifier
+    token_response = _request_token(data, auth_v1=not code_verifier)
 
     return {
         "access_token": token_response["access_token"],
-        "refresh_token": token_response["refresh_token"],
+        "refresh_token": token_response.get("refresh_token"),
         "username": get_username(token_response["access_token"]),
     }
 
@@ -53,8 +56,8 @@ def get_access_token(encrypted_refresh_token):
     )["access_token"]
 
 
-def _request_token(data):
-    """Exchange a code or refresh token at SIMKL's AUTH V2 token endpoint."""
+def _request_token(data, auth_v1=False):
+    """Exchange a code or refresh token at SIMKL's token endpoint."""
     headers = {
         "simkl-api-key": credentials.get("simkl", "client_id"),
         "User-Agent": f"Floppy/{settings.VERSION}",
@@ -66,6 +69,15 @@ def _request_token(data):
     }
 
     try:
+        if auth_v1:
+            # AUTH V1 takes a JSON body; remove when it retires (~April 2027)
+            return app.providers.services.api_request(
+                "SIMKL",
+                "POST",
+                "https://api.simkl.com/oauth/token",
+                headers=headers,
+                params=data,
+            )
         return app.providers.services.api_request(
             "SIMKL",
             "POST",

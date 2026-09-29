@@ -1228,30 +1228,38 @@ def simkl_oauth(request):
         request,
         reverse("import_simkl_private"),
     )
-    url = "https://simkl.com/oauth2/authorize"
-    # SIMKL AUTH V2 apps require PKCE (S256)
-    code_verifier = secrets.token_urlsafe(64)
-    code_challenge = (
-        base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest())
-        .decode()
-        .rstrip("=")
-    )
-
     state = {
         "mode": request.POST["mode"],
         "frequency": request.POST["frequency"],
         "time": request.POST["time"],
         "redirect_uri": redirect_uri,
         "return_to": request.POST.get("next"),
-        "code_verifier": code_verifier,
     }
     state_token = secrets.token_urlsafe(32)
-    request.session[state_token] = state
-
-    return redirect(
-        f"{url}?client_id={credentials.get("simkl", "client_id")}&redirect_uri={redirect_uri}&response_type=code&state={state_token}"
-        f"&code_challenge={code_challenge}&code_challenge_method=S256",
+    query = (
+        f"client_id={credentials.get("simkl", "client_id")}&redirect_uri={redirect_uri}"
+        f"&response_type=code&state={state_token}"
     )
+
+    if request.POST.get("auth_version") == "v1":
+        # SIMKL apps made before 2026-09-18; AUTH V1 retires around April 2027
+        url = f"https://simkl.com/oauth/authorize?{query}"
+    else:
+        # AUTH V2 requires PKCE (S256)
+        code_verifier = secrets.token_urlsafe(64)
+        state["code_verifier"] = code_verifier
+        code_challenge = (
+            base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest())
+            .decode()
+            .rstrip("=")
+        )
+        url = (
+            f"https://simkl.com/oauth2/authorize?{query}"
+            f"&code_challenge={code_challenge}&code_challenge_method=S256"
+        )
+
+    request.session[state_token] = state
+    return redirect(url)
 
 
 @require_GET
@@ -1296,10 +1304,12 @@ def import_simkl_private(request):
             import_time,
             "SIMKL",
             token=enc_token,
-            # AUTH V2 access tokens expire after 7 days
-            extra_kwargs={
-                "refresh_token": helpers.encrypt(oauth_callback["refresh_token"]),
-            },
+            # AUTH V2 access tokens expire after 7 days; V1 has no refresh token
+            extra_kwargs=(
+                {"refresh_token": helpers.encrypt(oauth_callback["refresh_token"])}
+                if oauth_callback["refresh_token"]
+                else None
+            ),
         )
 
     return _integration_redirect(request, connected_slug="simkl", next_url=return_to)
