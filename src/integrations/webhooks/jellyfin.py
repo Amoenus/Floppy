@@ -74,6 +74,7 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
     """Processor for Jellyfin webhook events."""
 
     SOURCE_LABEL = "jellyfin"
+    TV_IDS_ARE_EPISODE_LEVEL = True
 
     MEDIA_TYPE_MAPPING = {
         **BaseWebhookProcessor.MEDIA_TYPE_MAPPING,
@@ -472,6 +473,7 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             ids,
             series_title=self._extract_series_title(payload),
             allow_title_fallback=True,
+            episode_ids=True,
         )
         if not media_id:
             logger.warning("Could not resolve Jellyfin episode to a TMDB show ID")
@@ -785,6 +787,7 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             ids,
             series_title=self._extract_series_title(payload),
             allow_title_fallback=True,
+            episode_ids=(payload.get("Item") or {}).get("Type") == "Episode",
         )
         if not media_id:
             logger.warning("Could not resolve Jellyfin TV rating to a TMDB ID")
@@ -873,7 +876,10 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             if ids.get("tvdb_id") or ids.get("imdb_id"):
                 alt_ids = dict(ids)
                 alt_ids["tmdb_id"] = None
-                resolved_id, _, _ = super()._find_tv_media_id(alt_ids)
+                resolved_id, _, _ = super()._find_tv_media_id(
+                    alt_ids,
+                    episode_ids=True,
+                )
                 if resolved_id:
                     media_id = str(resolved_id)
 
@@ -884,6 +890,7 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
                     ids,
                     series_title=series_title,
                     allow_title_fallback=True,
+                    episode_ids=True,
                 )
                 if resolved_id:
                     media_id = str(resolved_id)
