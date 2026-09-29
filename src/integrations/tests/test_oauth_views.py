@@ -1,3 +1,6 @@
+import base64
+import hashlib
+import json
 from datetime import timedelta
 from unittest.mock import patch
 from urllib.parse import parse_qs, unquote, urlencode, urlparse
@@ -8,8 +11,10 @@ from django.contrib.sessions.backends.cached_db import SessionStore
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from django_celery_beat.models import PeriodicTask
 from requests import Response
 
+from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError
 from integrations.models import PlexAccount
 from integrations.views import TRAKT_DEVICE_SESSION_KEY
@@ -104,9 +109,10 @@ class OAuthStateViewTests(TestCase):
     def test_simkl_rejected_token_exchange_shows_message_not_500(self):
         state_token = self._start_oauth("simkl_oauth")
         callback_url = self._callback_url("import_simkl_private", state_token)
+        code_verifier = self.client.session[state_token]["code_verifier"]
         rejected = Response()
         rejected.status_code = 403
-        rejected.url = "https://api.simkl.com/oauth/token"
+        rejected.url = "https://api.simkl.com/oauth2/token"
 
         with patch(
             "app.providers.services.resilient_request",
@@ -116,13 +122,57 @@ class OAuthStateViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "SIMKL rejected the Client ID and Client secret.")
-        headers = provider_request.call_args.kwargs["headers"]
-        self.assertEqual(headers["simkl-api-key"], "test-simkl-id")
-        self.assertTrue(headers["User-Agent"].startswith("Floppy/"))
-        self.assertEqual(
-            provider_request.call_args.kwargs["json"]["client_secret"],
-            "test-simkl-secret",
+        request_kwargs = provider_request.call_args.kwargs
+        self.assertEqual(request_kwargs["url"], "https://api.simkl.com/oauth2/token")
+        self.assertEqual(request_kwargs["headers"]["simkl-api-key"], "test-simkl-id")
+        self.assertTrue(request_kwargs["headers"]["User-Agent"].startswith("Floppy/"))
+        self.assertEqual(request_kwargs["data"]["client_secret"], "test-simkl-secret")
+        self.assertEqual(request_kwargs["data"]["code_verifier"], code_verifier)
+
+    def test_simkl_authorize_uses_auth_v2_with_pkce(self):
+        response = self.client.post(
+            reverse("simkl_oauth"),
+            data={"mode": "new", "frequency": "once", "time": "00:00"},
         )
+        parsed = urlparse(response["Location"])
+        query = parse_qs(parsed.query)
+        code_verifier = self.client.session[query["state"][0]]["code_verifier"]
+        expected_challenge = (
+            base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest())
+            .decode()
+            .rstrip("=")
+        )
+
+        self.assertEqual(f"{parsed.netloc}{parsed.path}", "simkl.com/oauth2/authorize")
+        self.assertEqual(query["code_challenge_method"], ["S256"])
+        self.assertEqual(query["code_challenge"], [expected_challenge])
+
+    def test_simkl_schedule_keeps_the_refresh_token(self):
+        response = self.client.post(
+            reverse("simkl_oauth"),
+            data={"mode": "new", "frequency": "daily", "time": "03:00"},
+        )
+        state_token = parse_qs(urlparse(response["Location"]).query)["state"][0]
+        callback_url = self._callback_url("import_simkl_private", state_token)
+
+        with patch(
+            "integrations.views.simkl.get_token",
+            return_value={
+                "access_token": "simkl-access",
+                "refresh_token": "simkl-refresh",
+                "username": "simkl-user",
+            },
+        ):
+            self.client.get(callback_url)
+
+        task_kwargs = json.loads(
+            PeriodicTask.objects.get(task="Import from SIMKL").kwargs,
+        )
+        self.assertEqual(
+            helpers.decrypt(task_kwargs["refresh_token"]),
+            "simkl-refresh",
+        )
+        self.assertEqual(helpers.decrypt(task_kwargs["token"]), "simkl-access")
 
     @override_settings(URLS=["https://floppy.example.com"])
     def test_trakt_state_is_consumed_and_replay_is_rejected(self):

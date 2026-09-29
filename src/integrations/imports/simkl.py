@@ -18,36 +18,60 @@ from integrations.imports.helpers import MediaImportError, MediaImportUnexpected
 logger = logging.getLogger(__name__)
 
 
-def get_token(request, redirect_uri=None):
+def get_token(request, redirect_uri=None, code_verifier=None):
     """View for getting the SIMKL OAuth2 token."""
-    code = request.GET["code"]
-    url = "https://api.simkl.com/oauth/token"
+    token_response = _request_token(
+        {
+            "code": request.GET["code"],
+            "code_verifier": code_verifier,
+            "grant_type": "authorization_code",
+            "redirect_uri": redirect_uri
+            or app_helpers.build_absolute_app_url(
+                request,
+                reverse("import_simkl_private"),
+            ),
+        },
+    )
 
+    return {
+        "access_token": token_response["access_token"],
+        "refresh_token": token_response["refresh_token"],
+        "username": get_username(token_response["access_token"]),
+    }
+
+
+def get_access_token(encrypted_refresh_token):
+    """Get access token from encrypted refresh token.
+
+    SIMKL refresh tokens don't rotate, so the stored one stays valid.
+    """
+    return _request_token(
+        {
+            "grant_type": "refresh_token",
+            "refresh_token": helpers.decrypt_or_raise(encrypted_refresh_token),
+        },
+    )["access_token"]
+
+
+def _request_token(data):
+    """Exchange a code or refresh token at SIMKL's AUTH V2 token endpoint."""
     headers = {
-        "Content-Type": "application/json",
         "simkl-api-key": credentials.get("simkl", "client_id"),
         "User-Agent": f"Floppy/{settings.VERSION}",
     }
-
-    params = {
+    data = {
         "client_id": credentials.get("simkl", "client_id"),
         "client_secret": credentials.get("simkl", "client_secret"),
-        "code": code,
-        "grant_type": "authorization_code",
-        "redirect_uri": redirect_uri
-        or app_helpers.build_absolute_app_url(
-            request,
-            reverse("import_simkl_private"),
-        ),
+        **data,
     }
 
     try:
-        token_response = app.providers.services.api_request(
+        return app.providers.services.api_request(
             "SIMKL",
             "POST",
-            url,
+            "https://api.simkl.com/oauth2/token",
             headers=headers,
-            params=params,
+            data=data,
         )
     except requests.exceptions.HTTPError as error:
         # api_request re-raises HTTP errors as-is, so a rejected exchange
@@ -64,24 +88,36 @@ def get_token(request, redirect_uri=None):
             raise MediaImportError(msg) from error
         raise
 
+
+def _api_headers(token):
+    """Headers SIMKL requires on authenticated API calls."""
     return {
-        "access_token": token_response["access_token"],
-        "username": get_username(token_response["access_token"]),
+        "Authorization": f"Bearer {token}",
+        "simkl-api-key": credentials.get("simkl", "client_id"),
+        "User-Agent": f"Floppy/{settings.VERSION}",
+    }
+
+
+def _api_params():
+    """Query parameters SIMKL requires on every API call."""
+    return {
+        "client_id": credentials.get("simkl", "client_id"),
+        "app-name": "floppy",
+        "app-version": settings.VERSION,
     }
 
 
 def get_username(token):
     """Get the username from SIMKL using the provided token."""
     try:
+        # GET: AUTH V2 tokens without a scope are read-only, and SIMKL
+        # treats POST /users/settings as a write
         user_info = app.providers.services.api_request(
             "SIMKL",
-            "POST",
+            "GET",
             "https://api.simkl.com/users/settings",
-            headers={
-                "Authorization": f"Bearer {token}",
-                "simkl-api-key": credentials.get("simkl", "client_id"),
-                "Content-Type": "application/json",
-            },
+            headers=_api_headers(token),
+            params=_api_params(),
         )
     except services.ProviderAPIError as error:
         if error.status_code == requests.codes.unauthorized:
@@ -92,9 +128,15 @@ def get_username(token):
     return user_info["user"]["name"]
 
 
-def importer(token, user, mode, anime_destination=MediaTypes.ANIME.value):
+def importer(
+    token,
+    user,
+    mode,
+    anime_destination=MediaTypes.ANIME.value,
+    refresh_token=None,
+):
     """Import tv shows, movies and anime from SIMKL."""
-    simkl_importer = SimklImporter(token, user, mode)
+    simkl_importer = SimklImporter(token, user, mode, refresh_token=refresh_token)
     return simkl_importer.import_data()
 
 
@@ -103,7 +145,14 @@ class SimklImporter:
 
     SIMKL_API_BASE_URL = "https://api.simkl.com"
 
-    def __init__(self, token, user, mode, anime_destination=MediaTypes.ANIME.value):
+    def __init__(
+        self,
+        token,
+        user,
+        mode,
+        anime_destination=MediaTypes.ANIME.value,
+        refresh_token=None,
+    ):
         """Initialize the importer with token, user, and mode.
 
         Args:
@@ -116,8 +165,14 @@ class SimklImporter:
                 Both now follow one rule, so the third shape it produced only
                 created shows tracked in two libraries at once. Recurring
                 schedules persist this kwarg, so it is still accepted.
+            refresh_token (str, optional): Encrypted AUTH V2 refresh token.
+                Recurring schedules store it because the access token expires
+                after 7 days; schedules from AUTH V1 have none.
         """
-        self.token = helpers.decrypt_or_raise(token)
+        if refresh_token:
+            self.token = get_access_token(refresh_token)
+        else:
+            self.token = helpers.decrypt_or_raise(token)
         self.user = user
         self.mode = mode
         self.warnings = []
@@ -161,11 +216,8 @@ class SimklImporter:
     def _get_user_list(self):
         """Get the user's list from Simkl."""
         url = f"{self.SIMKL_API_BASE_URL}/sync/all-items/"
-        headers = {
-            "Authorization": f"Bearer: {self.token}",
-            "simkl-api-key": credentials.get("simkl", "client_id"),
-        }
         params = {
+            **_api_params(),
             "extended": "full",
             "episode_watched_at": "yes",
             "memos": "yes",
@@ -175,7 +227,7 @@ class SimklImporter:
             "SIMKL",
             "GET",
             url,
-            headers=headers,
+            headers=_api_headers(self.token),
             params=params,
         )
 
