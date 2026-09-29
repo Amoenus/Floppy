@@ -2,6 +2,7 @@
 
 import base64
 import binascii
+import hashlib
 import hmac
 import json
 import logging
@@ -1227,8 +1228,6 @@ def simkl_oauth(request):
         request,
         reverse("import_simkl_private"),
     )
-    url = "https://simkl.com/oauth/authorize"
-
     state = {
         "mode": request.POST["mode"],
         "frequency": request.POST["frequency"],
@@ -1237,11 +1236,30 @@ def simkl_oauth(request):
         "return_to": request.POST.get("next"),
     }
     state_token = secrets.token_urlsafe(32)
-    request.session[state_token] = state
-
-    return redirect(
-        f"{url}?client_id={credentials.get("simkl", "client_id")}&redirect_uri={redirect_uri}&response_type=code&state={state_token}",
+    query = (
+        f"client_id={credentials.get("simkl", "client_id")}&redirect_uri={redirect_uri}"
+        f"&response_type=code&state={state_token}"
     )
+
+    if request.POST.get("auth_version") == "v1":
+        # SIMKL apps made before 2026-09-18; AUTH V1 retires around April 2027
+        url = f"https://simkl.com/oauth/authorize?{query}"
+    else:
+        # AUTH V2 requires PKCE (S256)
+        code_verifier = secrets.token_urlsafe(64)
+        state["code_verifier"] = code_verifier
+        code_challenge = (
+            base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest())
+            .decode()
+            .rstrip("=")
+        )
+        url = (
+            f"https://simkl.com/oauth2/authorize?{query}"
+            f"&code_challenge={code_challenge}&code_challenge_method=S256"
+        )
+
+    request.session[state_token] = state
+    return redirect(url)
 
 
 @require_GET
@@ -1254,7 +1272,11 @@ def import_simkl_private(request):
     redirect_uri = state_data.get("redirect_uri")
     return_to = state_data.get("return_to")
     try:
-        oauth_callback = simkl.get_token(request, redirect_uri=redirect_uri)
+        oauth_callback = simkl.get_token(
+            request,
+            redirect_uri=redirect_uri,
+            code_verifier=state_data.get("code_verifier"),
+        )
     except helpers.MediaImportError as error:
         messages.error(request, str(error))
         return _integration_redirect(request, next_url=return_to)
@@ -1282,6 +1304,12 @@ def import_simkl_private(request):
             import_time,
             "SIMKL",
             token=enc_token,
+            # AUTH V2 access tokens expire after 7 days; V1 has no refresh token
+            extra_kwargs=(
+                {"refresh_token": helpers.encrypt(oauth_callback["refresh_token"])}
+                if oauth_callback["refresh_token"]
+                else None
+            ),
         )
 
     return _integration_redirect(request, connected_slug="simkl", next_url=return_to)
