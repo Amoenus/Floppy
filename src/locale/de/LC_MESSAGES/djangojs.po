@@ -344,7 +344,7 @@ msgstr[1] "%s Schlagwörter"
 #: inline_translation_extraction/templates/users/integrations.html.js:11
 #: static/js/statistics-charts.js:30
 msgid "In progress"
-msgstr "In Bearbeitung"
+msgstr "Laufend"
 
 #: inline_translation_extraction/templates/users/import_data.html.js:2
 msgid "All Sources"
@@ -1488,3 +1488,11 @@ msgstr "Veröffentlicht"
 #: static/js/libraryFilterState.js
 msgid "Unknown Year"
 msgstr "Jahr unbekannt"
+
+#: static/js/libraryFilterState.js
+msgid "Caught Up"
+msgstr "Auf dem neuesten Stand"
+
+#: static/js/libraryFilterState.js
+msgid "Not Caught Up"
+msgstr "Nicht auf dem neuesten Stand"
