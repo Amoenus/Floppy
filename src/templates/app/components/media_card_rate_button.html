@@ -41,14 +41,14 @@
       @keydown.escape.window="showRatingPopup = false"
       @resize.window="if (showRatingPopup) { placePopup(); }"
       @scroll.window.capture.passive="if (showRatingPopup) { placePopup(); }"
-      class="shrink-0">
+      class="flex shrink-0">
   <button type="button"
           x-ref="trigger"
           @click="togglePopup()"
           title="{% translate "Rate" %}"
           aria-label="{% translate "Rate" %}"
           aria-haspopup="true"
-          class="media-card-rate-button -m-1 flex items-center gap-1 p-1 text-xs text-yellow-300 cursor-pointer"
+          class="media-card-rate-button -mx-1 flex h-4 items-center gap-1 px-1 text-xs text-yellow-300 cursor-pointer"
           :class="rating === null ? 'media-card-rate-empty' : ''">
     <span class="media-card-rate-star">{% include "app/icons/star.svg" with classes="w-3 h-3 text-yellow-400" %}</span>
     <span class="font-medium"
