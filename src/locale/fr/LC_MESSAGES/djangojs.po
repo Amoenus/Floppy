@@ -1479,3 +1479,11 @@ msgstr "Sorti"
 #: static/js/libraryFilterState.js
 msgid "Unknown Year"
 msgstr "Année inconnue"
+
+#: static/js/libraryFilterState.js
+msgid "Caught Up"
+msgstr "À jour"
+
+#: static/js/libraryFilterState.js
+msgid "Not Caught Up"
+msgstr "Pas à jour"
