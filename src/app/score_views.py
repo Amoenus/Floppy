@@ -8,6 +8,7 @@ from django.db.models.functions import TruncDate
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.template.loader import render_to_string
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from app import history_cache
@@ -104,6 +105,10 @@ def update_media_score(request, media_type, instance_id):
         {
             "media_instance_id": media.id,
             "rating_value": media.formatted_score,
+            "rate_url": reverse(
+                "update_media_score",
+                args=[media.item.media_type, media.id],
+            ),
             "user": request.user,
         },
         request=request,
@@ -221,6 +226,8 @@ def update_artist_score(request, artist_id):
     score = request.user.scale_score_for_storage(score)
     if score is None:
         return HttpResponseBadRequest("Invalid score.")
+    if request.POST.get("toggle") and tracker.score == score:
+        score = None
     tracker.score = score
     tracker.save()
     logger.info(
@@ -241,7 +248,9 @@ def update_artist_score(request, artist_id):
     return JsonResponse(
         {
             "success": True,
-            "score": request.user.format_score_for_display(score),
+            "score": request.user.format_score_for_display(score)
+            if score is not None
+            else None,
         },
     )
 
@@ -268,6 +277,8 @@ def update_album_score(request, album_id):
     score = request.user.scale_score_for_storage(score)
     if score is None:
         return HttpResponseBadRequest("Invalid score.")
+    if request.POST.get("toggle") and tracker.score == score:
+        score = None
     tracker.score = score
     tracker.save()
     logger.info(
@@ -291,6 +302,8 @@ def update_album_score(request, album_id):
     return JsonResponse(
         {
             "success": True,
-            "score": request.user.format_score_for_display(score),
+            "score": request.user.format_score_for_display(score)
+            if score is not None
+            else None,
         },
     )

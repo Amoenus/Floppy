@@ -398,6 +398,10 @@ def media_save(request):
                     {
                         "media_instance_id": media.id,
                         "rating_value": media.formatted_score,
+                        "rate_url": reverse(
+                            "update_media_score",
+                            args=[media.item.media_type, media.id],
+                        ),
                         "user": request.user,
                     },
                     request=request,

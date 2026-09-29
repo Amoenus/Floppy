@@ -429,7 +429,10 @@
               {% endif %}
               {% if media %}
                 <span id="media-card-rating-{{ media.id }}">
-                  {% include "app/components/media_card_rating.html" %}
+                  {% if not public_view|default:False and not recommend_mode and not use_podcast_show|default:False %}
+                    {% url 'update_media_score' item.media_type media.id as card_rate_url %}
+                  {% endif %}
+                  {% include "app/components/media_card_rating.html" with rate_url=card_rate_url|default:"" %}
                 </span>
               {% else %}
                 {% include "app/components/media_card_rating.html" %}

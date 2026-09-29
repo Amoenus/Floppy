@@ -7851,6 +7851,26 @@ html.light .theme-toggle-icon-moon {
   outline: 2px solid var(--color-link);
   outline-offset: 2px;
 }
+.media-card-rate-empty {
+  opacity: 0;
+  transition: opacity 150ms ease-in-out;
+}
+.media-card-rate-empty .media-card-rate-star svg {
+  fill: none;
+}
+.media-card-rate-empty:focus-visible {
+  opacity: 1;
+}
+@media (hover: hover) and (pointer: fine) {
+  .media-card:hover .media-card-rate-empty {
+    opacity: 1;
+  }
+}
+@media (pointer: coarse) {
+  .media-card-rate-empty {
+    opacity: 0.6;
+  }
+}
 @property --tw-translate-x {
   syntax: "*";
   inherits: false;
