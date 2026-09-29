@@ -921,6 +921,74 @@ class TrackModalViewTests(TestCase):
         self.assert_release_shortcut_labels(response)
         self.assertNotContains(response, "Save Image")
 
+    @patch("app.providers.services.get_media_metadata")
+    def test_track_modal_untracked_movie_defaults_to_planning(self, mock_get_metadata):
+        """An untracked movie opens as Planning, released or not (#1305)."""
+        for media_id, release_date in (("901", "2099-06-01"), ("902", "2001-01-15")):
+            with self.subTest(release_date=release_date):
+                mock_get_metadata.return_value = {
+                    "media_id": media_id,
+                    "title": "New Movie",
+                    "media_type": MediaTypes.MOVIE.value,
+                    "source": Sources.TMDB.value,
+                    "image": "http://example.com/image.jpg",
+                    "details": {"release_date": release_date},
+                    "max_progress": 1,
+                }
+
+                response = self.client.get(
+                    reverse(
+                        "track_modal",
+                        kwargs={
+                            "source": Sources.TMDB.value,
+                            "media_type": MediaTypes.MOVIE.value,
+                            "media_id": media_id,
+                        },
+                    ),
+                )
+
+                self.assertEqual(response.status_code, 200)
+                form = response.context["form"]
+                self.assertEqual(form.initial["status"], Status.PLANNING.value)
+                self.assertContains(
+                    response,
+                    '<option value="Planning" selected>',
+                    html=False,
+                )
+
+    def test_track_modal_tracked_movie_keeps_its_status(self):
+        """A tracked movie still shows its saved status, not the new-entry default."""
+        Movie.objects.create(
+            item=self.item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+        )
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "238",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["form"]["status"].value(),
+            Status.COMPLETED.value,
+        )
+
+    def test_create_entry_form_defaults_to_planning(self):
+        """The manual add-entry form pre-selects Planning."""
+        response = self.client.get(reverse("create_entry"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<option value="Planning" selected>', html=False)
+        self.assertNotContains(response, '<option value="Completed" selected>')
+
     def test_update_item_image(self):
         """Existing tracked items should allow image overrides from metadata."""
         response = self.client.post(
