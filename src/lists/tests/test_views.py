@@ -470,7 +470,7 @@ class ListsViewTests(TestCase):
         self.client.login(**self.credentials)
 
         response = self.client.get(reverse("lists"))
-        self.assertNotContains(response, 'aria-label="Smart list"')
+        self.assertNotContains(response, 'aria-label="Smart List"')
 
         CustomList.objects.create(
             name="Smart List",
@@ -479,7 +479,7 @@ class ListsViewTests(TestCase):
         )
 
         response = self.client.get(reverse("lists"))
-        self.assertContains(response, 'aria-label="Smart list"', count=1)
+        self.assertContains(response, 'aria-label="Smart List"', count=1)
 
 
 class ListDetailViewTests(TestCase):

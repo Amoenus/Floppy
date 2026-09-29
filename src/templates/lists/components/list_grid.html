@@ -18,9 +18,9 @@
 
         {% if custom_list.is_smart %}
           <span class="absolute bottom-2 right-2 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-yellow-400 pointer-events-none"
-                title="{% translate "Smart list" %}"
+                title="{% translate "Smart List" %}"
                 role="img"
-                aria-label="{% translate "Smart list" %}">{% include "app/icons/bolt.svg" with classes="w-3.5 h-3.5" %}</span>
+                aria-label="{% translate "Smart List" %}">{% include "app/icons/bolt.svg" with classes="w-3.5 h-3.5" %}</span>
         {% endif %}
 
         {% if not profile_username and custom_list.can_edit %}
