@@ -307,6 +307,9 @@ Default TTL is `CACHE_TIMEOUT` unless specified.
 - ComicVine (`src/app/providers/comicvine.py`):
   - `search_COMICVINE_{media_type}_{query}_{page}`, `COMICVINE_comic_{media_id}`,
     `COMICVINE_issue_{media_id}`, `COMICVINE_similar_{publisher_id}_{current_id}`.
+- GCD (`src/app/providers/gcd.py`):
+  - `search_gcd_{media_type}_{query}_{page}`, `gcd_comic_{media_id}`,
+    `gcd_comicissue_{media_id}`, `gcd_series_{media_id}_issues`, `gcd_publisher_{publisher_id}`.
 - OpenLibrary (`src/app/providers/openlibrary.py`):
   - `search_OPENLIBRARY_{media_type}_{query}_{page}`, `OPENLIBRARY_book_{media_id}`.
 - MangaUpdates (`src/app/providers/mangaupdates.py`):

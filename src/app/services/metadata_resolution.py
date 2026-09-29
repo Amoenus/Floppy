@@ -159,6 +159,8 @@ def metadata_default_source(user, media_type: str) -> str:
             provider = getattr(user, "anime_metadata_source_default", None)
         elif media_type == MediaTypes.BOOK.value:
             provider = getattr(user, "book_metadata_source_default", None)
+        elif media_type in (MediaTypes.COMIC.value, MediaTypes.COMIC_ISSUE.value):
+            provider = getattr(user, "comic_metadata_source_default", None)
 
     provider = provider or config.get_default_source_name(media_type).value
     if provider_is_enabled(provider, user):
