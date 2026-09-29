@@ -460,6 +460,27 @@ class ListsViewTests(TestCase):
         )
         self.assertContains(response, "More list actions")
 
+    @patch.object(get_user_model(), "update_preference")
+    def test_lists_view_marks_only_smart_lists_with_badge(
+        self,
+        mock_update_preference,
+    ):
+        """Smart list cards carry the bolt badge; manual list cards do not."""
+        mock_update_preference.return_value = "name"
+        self.client.login(**self.credentials)
+
+        response = self.client.get(reverse("lists"))
+        self.assertNotContains(response, 'aria-label="Smart List"')
+
+        CustomList.objects.create(
+            name="Smart List",
+            owner=self.user,
+            is_smart=True,
+        )
+
+        response = self.client.get(reverse("lists"))
+        self.assertContains(response, 'aria-label="Smart List"', count=1)
+
 
 class ListDetailViewTests(TestCase):
     """Tests for the list_detail view."""
