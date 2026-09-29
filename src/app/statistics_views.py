@@ -18,7 +18,11 @@ from app import statistics as stats
 from app.log_safety import exception_summary
 from app.models import MediaTypes
 from app.providers import tvdb
-from app.statistics_talent import _aggregate_top_talent
+from app.statistics_talent import (
+    TALENT_MEDIA_TYPES,
+    _aggregate_top_talent,
+    _normalize_talent_media_types,
+)
 from app.templatetags import app_tags
 from users.models import (
     ActivityHistoryViewChoices,
@@ -1222,14 +1226,7 @@ def update_top_talent_sort(request):
     start_date_str = request.POST.get("start_date")
     end_date_str = request.POST.get("end_date")
     total_library_titles = request.POST.get("total_library_titles")
-    media_type = request.POST.get("media_type")
-    if media_type not in {
-        MediaTypes.MOVIE.value,
-        MediaTypes.TV.value,
-        MediaTypes.ANIME.value,
-        MediaTypes.GAME.value,
-    }:
-        media_type = None
+    media_type = _normalize_talent_media_types(request.POST.get("media_type")) or None
 
     valid_sort_values = list(TopTalentSortChoices.values)
     if sort_by not in valid_sort_values:
@@ -1291,7 +1288,7 @@ def update_top_talent_sort(request):
         )
         total_library_titles = media_count.get("total", 0)
 
-    if media_type:
+    if media_type is not None:
         # Filtered variants aren't cached — only the unfiltered per-range payload is.
         top_talent = _aggregate_top_talent(
             request.user, start_date, end_date, media_type=media_type
@@ -1397,14 +1394,13 @@ def update_genre_sort(request):
     range_name = request.POST.get("range_name")
     start_date_str = request.POST.get("start_date")
     end_date_str = request.POST.get("end_date")
-    media_type = request.POST.get("media_type")
-    if media_type not in {
-        MediaTypes.MOVIE.value,
-        MediaTypes.TV.value,
-        MediaTypes.ANIME.value,
-        MediaTypes.GAME.value,
-    }:
-        media_type = None
+    media_type = (
+        _normalize_talent_media_types(
+            request.POST.get("media_type"),
+            allowed=TALENT_MEDIA_TYPES | {MediaTypes.MUSIC.value},
+        )
+        or None
+    )
 
     valid_sort_values = list(GenreSortChoices.values)
     if sort_by not in valid_sort_values:
@@ -1437,10 +1433,10 @@ def update_genre_sort(request):
         MediaTypes.GAME.value: statistics_data.get("game_consumption", {}),
         MediaTypes.MUSIC.value: statistics_data.get("music_consumption", {}),
     }
-    if media_type:
-        # Filtered view: only the selected media type contributes rows.
+    if media_type is not None:
+        # Filtered view: only the selected media types contribute rows.
         for key in consumption_by_type:
-            if key != media_type:
+            if key not in media_type:
                 consumption_by_type[key] = empty_consumption
 
     top_genres_combined = stats_cast_crew.get_top_genres_combined(
@@ -1493,14 +1489,7 @@ def update_studio_sort(request):
     range_name = request.POST.get("range_name")
     start_date_str = request.POST.get("start_date")
     end_date_str = request.POST.get("end_date")
-    media_type = request.POST.get("media_type")
-    if media_type not in {
-        MediaTypes.MOVIE.value,
-        MediaTypes.TV.value,
-        MediaTypes.ANIME.value,
-        MediaTypes.GAME.value,
-    }:
-        media_type = None
+    media_type = _normalize_talent_media_types(request.POST.get("media_type")) or None
 
     valid_sort_values = list(GenreSortChoices.values)
     if sort_by not in valid_sort_values:
@@ -1520,7 +1509,7 @@ def update_studio_sort(request):
         end_date_str,
     )
 
-    if media_type:
+    if media_type is not None:
         # Filtered variants aren't cached — only the unfiltered per-range payload is.
         top_talent = _aggregate_top_talent(
             request.user, start_date, end_date, media_type=media_type
