@@ -25,6 +25,7 @@ PROVIDER_DEFAULT_MEDIA_TYPES = (
     MediaTypes.TV.value,
     MediaTypes.ANIME.value,
     MediaTypes.BOOK.value,
+    MediaTypes.COMIC.value,
 )
 
 

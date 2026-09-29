@@ -462,6 +462,8 @@ class MetadataSourceDefaultChoices(models.TextChoices):
     HARDCOVER = Sources.HARDCOVER.value, Sources.HARDCOVER.label
     OPENLIBRARY = Sources.OPENLIBRARY.value, Sources.OPENLIBRARY.label
     GOOGLEBOOKS = Sources.GOOGLEBOOKS.value, Sources.GOOGLEBOOKS.label
+    COMICVINE = Sources.COMICVINE.value, Sources.COMICVINE.label
+    GCD = Sources.GCD.value, Sources.GCD.label
 
 
 class AnimeLibraryModeChoices(models.TextChoices):
@@ -908,6 +910,21 @@ class User(AbstractUser):
             ),
         ],
         help_text="Default metadata provider for Book details and search tabs.",
+    )
+    comic_metadata_source_default = models.CharField(
+        max_length=20,
+        default=MetadataSourceDefaultChoices.COMICVINE,
+        choices=[
+            (
+                MetadataSourceDefaultChoices.COMICVINE,
+                MetadataSourceDefaultChoices.COMICVINE.label,
+            ),
+            (
+                MetadataSourceDefaultChoices.GCD,
+                MetadataSourceDefaultChoices.GCD.label,
+            ),
+        ],
+        help_text="Default metadata provider for Comic details and search tabs.",
     )
     stats_split_tv_anime = models.BooleanField(
         default=False,
@@ -1491,6 +1508,15 @@ class User(AbstractUser):
                         MetadataSourceDefaultChoices.HARDCOVER,
                         MetadataSourceDefaultChoices.OPENLIBRARY,
                         MetadataSourceDefaultChoices.GOOGLEBOOKS,
+                    ],
+                ),
+            ),
+            models.CheckConstraint(
+                name="comic_metadata_source_default_valid",
+                condition=models.Q(
+                    comic_metadata_source_default__in=[
+                        MetadataSourceDefaultChoices.COMICVINE,
+                        MetadataSourceDefaultChoices.GCD,
                     ],
                 ),
             ),

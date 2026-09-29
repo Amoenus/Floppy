@@ -272,6 +272,10 @@ SOURCES_CONFIG = {
         "name": "Kapowarr",
         "logo": static("img/kapowarr-logo.png"),
     },
+    "gcd": {
+        "name": "Grand Comics Database",
+        "logo": static("img/gcd-logo.png"),
+    },
 }
 
 

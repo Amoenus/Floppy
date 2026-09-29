@@ -401,7 +401,7 @@
           <h3 class="text-base font-medium">{% translate "Floppy → Jellyfin" %}</h3>
         </div>
         {% if jellyfin_account and jellyfin_account.is_connected %}
-          <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">{% translate "Connected" %}</span>
+          <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 border border-emerald-500/30" style="color: var(--color-status-clean)">{% translate "Connected" %}</span>
         {% else %}
           <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">{% translate "Disconnected" %}</span>
         {% endif %}

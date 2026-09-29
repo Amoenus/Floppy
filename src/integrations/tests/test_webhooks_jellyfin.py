@@ -718,9 +718,10 @@ class JellyfinWebhookTests(TestCase):
         ``_handle_anime``, which refuses it. The refusal must not fall through
         to a plain TV row, or the show accrues progress in both libraries.
         """
+        # Jellyfin sends the episode's TVDB id, which TMDB resolves to its show.
         mock_find.return_value = {
-            "tv_episode_results": [],
-            "tv_results": [{"id": 12345}],
+            "tv_episode_results": [{"show_id": 12345}],
+            "tv_results": [],
         }
         mock_tv_with_seasons.return_value = {
             "media_id": "12345",
@@ -1204,7 +1205,7 @@ class JellyfinWebhookTests(TestCase):
             # present) and both resolve to the wrong show here, exactly as
             # the real bug did. Only the missing-season recovery's
             # alt-ids-only call (no kwargs) resolves to the real show.
-            if kwargs:
+            if kwargs.get("series_title"):
                 return ("42917", None, None)
             return ("3968", None, None)
 

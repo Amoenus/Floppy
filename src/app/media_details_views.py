@@ -104,7 +104,7 @@ def _detail_refetch_allowed(reason, source, media_type, media_id):
     )
 
 
-def _enrich_comic_issues(issues, user):
+def _enrich_comic_issues(issues, user, source):
     """Attach user tracking history to each issue dict from the volume issues list."""
     if not issues:
         return issues
@@ -112,7 +112,7 @@ def _enrich_comic_issues(issues, user):
     issue_ids = [str(issue["media_id"]) for issue in issues]
     items_qs = Item.objects.filter(
         media_id__in=issue_ids,
-        source=Sources.COMICVINE.value,
+        source=source,
         media_type=MediaTypes.COMIC_ISSUE.value,
     )
     item_by_media_id = {item.media_id: item for item in items_qs}
@@ -909,7 +909,11 @@ def media_details(
     if media_type == MediaTypes.COMIC.value and isinstance(media_metadata, dict):
         raw_issues = media_metadata.pop("issues", None)
         if raw_issues:
-            media_metadata["episodes"] = _enrich_comic_issues(raw_issues, request.user)
+            media_metadata["episodes"] = _enrich_comic_issues(
+                raw_issues,
+                request.user,
+                media_metadata["source"],
+            )
 
     if (
         render_secondary_only

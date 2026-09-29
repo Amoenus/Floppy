@@ -210,7 +210,7 @@ VALID_SOURCES = {
     MediaTypes.MANGA.value: ["mal", "mangaupdates", "manual"],
     MediaTypes.GAME.value: ["igdb", "manual"],
     MediaTypes.BOOK.value: ["openlibrary", "hardcover", "googlebooks", "manual"],
-    MediaTypes.COMIC.value: ["comicvine", "manual"],
+    MediaTypes.COMIC.value: ["comicvine", "gcd", "manual"],
     MediaTypes.BOARDGAME.value: ["bgg", "manual"],
 }
 

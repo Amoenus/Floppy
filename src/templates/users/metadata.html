@@ -62,7 +62,7 @@
                   </div>
                 </div>
                 <div class="flex items-center gap-2 shrink-0 ml-auto">
-                  <span class="px-2 py-1 text-xs rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">{{ entry.current_label }}</span>
+                  <span class="px-2 py-1 text-xs rounded bg-amber-500/10 text-[var(--color-warning-text)] border border-amber-500/30">{{ entry.current_label }}</span>
                   <button type="button"
                           @click="openModal('media-type-{{ entry.media_type }}')"
                           class="px-3 py-1.5 text-sm rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer">

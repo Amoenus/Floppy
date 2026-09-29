@@ -56,6 +56,8 @@ stripped. Last.fm is the only family below without a `_FILE` input.
 | Hardcover | `HARDCOVER_API` | `HARDCOVER_API_FILE` | empty (metered per account, so no shared default; see #1025) |
 | Google Books | `GOOGLE_BOOKS_API_KEY` | `GOOGLE_BOOKS_API_KEY_FILE` | empty |
 | Comic Vine | `COMICVINE_API` | `COMICVINE_API_FILE` | non-empty shared key |
+| Grand Comics Database | `GCD_USERNAME` | `GCD_USERNAME_FILE` | empty (account login; anonymous is 30 requests/hour) |
+| Grand Comics Database | `GCD_PASSWORD` | `GCD_PASSWORD_FILE` | empty; operator/user supplied |
 | Last.fm | `LASTFM_API_KEY` | none | empty |
 | Trakt | `TRAKT_API` | `TRAKT_API_FILE` | empty |
 | Trakt | `TRAKT_API_SECRET` | `TRAKT_API_SECRET_FILE` | empty |

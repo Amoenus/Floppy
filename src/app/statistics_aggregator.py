@@ -185,6 +185,38 @@ def _date_to_iso(value):
     return str(value)
 
 
+_EPOCH_DAY = date_type(1970, 1, 1)
+
+
+def _active_day_runs(day_map):
+    """Return one type's active days as [[first_epoch_day, length], ...] runs.
+
+    Lets the page merge several media types and recompute streaks in the
+    browser without shipping every active date.
+    """
+    epoch_days = sorted(
+        (date_type.fromisoformat(day) - _EPOCH_DAY).days
+        for day, minutes in day_map.items()
+        if minutes > 0
+    )
+    runs = []
+    for epoch_day in epoch_days:
+        if runs and runs[-1][0] + runs[-1][1] == epoch_day:
+            runs[-1][1] += 1
+        else:
+            runs.append([epoch_day, 1])
+    return runs
+
+
+def _weekday_minutes(day_map, day_list_iso):
+    """Return minutes per weekday (Monday first) for days inside the range."""
+    totals = [0.0] * 7
+    for day, minutes in day_map.items():
+        if minutes > 0 and day in day_list_iso:
+            totals[date_type.fromisoformat(day).weekday()] += minutes
+    return totals
+
+
 def _build_daily_hours_chart(day_minutes_by_type, day_list):
     labels = [day.isoformat() for day in day_list]
     datasets = []
@@ -2025,6 +2057,8 @@ def _aggregate_statistics_from_days(
 
     # Per-media-type average scores (uses items_by_type already in memory)
     _average_score_by_type = {}
+    _score_count_by_type = {}
+    _score_sum_by_type = {}
     for _mt in active_types:
         _mt_items = items_by_type.get(_mt, {})
         _mt_sum = 0.0
@@ -2041,8 +2075,16 @@ def _aggregate_statistics_from_days(
         _average_score_by_type[_mt] = (
             round(_mt_sum / _mt_count, 2) if _mt_count > 0 else None
         )
+        _score_count_by_type[_mt] = _mt_count
+        _score_sum_by_type[_mt] = _mt_sum
 
     _end_date_for_streak = end_date.date() if hasattr(end_date, "date") else end_date
+    _end_epoch_day = (
+        (_end_date_for_streak - _EPOCH_DAY).days
+        if _end_date_for_streak is not None
+        else None
+    )
+    _day_list_iso = {day.isoformat() for day in day_list}
 
     _all_total_minutes = sum(minutes_by_type.values())
 
@@ -2095,6 +2137,12 @@ def _aggregate_statistics_from_days(
                 _mt_streaks.get("longest_streak_start")
             ),
             "longest_streak_end": _date_to_iso(_mt_streaks.get("longest_streak_end")),
+            # Raw pieces so the page can merge several media types exactly.
+            "score_count": _score_count_by_type.get(_mt, 0),
+            "score_sum": round(_score_sum_by_type.get(_mt, 0.0), 4),
+            "weekday_minutes": _weekday_minutes(_day_map, _day_list_iso),
+            "active_runs": _active_day_runs(_day_map),
+            "streak_end_day": _end_epoch_day,
         }
 
     has_movie_tv_activity = bool(
