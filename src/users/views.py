@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 
 from allauth.account.views import SignupView
 from allauth.socialaccount.views import SignupView as SocialSignupView
+from celery import states
 from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
@@ -30,6 +31,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from django_celery_beat.models import PeriodicTask
+from django_celery_results.models import TaskResult
 
 from api import scopes as api_scopes
 from app import helpers as app_helpers
@@ -2346,6 +2348,73 @@ def cancel_import_run(request, run_id):
         cancel_requested=True,
         finished_at=timezone.now(),
     )
+    _reset_history_import_status(request.user, run.source)
+    messages.success(request, "Import cancelled.")
+    return redirect("import_data")
+
+
+def _reset_history_import_status(user, source):
+    """Leave a cancelled Last.fm/Koito backfill in a state the user can restart.
+
+    Both keep their own queued/running status on the account, which a revoked
+    task never clears, so the "Import full history" button would stay disabled.
+    """
+    from integrations.models import LastFMHistoryImportStatus
+
+    if source == "lastfm":
+        account = getattr(user, "lastfm_account", None)
+    elif source == "koito":
+        account = getattr(user, "koito_account", None)
+    else:
+        return
+    if account is None or not account.history_import_is_active:
+        return
+
+    account.history_import_status = LastFMHistoryImportStatus.FAILED
+    account.history_import_last_error_message = "Cancelled by user."
+    account.save(
+        update_fields=["history_import_status", "history_import_last_error_message"],
+    )
+    if source == "koito":
+        # A terminated worker never releases the lock, which would otherwise
+        # block a restart until it goes stale.
+        from integrations import koito_sync
+
+        cache.delete(koito_sync.get_koito_history_import_lock_key(user.id))
+
+
+@require_POST
+def cancel_pending_import(request, task_id):
+    """Cancel an import that is queued but has not started running.
+
+    Nothing is executing yet, so the revoke does not terminate anything and no
+    partial import state can be left behind. A worker that restarts forgets the
+    revoke, so the row is also marked REVOKED for ``import_media`` to check.
+    """
+    from config.celery import app as celery_app
+
+    pending = next(
+        (
+            result
+            for result in request.user.get_import_tasks()["results"]
+            if result.get("task_id") == task_id and result["status"] == states.PENDING
+        ),
+        None,
+    )
+    if pending is None:
+        messages.error(
+            request,
+            "This import is no longer queued. A running import can be cancelled "
+            "from Recent Import Runs.",
+        )
+        return redirect("import_data")
+
+    celery_app.control.revoke(task_id)
+    TaskResult.objects.filter(task_id=task_id, status=states.PENDING).update(
+        status=states.REVOKED,
+        date_done=timezone.now(),
+    )
+    _reset_history_import_status(request.user, pending["source"])
     messages.success(request, "Import cancelled.")
     return redirect("import_data")
 

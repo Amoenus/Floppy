@@ -1,8 +1,9 @@
 import logging
 
-from celery import current_task, shared_task
+from celery import current_task, shared_task, states
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from django_celery_results.models import TaskResult
 
 import events
 from app import cache_safety, history_cache
@@ -78,8 +79,16 @@ def import_media(
     **extra_kwargs,
 ):
     """Handle the import process for different media services."""
-    user = get_user_model().objects.get(id=user_id)
     task_id = current_task.request.id if current_task and current_task.request else None
+    # A queued import the user cancelled: the Celery revoke is lost if the
+    # worker restarted, so honour the REVOKED row cancel_pending_import wrote.
+    if (
+        task_id
+        and TaskResult.objects.filter(task_id=task_id, status=states.REVOKED).exists()
+    ):
+        return "Import cancelled before it started."
+
+    user = get_user_model().objects.get(id=user_id)
 
     source = getattr(importer_func, "__module__", "").rsplit(".", 1)[-1]
     import_run = ImportRun.objects.create(user=user, source=source, task_id=task_id)

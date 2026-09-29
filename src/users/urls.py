@@ -176,6 +176,11 @@ urlpatterns = [
         name="cancel_import_run",
     ),
     path(
+        "cancel_pending_import/<str:task_id>",
+        views.cancel_pending_import,
+        name="cancel_pending_import",
+    ),
+    path(
         "bulk_delete_by_import_source/<str:media_type>/<str:source>",
         views.bulk_delete_by_import_source,
         name="bulk_delete_by_import_source",
