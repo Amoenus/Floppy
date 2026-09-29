@@ -1488,3 +1488,11 @@ msgstr "Veröffentlicht"
 #: static/js/libraryFilterState.js
 msgid "Unknown Year"
 msgstr "Jahr unbekannt"
+
+#: static/js/libraryFilterState.js
+msgid "Caught Up"
+msgstr "Auf dem neuesten Stand"
+
+#: static/js/libraryFilterState.js
+msgid "Not Caught Up"
+msgstr "Nicht auf dem neuesten Stand"
