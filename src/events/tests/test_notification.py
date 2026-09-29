@@ -659,6 +659,57 @@ class NotificationTests(TestCase):
 
         self.assertIn(self.user1.id, self._digest_recipients(self.anime_event))
 
+    def test_digest_keeps_event_when_users_alert_failed(self):
+        """A user whose real-time alert failed still gets the event in the digest."""
+        self.user1.release_notifications_enabled = True
+        self.user1.save()
+        self.user2.release_notifications_enabled = True
+        self.user2.save()
+
+        self.anime_event.notification_sent = True
+        self.anime_event.save()
+        self.anime_event.alert_failed_users.add(self.user1)
+
+        # user2 was alerted, user1 was not
+        self.assertEqual(self._digest_recipients(self.anime_event), {self.user1.id})
+
+    @patch("apprise.Apprise")
+    def test_failed_alert_is_reported_and_recovered_by_the_digest(self, mock_apprise):
+        """A failed send is recorded, reported in the task result, and re-listed."""
+        mock_apprise.return_value.notify.return_value = False
+        for user in (self.user1, self.user2):
+            user.release_notifications_enabled = True
+            user.save()
+
+        result = send_releases()
+
+        self.assertIn("delivery failed for 2 user(s)", result)
+        self.anime_event.refresh_from_db()
+        self.assertTrue(self.anime_event.notification_sent)
+        self.assertEqual(
+            set(self.anime_event.alert_failed_users.values_list("id", flat=True)),
+            {self.user1.id, self.user2.id},
+        )
+        self.assertEqual(
+            self._digest_recipients(self.anime_event),
+            {self.user1.id, self.user2.id},
+        )
+
+    @patch("apprise.Apprise")
+    def test_successful_alert_records_no_failure(self, mock_apprise):
+        """A successful send leaves no failure record and no failure in the result."""
+        mock_apprise.return_value.notify.return_value = True
+        for user in (self.user1, self.user2):
+            user.release_notifications_enabled = True
+            user.save()
+
+        result = send_releases()
+
+        self.assertNotIn("failed", result)
+        self.anime_event.refresh_from_db()
+        self.assertFalse(self.anime_event.alert_failed_users.exists())
+        self.assertEqual(self._digest_recipients(self.anime_event), set())
+
     def test_get_user_releases_default_ignores_notification_sent(self):
         """Other callers (real-time, premiere digest) are unaffected by the flag."""
         self.anime_event.notification_sent = True

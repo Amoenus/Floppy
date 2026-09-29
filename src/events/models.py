@@ -1,6 +1,7 @@
 import re
 from datetime import UTC, datetime
 
+from django.conf import settings
 from django.db import models
 from django.db.models import (
     Case,
@@ -336,6 +337,14 @@ class Event(models.Model):
     content_number = models.IntegerField(null=True)
     datetime = models.DateTimeField()
     notification_sent = models.BooleanField(default=False)
+    # notification_sent is global, so it cannot say who was actually reached.
+    # Users whose real-time alert failed are recorded here so the daily digest
+    # can still list the event for them.
+    alert_failed_users = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name="+",
+    )
     objects = EventManager()
 
     class Meta:
