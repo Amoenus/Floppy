@@ -20,6 +20,7 @@ from redis import ConnectionPool
 from redis.exceptions import RedisError
 from requests.adapters import HTTPAdapter
 from requests_ratelimiter import LimiterAdapter, LimiterSession
+from urllib3.util.retry import Retry
 
 from app import config, helpers, request_timing
 from app.log_safety import exception_summary, mapping_keys
@@ -67,6 +68,10 @@ RATE_LIMIT_DEFAULT_WAIT_SECONDS = 5
 RATE_LIMIT_MAX_COOLDOWN_SECONDS = 60 * 60
 RATE_LIMIT_MAX_RETRIES_INTERACTIVE = 1
 RATE_LIMIT_MAX_WAIT_SECONDS_INTERACTIVE = 5
+# A provider that accepts the connection but never answers would hold a web
+# thread for the full REQUEST_TIMEOUT, longer than nginx waits for the page.
+# An interactive caller has a stored-metadata fallback, so it gives up sooner.
+REQUEST_TIMEOUT_INTERACTIVE = 10
 
 _interactive_request = contextvars.ContextVar("_interactive_request", default=False)
 
@@ -394,8 +399,12 @@ _host_limiter_bucket_name = (
     f"{settings.REDIS_PREFIX}_api_hosts" if settings.REDIS_PREFIX else "api_hosts"
 )
 
-session.mount("http://", HTTPAdapter(max_retries=3))
-session.mount("https://", HTTPAdapter(max_retries=3))
+# A read timeout is not retried: a provider that accepted the connection and
+# never answered would otherwise hold the thread for (retries + 1) x the
+# timeout, 480 s at REQUEST_TIMEOUT. Failing to connect is still retried.
+_GENERIC_RETRY = Retry(total=3, read=False)
+session.mount("http://", HTTPAdapter(max_retries=_GENERIC_RETRY))
+session.mount("https://", HTTPAdapter(max_retries=_GENERIC_RETRY))
 
 session.mount(
     "https://api.myanimelist.net/v2",
@@ -736,7 +745,11 @@ def api_request(
         request_kwargs = {
             "url": url,
             "headers": headers,
-            "timeout": settings.REQUEST_TIMEOUT,
+            "timeout": (
+                min(settings.REQUEST_TIMEOUT, REQUEST_TIMEOUT_INTERACTIVE)
+                if _interactive_request.get()
+                else settings.REQUEST_TIMEOUT
+            ),
         }
 
         if provider == Sources.TMDB.value:
