@@ -435,6 +435,81 @@ class AudiobookshelfAccount(models.Model):
         return bool(self.base_url and self.api_token) and not self.connection_broken
 
 
+class KomgaAccount(models.Model):
+    """Store Komga connection settings and sync state for a user."""
+
+    SYNC_INTERVAL_CHOICES = (5, 15, 30, 60)
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="komga_account",
+    )
+    base_url = models.URLField(help_text="Komga server URL")
+    api_key = models.TextField(help_text="Encrypted Komga API key")
+    create_missing = models.BooleanField(
+        default=True,
+        help_text="Create Floppy items when Komga books cannot be matched",
+    )
+    sync_interval_minutes = models.PositiveSmallIntegerField(
+        default=15,
+        help_text="How often Komga reading progress is synced",
+    )
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Komga account"
+        verbose_name_plural = "Komga accounts"
+
+    def __str__(self):
+        """Readable representation."""
+        return f"KomgaAccount({self.user.username})"
+
+    @property
+    def is_connected(self):
+        """Return True when the account appears connected."""
+        return bool(self.base_url and self.api_key) and not self.connection_broken
+
+
+class KomgaBookLink(models.Model):
+    """Remember which Floppy item a Komga book was matched to for a user."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="komga_book_links",
+    )
+    komga_book_id = models.CharField(max_length=64)
+    item = models.ForeignKey(
+        "app.Item",
+        on_delete=models.CASCADE,
+        related_name="komga_book_links",
+    )
+    linked_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Komga book link"
+        verbose_name_plural = "Komga book links"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "komga_book_id"],
+                name="integrations_komgabooklink_unique_user_book",
+            ),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"KomgaBookLink({self.user.username}, {self.komga_book_id})"
+
+
 class LastFMAccount(models.Model):
     """Store Last.fm username and sync state for a user."""
 

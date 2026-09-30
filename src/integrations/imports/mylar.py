@@ -89,6 +89,41 @@ class MylarClient:
         return self._request("getComic", id=comic_id) or {}
 
 
+def comic_issue_item(issue_id, title, image):
+    """Return the Comic Vine issue Item, creating it from the server's data.
+
+    The issue id is the Comic Vine issue id, so no provider lookup is
+    needed; the details page fills in the rest the first time it is opened.
+    """
+    issue_id = str(issue_id or "").strip()
+    if not issue_id.isdigit():
+        return None
+
+    identity = {
+        "media_id": issue_id,
+        "source": Sources.COMICVINE.value,
+        "media_type": MediaTypes.COMIC_ISSUE.value,
+    }
+    existing = find_item_across_buckets(**identity)
+    if existing:
+        return existing
+
+    image = str(image or "")
+    item, _ = Item.objects.get_or_create(
+        **identity,
+        library_media_type=MediaTypes.COMIC_ISSUE.value,
+        season_number=None,
+        episode_number=None,
+        defaults={
+            "title": title,
+            "original_title": title,
+            "localized_title": title,
+            "image": image if image.startswith("https://") else settings.IMG_NONE,
+        },
+    )
+    return item
+
+
 def importer(identifier, user, mode, instance_id=None):
     """Import Mylar3 collection ownership."""
     instance = (
@@ -207,35 +242,5 @@ class MylarImporter:
                     yield issue.get("id"), title, issue.get("imageURL")
 
     def _resolve_issue_item(self, issue_id, title, image):
-        """Return the Comic Vine issue Item, creating it from the server's data.
-
-        The issue id is the Comic Vine issue id, so no provider lookup is
-        needed; the details page fills in the rest the first time it is opened.
-        """
-        issue_id = str(issue_id or "").strip()
-        if not issue_id.isdigit():
-            return None
-
-        identity = {
-            "media_id": issue_id,
-            "source": Sources.COMICVINE.value,
-            "media_type": MediaTypes.COMIC_ISSUE.value,
-        }
-        existing = find_item_across_buckets(**identity)
-        if existing:
-            return existing
-
-        image = str(image or "")
-        item, _ = Item.objects.get_or_create(
-            **identity,
-            library_media_type=MediaTypes.COMIC_ISSUE.value,
-            season_number=None,
-            episode_number=None,
-            defaults={
-                "title": title,
-                "original_title": title,
-                "localized_title": title,
-                "image": image if image.startswith("https://") else settings.IMG_NONE,
-            },
-        )
-        return item
+        """Return the Comic Vine issue Item, creating it from the server's data."""
+        return comic_issue_item(issue_id, title, image)
