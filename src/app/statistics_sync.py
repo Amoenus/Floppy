@@ -35,6 +35,7 @@ from app.statistics_day_cache import (
     _normalize_day_value,
     _set_history_version,
 )
+from app.task_cooperation import higher_priority_task_waiting
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,14 @@ HEAVY_RANGES = (
     "All Time",
 )
 WARM_DAY_COUNT = 2
+# The dedicated worker runs one task at a time, so a sync yields at its next
+# boundary to anything queued at webhook priority instead of making it wait.
+INTERACTIVE_QUEUE = "interactive"
+# What a range cost the last time it was built, so a task can tell whether the
+# next one fits in what is left of its budget.
+RANGE_COST_TIMEOUT = 7 * 24 * 60 * 60
+# A sync this far past its budget is worth a warning naming the range.
+OVERRUN_WARNING_SECONDS = 5
 
 
 def _setting(name: str, default: int) -> int:
@@ -637,7 +646,29 @@ def _check_deadline(deadline) -> None:
 
 
 def _yield_if_interactive(enabled: bool) -> None:
-    if enabled and interactive_request_active():
+    if enabled and (
+        interactive_request_active()
+        or higher_priority_task_waiting(
+            INTERACTIVE_QUEUE, settings.CELERY_TASK_PRIORITY_INTERACTIVE
+        )
+    ):
+        raise _OutOfTimeError
+
+
+def _range_cost_key(user_id: int, range_name: str) -> str:
+    return f"stats:sync:range_seconds:{user_id}:{range_name}"
+
+
+def _check_range_fits(user_id: int, range_name: str, deadline, built_one: bool):
+    """Stop, unless the range is expected to finish inside the budget that is left.
+
+    The first range a task builds always runs, so a range that is dearer than a
+    whole budget still gets a task of its own instead of never being built.
+    """
+    if deadline is None or not built_one:
+        return
+    expected = cache.get(_range_cost_key(user_id, range_name))
+    if expected and time.monotonic() + expected > deadline:
         raise _OutOfTimeError
 
 
@@ -815,6 +846,9 @@ def run_sync(
         return {"status": "busy", "published": {}}
 
     published: dict[str, dict] = {}
+    range_seconds_by_name: dict[str, float] = {}
+    days_built = 0
+    days_seconds = 0.0
     status = "done"
     now = timezone.now()
     today = timezone.localdate()
@@ -847,13 +881,18 @@ def run_sync(
         # Newest first, so the hot ranges are correct as early as possible.
         work_days = sorted(work, reverse=True)
 
-        credit_hints = _build_days(
-            user,
-            work_days,
-            deadline,
-            dirty_tokens,
-            yield_to_interactive=yield_to_interactive,
-        )
+        days_built = len(work_days)
+        days_started = time.monotonic()
+        try:
+            credit_hints = _build_days(
+                user,
+                work_days,
+                deadline,
+                dirty_tokens,
+                yield_to_interactive=yield_to_interactive,
+            )
+        finally:
+            days_seconds = time.monotonic() - days_started
         if full:
             cache.set(_day_epoch_key(user_id), now.isoformat(), timeout=None)
 
@@ -879,17 +918,26 @@ def run_sync(
                 continue
             _yield_if_interactive(yield_to_interactive)
             _check_deadline(deadline)
+            if not only_ranges:
+                _check_range_fits(user_id, range_name, deadline, bool(published))
             range_started = time.monotonic()
             data = _aggregate_range(user, range_name, credit_hints, deadline)
             publish_snapshot(user_id, range_name, data, generation)
             published[range_name] = data
             _renew_lease(user_id)
+            range_seconds = time.monotonic() - range_started
+            range_seconds_by_name[range_name] = range_seconds
+            cache.set(
+                _range_cost_key(user_id, range_name),
+                range_seconds,
+                timeout=RANGE_COST_TIMEOUT,
+            )
             logger.info(
                 "stats_range_summary user_id=%s range=%s generation=%s elapsed_ms=%.2f",
                 user_id,
                 range_name,
                 generation,
-                (time.monotonic() - range_started) * 1000,
+                range_seconds * 1000,
             )
 
         # Cleared only once the pass completes: a continuation must still see
@@ -919,13 +967,34 @@ def run_sync(
             lease_expires_at=None, last_finished_at=timezone.now()
         )
 
+    elapsed = time.monotonic() - started
     logger.info(
-        "stats_sync user_id=%s status=%s ranges=%s elapsed_ms=%.2f",
+        "stats_sync user_id=%s status=%s ranges=%s elapsed_ms=%.2f days=%s days_ms=%.2f",
         user_id,
         status,
         len(published),
-        (time.monotonic() - started) * 1000,
+        elapsed * 1000,
+        days_built,
+        days_seconds * 1000,
     )
+    if (
+        budget_seconds is not None
+        and elapsed > budget_seconds + OVERRUN_WARNING_SECONDS
+    ):
+        # Names where the time went: the range aggregate is the one step that
+        # cannot stop partway, so it is the usual overrun.
+        slowest = max(
+            range_seconds_by_name.items(), key=lambda pair: pair[1], default=("-", 0.0)
+        )
+        logger.warning(
+            "stats_sync_overrun user_id=%s budget_s=%s elapsed_ms=%.2f days_ms=%.2f slowest_range=%s slowest_range_ms=%.2f",
+            user_id,
+            budget_seconds,
+            elapsed * 1000,
+            days_seconds * 1000,
+            slowest[0],
+            slowest[1] * 1000,
+        )
     if (
         not only_ranges
         and not (yield_to_interactive and interactive_request_active())

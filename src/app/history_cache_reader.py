@@ -3,7 +3,7 @@
 import logging
 import time
 from collections.abc import Iterable
-from datetime import date
+from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -22,6 +22,8 @@ from app.history_cache_index import (
 )
 from app.history_cache_lifecycle import (
     _clean_refresh_lock,
+    classify_missing_history_days,
+    record_history_repair_complete,
     schedule_history_day_cache_coverage,
     schedule_history_refresh,
 )
@@ -917,7 +919,11 @@ def repair_history_day_cache_coverage(
 
     missing_day_keys = _missing_history_day_keys(user_id, logging_style, index_day_keys)
     if not missing_day_keys:
+        record_history_repair_complete(user_id, logging_style, len(index_day_keys))
         return {"rebuilt": 0, "remaining": 0, "days": len(index_day_keys)}
+    missing_reason, missing_detail = classify_missing_history_days(
+        user_id, logging_style, timedelta(seconds=HISTORY_DAY_CACHE_TIMEOUT)
+    )
 
     target_day_keys = (
         missing_day_keys[:batch_size]
@@ -937,14 +943,19 @@ def repair_history_day_cache_coverage(
             populated += 1
 
     remaining = max(len(missing_day_keys) - rebuilt, 0)
+    if not remaining:
+        record_history_repair_complete(user_id, logging_style, len(index_day_keys))
     logger.info(
-        "history_day_coverage_repair user_id=%s logging_style=%s rebuilt=%s populated=%s remaining=%s days=%s",
+        "history_day_coverage_repair user_id=%s logging_style=%s rebuilt=%s populated=%s remaining=%s days=%s missing=%s missing_reason=%s missing_detail=%s",
         user_id,
         logging_style,
         rebuilt,
         populated,
         remaining,
         len(index_day_keys),
+        len(missing_day_keys),
+        missing_reason,
+        missing_detail or "-",
     )
     return {
         "rebuilt": rebuilt,

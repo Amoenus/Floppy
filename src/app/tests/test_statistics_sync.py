@@ -321,6 +321,87 @@ class SyncTests(StatisticsSyncTestCase):
         enqueue.assert_called_once()
 
 
+class SliceBoundTests(StatisticsSyncTestCase):
+    """A sync gives way to webhooks and stops starting ranges it cannot finish."""
+
+    def cost_all_ranges(self, seconds):
+        for range_name in (*statistics_sync.HOT_RANGES, *statistics_sync.HEAVY_RANGES):
+            cache.set(statistics_sync._range_cost_key(self.user.id, range_name), seconds)
+
+    @patch("app.statistics_sync.higher_priority_task_waiting", return_value=True)
+    def test_sync_yields_to_a_queued_webhook(self, waiting):
+        self.mark([self.day(3)])
+        result = statistics_sync.run_sync(self.user.id, budget_seconds=60)
+
+        self.assertEqual(result["status"], "continued")
+        self.assertEqual(result["published"], {})
+        waiting.assert_called_with("interactive", 0)
+        self.assertTrue(StatisticsDirtyDay.objects.filter(user=self.user).exists())
+
+        with patch(
+            "app.statistics_sync.higher_priority_task_waiting", return_value=False
+        ):
+            resumed = statistics_sync.run_sync(self.user.id, budget_seconds=60)
+        self.assertEqual(resumed["status"], "done")
+
+    def test_a_range_too_dear_for_what_is_left_waits_for_the_next_task(self):
+        self.cost_all_ranges(1000)
+
+        first = statistics_sync.run_sync(self.user.id, budget_seconds=60)
+
+        # The first range always runs; the rest do not fit in what is left.
+        self.assertEqual(first["status"], "continued")
+        self.assertEqual(list(first["published"]), ["Today"])
+
+        rounds = 0
+        status = first["status"]
+        while status == "continued" and rounds < 20:
+            result = statistics_sync.run_sync(self.user.id, budget_seconds=60)
+            status = result["status"]
+            rounds += 1
+            self.assertLessEqual(len(result["published"]), 1)
+        self.assertEqual(status, "done")
+
+    def test_every_range_records_what_it_cost(self):
+        self.full_sync()
+
+        for range_name in statistics_sync.HOT_RANGES:
+            self.assertIsNotNone(
+                cache.get(statistics_sync._range_cost_key(self.user.id, range_name))
+            )
+
+    def test_a_sync_far_past_its_budget_names_its_slowest_range(self):
+        with (
+            patch.object(statistics_sync, "OVERRUN_WARNING_SECONDS", -1000),
+            self.assertLogs("app.statistics_sync", level="WARNING") as logs,
+        ):
+            statistics_sync.run_sync(self.user.id, budget_seconds=60)
+
+        line = next(row for row in logs.output if "stats_sync_overrun" in row)
+        self.assertIn("slowest_range=", line)
+        self.assertNotIn("slowest_range=-", line)
+
+
+class HighlightHistoryDayTests(StatisticsSyncTestCase):
+    def test_a_day_built_for_a_highlight_is_kept_for_the_next_range(self):
+        from app import history_cache_day_builder
+        from app.statistics_highlights import _get_history_day_payload
+
+        day = self.day(3)
+        cache.clear()
+        with patch.object(
+            history_cache_day_builder,
+            "build_history_day",
+            wraps=history_cache_day_builder.build_history_day,
+        ) as build:
+            first = _get_history_day_payload(self.user, day)
+            second = _get_history_day_payload(self.user, day)
+
+        self.assertEqual(build.call_count, 1)
+        self.assertEqual(len(first["entries"]), len(second["entries"]))
+        self.assertGreater(len(second["entries"]), 0)
+
+
 class ReconcilerTests(StatisticsSyncTestCase):
     @NON_EAGER
     def test_a_dropped_sync_message_is_recovered(self):
