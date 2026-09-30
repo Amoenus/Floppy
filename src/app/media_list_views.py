@@ -1728,6 +1728,9 @@ def media_list(request, media_type):
             )
         if sort_filter == "next_episode_air_date":
             # The cards show the date the list is ordered by.
+            BasicMedia.objects.attach_show_season_events(
+                [entry.media for entry in page_entries if entry.media is not None],
+            )
             for entry in page_entries:
                 if entry.media is not None:
                     entry.media.next_episode_air_date = (
