@@ -67,19 +67,31 @@ def user_podcasts_by_episode(user, show, episodes):
     return by_episode
 
 
-def completed_plays_by_podcast_id(podcast_ids):
-    """Return ``{podcast_id: [history record, ...]}``, newest completed play first."""
+def completed_plays_by_podcast_id(podcast_ids, limit=None):
+    """Return ``{podcast_id: [history record, ...]}``, newest completed play first.
+
+    ``limit`` keeps only that many records per podcast, in SQL, for callers
+    that display a few plays of an entry with a long history.
+    """
+    from django.db.models import F, Window
+    from django.db.models.functions import RowNumber
+
     from app.models import Podcast
 
     by_podcast = defaultdict(list)
     if not podcast_ids:
         return by_podcast
+    records = Podcast.history.filter(id__in=podcast_ids, end_date__isnull=False)
+    if limit is not None:
+        records = records.annotate(
+            play_rank=Window(
+                RowNumber(),
+                partition_by=F("id"),
+                order_by=F("end_date").desc(),
+            ),
+        ).filter(play_rank__lte=limit)
     # history_user is read per record when the play list is rendered.
-    for record in (
-        Podcast.history.filter(id__in=podcast_ids, end_date__isnull=False)
-        .select_related("history_user")
-        .order_by("-end_date")
-    ):
+    for record in records.select_related("history_user").order_by("-end_date"):
         by_podcast[record.id].append(record)
     return by_podcast
 
@@ -198,7 +210,8 @@ def podcast_episodes_api(request, show_id):
         if podcast.episode_id and podcast.episode_id not in episode_podcast_map:
             episode_podcast_map[podcast.episode_id] = podcast
     completed_plays = completed_plays_by_podcast_id(
-        {podcast.id for podcast in episode_podcast_map.values()}
+        {podcast.id for podcast in episode_podcast_map.values()},
+        limit=10,
     )
 
     episode_items_map = episode_items_by_uuid(
@@ -270,7 +283,7 @@ def podcast_episodes_api(request, show_id):
 
             all_history = []
             if user_podcast:
-                all_history = completed_plays.get(user_podcast.id, [])[:10]
+                all_history = completed_plays.get(user_podcast.id, [])
 
                 class PodcastHistoryWrapper:
                     def __init__(self, podcast, item, history_list):
