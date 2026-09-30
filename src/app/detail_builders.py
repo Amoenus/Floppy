@@ -944,6 +944,7 @@ def _build_detail_link_entry(label, url, brand_key):
     return {
         "label": label,
         "url": url,
+        "brand": _normalize_detail_link_brand_key(brand_key),
         "chip_classes": brand["chip_classes"],
         "badge_classes": brand["badge_classes"],
         "accent_classes": brand["accent_classes"],
