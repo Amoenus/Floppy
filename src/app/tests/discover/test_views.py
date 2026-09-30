@@ -840,6 +840,30 @@ class DiscoverViewTests(TestCase):
         self.assertNotIn("undo_token", detail)
         self.assertFalse(PodcastShowTracker.objects.filter(user=self.user).exists())
 
+    def test_discover_action_planning_unconfigured_provider_keeps_setup_guidance(self):
+        with patch(
+            "app.views.ensure_item_metadata",
+            side_effect=services.ProviderNotConfiguredError(
+                Sources.IGDB.value,
+                "IGDB credentials are not set.",
+            ),
+        ):
+            response = self.client.post(
+                reverse("discover_action"),
+                {
+                    "action": "planning",
+                    "candidate_media_type": MediaTypes.GAME.value,
+                    "source": Sources.IGDB.value,
+                    "media_id": "1",
+                    "active_media_type": MediaTypes.GAME.value,
+                    "title": "A Game",
+                },
+                HTTP_HX_REQUEST="true",
+            )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertNotIn("HX-Trigger", response)
+
     def test_discover_action_planning_provider_outage_asks_to_retry(self):
         response = self._planning_provider_failure(503)
 

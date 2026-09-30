@@ -70,6 +70,10 @@ def _coerce_uploaded_file(file):
 # invocations, so one run legitimately outlives any single task's time limit.
 SELF_RESCHEDULING_IMPORT_SOURCES = ("lastfm", "koito")
 
+# Stremio imports set their own limits, which can exceed a lowered global one.
+STREMIO_IMPORT_SOFT_TIME_LIMIT = 20 * 60
+STREMIO_IMPORT_TIME_LIMIT = 30 * 60
+
 
 def close_abandoned_import_runs():
     """Mark import runs FAILED once their task can no longer be running.
@@ -83,6 +87,7 @@ def close_abandoned_import_runs():
     time_limit = settings.CELERY_TASK_TIME_LIMIT
     if not time_limit:
         return 0
+    time_limit = max(time_limit, STREMIO_IMPORT_TIME_LIMIT)
     now = timezone.now()
     closed = (
         ImportRun.objects.filter(

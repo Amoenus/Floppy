@@ -219,6 +219,18 @@ class CloseAbandonedImportRunsTests(TestCase):
         done.refresh_from_db()
         self.assertEqual(done.status, ImportRun.Status.COMPLETED)
 
+    @override_settings(CELERY_TASK_TIME_LIMIT=60)
+    def test_a_lowered_global_limit_does_not_close_a_live_stremio_import(self):
+        stremio = self._run(source="stremio", age=timedelta(minutes=20))
+        stale = self._run(source="stremio", age=timedelta(minutes=40))
+
+        self.assertEqual(close_abandoned_import_runs(), 1)
+
+        stremio.refresh_from_db()
+        stale.refresh_from_db()
+        self.assertEqual(stremio.status, ImportRun.Status.RUNNING)
+        self.assertEqual(stale.status, ImportRun.Status.FAILED)
+
     @override_settings(CELERY_TASK_TIME_LIMIT=0)
     def test_nothing_is_closed_when_tasks_have_no_time_limit(self):
         self._run(age=timedelta(days=2))

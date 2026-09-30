@@ -55,6 +55,8 @@ from integrations.tasks import _jellyfin_health
 from integrations.tasks._import_helpers import (
     GOODREADS_IMPORT_TASK_NAME,
     LEGACY_GOODREADS_IMPORT_TASK_NAMES,
+    STREMIO_IMPORT_SOFT_TIME_LIMIT,
+    STREMIO_IMPORT_TIME_LIMIT,
     _run_file_import,
     format_import_message,
     format_watchlist_sync_message,
@@ -65,8 +67,6 @@ from integrations.tasks._plex_collection import update_collection_metadata_from_
 
 logger = logging.getLogger(__name__)
 
-STREMIO_IMPORT_SOFT_TIME_LIMIT = 20 * 60
-STREMIO_IMPORT_TIME_LIMIT = 30 * 60
 
 
 def import_media(

@@ -214,6 +214,9 @@ def media_save(request):
                 library_media_type=library_media_type,
                 edition_id=(request.POST.get("edition_id") or "").strip() or None,
             )
+        except services.ProviderNotConfiguredError:
+            # Setup guidance is rendered by the provider-error middleware.
+            raise
         except services.ProviderAPIError as error:
             # A provider that no longer has the title, or is down, is a failed
             # save the user can read about, not a server error.
@@ -227,17 +230,23 @@ def media_save(request):
                 request.user.id,
             )
             if error.status_code == requests.codes.not_found:
-                messages.error(
-                    request,
-                    gettext("%(provider)s no longer has this title, so it can't be saved.")
-                    % {"provider": error.provider_label},
-                )
+                message = gettext(
+                    "%(provider)s no longer has this title, so it can't be saved."
+                ) % {"provider": error.provider_label}
             else:
-                messages.error(
-                    request,
-                    gettext("%(provider)s did not respond. Please try saving again.")
-                    % {"provider": error.provider_label},
+                message = gettext(
+                    "%(provider)s did not respond. Please try saving again."
+                ) % {"provider": error.provider_label}
+            if request.headers.get("HX-Request"):
+                # htmx follows a redirect and would swap the whole page in, and
+                # the messages framework is never rendered for it, so answer
+                # with a toast. It does not swap a non-2xx body.
+                response = HttpResponse(status=502)
+                response["HX-Trigger"] = json.dumps(
+                    {"showToast": {"message": message, "type": "error"}},
                 )
+                return response
+            messages.error(request, message)
             return helpers.redirect_back(request)
         except Exception:
             logger.exception(

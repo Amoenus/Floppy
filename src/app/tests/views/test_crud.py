@@ -70,6 +70,49 @@ class MediaSaveProviderFailure(TestCase):
         self.assertTrue(any("no longer has this title" in m for m in page_messages))
         self.assertFalse(Item.objects.filter(media_id="gone-show-uuid").exists())
 
+    def test_htmx_first_save_gets_a_toast_not_a_redirect(self):
+        error = Exception("provider said no")
+        error.response = SimpleNamespace(status_code=404, headers={})
+        with patch(
+            "app.save_views.ensure_item_metadata",
+            side_effect=services.ProviderAPIError(Sources.POCKETCASTS.value, error),
+        ):
+            response = self.client.post(
+                reverse("media_save"),
+                {
+                    "media_id": "gone-show-uuid",
+                    "source": Sources.POCKETCASTS.value,
+                    "media_type": MediaTypes.PODCAST.value,
+                    "status": Status.PLANNING.value,
+                },
+                HTTP_HX_REQUEST="true",
+            )
+
+        self.assertEqual(response.status_code, 502)
+        toast = json.loads(response["HX-Trigger"])["showToast"]
+        self.assertEqual(toast["type"], "error")
+        self.assertIn("no longer has this title", toast["message"])
+
+    def test_unconfigured_provider_keeps_setup_guidance(self):
+        with patch(
+            "app.save_views.ensure_item_metadata",
+            side_effect=services.ProviderNotConfiguredError(
+                Sources.IGDB.value,
+                "IGDB credentials are not set.",
+            ),
+        ):
+            response = self.client.post(
+                reverse("media_save"),
+                {
+                    "media_id": "1",
+                    "source": Sources.IGDB.value,
+                    "media_type": MediaTypes.GAME.value,
+                    "status": Status.PLANNING.value,
+                },
+            )
+
+        self.assertEqual(response.status_code, 503)
+
     def test_provider_outage_asks_the_user_to_retry(self):
         response = self._save_with_provider_status(503)
 

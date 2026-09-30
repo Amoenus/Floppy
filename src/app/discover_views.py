@@ -689,6 +689,9 @@ def discover_action(request):
                     library_media_type=library_media_type,
                     **candidate_seed,
                 )
+            except services.ProviderNotConfiguredError:
+                # Setup guidance is rendered by the provider-error middleware.
+                raise
             except services.ProviderAPIError as error:
                 logger.warning(
                     "discover_action_provider_error request_id=%s user_id=%s "
