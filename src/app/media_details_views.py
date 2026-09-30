@@ -22,6 +22,7 @@ from app import (
     custom_metadata,
     helpers,
     metadata_utils,
+    podcast_views,
     statistics_cache,
 )
 from app import statistics as stats
@@ -460,32 +461,23 @@ def media_details(
 
             # Build episode items - create Item objects for enrichment
             # Initially load first 20 episodes, rest will be loaded via infinite scroll
-            episode_items_data = []
-            episode_items_map = {}  # Map media_id to Item object
             initial_limit = 20
-            for episode in episodes[:initial_limit]:
-                item, _ = Item.objects.get_or_create(
-                    media_id=episode.episode_uuid,
-                    source=source,
-                    media_type=media_type,
-                    defaults={
-                        "title": episode.title,
-                        "image": show.image or settings.IMG_NONE,
-                    },
-                )
-                # Update if needed
-                if item.title != episode.title:
-                    item.title = episode.title
-                    item.save(update_fields=["title"])
-                # enrich_items_with_user_data expects dicts with media_id, source, media_type
-                episode_items_data.append(
-                    {
-                        "media_id": episode.episode_uuid,
-                        "source": source,
-                        "media_type": media_type,
-                    }
-                )
-                episode_items_map[episode.episode_uuid] = item
+            page_episodes = list(episodes[:initial_limit])
+            episode_items_map = podcast_views.episode_items_by_uuid(
+                show,
+                page_episodes,
+                source=source,
+                media_type=media_type,
+            )
+            # enrich_items_with_user_data expects dicts with media_id, source, media_type
+            episode_items_data = [
+                {
+                    "media_id": episode.episode_uuid,
+                    "source": source,
+                    "media_type": media_type,
+                }
+                for episode in page_episodes
+            ]
 
             # Enrich episodes with user data
             enriched_episodes_raw = helpers.enrich_items_with_user_data(
@@ -521,8 +513,31 @@ def media_details(
 
             # Build episode data in TV season format (inline episodes, not related items)
             episode_list = []
+            # One read each for the page's play rows and their completed-play
+            # history, instead of a few queries per episode.
+            podcasts_by_episode = (
+                {}
+                if public_view
+                else podcast_views.user_podcasts_by_episode(
+                    request.user,
+                    show,
+                    page_episodes,
+                )
+            )
+            history_by_podcast_id = podcast_views.completed_plays_by_podcast_id(
+                {
+                    podcast.id
+                    for entries in podcasts_by_episode.values()
+                    for podcast in entries
+                }
+                | {
+                    enriched["media"].id
+                    for enriched in enriched_episodes
+                    if enriched["media"]
+                },
+            )
             for episode_obj, enriched in zip(
-                episodes[:initial_limit], enriched_episodes, strict=False
+                page_episodes, enriched_episodes, strict=False
             ):
                 duration_str = helpers.seconds_to_hm(episode_obj.duration)
 
@@ -530,14 +545,11 @@ def media_details(
                 episode_media = enriched["media"]
                 episode_history = []
                 if episode_media:
-                    # Get history for this episode using simple_history
-                    # Media instances have a .history relationship from HistoricalRecords
-                    # Only include history records with end_date (completed plays)
-                    episode_history = list(
-                        episode_media.history.filter(end_date__isnull=False).order_by(
-                            "-end_date"
-                        )[:10]
-                    )
+                    # Only completed plays (history records with end_date)
+                    episode_history = history_by_podcast_id.get(
+                        episode_media.id,
+                        [],
+                    )[:10]
 
                 # Create adapter objects for music-style modal (like track_modal does)
                 class PodcastEpisodeAdapter:
@@ -578,17 +590,7 @@ def media_details(
                         self.id = show.id
 
                 # Get all Podcast entries for this episode to aggregate history
-                all_podcasts = (
-                    list(
-                        Podcast.objects.filter(
-                            user=request.user if not public_view else None,
-                            show=show,
-                            episode=episode_obj,
-                        ).order_by("-end_date")
-                    )
-                    if not public_view
-                    else []
-                )
+                all_podcasts = podcasts_by_episode.get(episode_obj.id, [])
 
                 # Create a wrapper object that aggregates history from all podcast entries
                 if all_podcasts:
@@ -597,17 +599,7 @@ def media_details(
                     all_history = []
                     for podcast in all_podcasts:
                         # Only include history records with end_date (completed plays)
-                        history = (
-                            podcast.history.filter(end_date__isnull=False)
-                            if hasattr(podcast.history, "filter")
-                            else [h for h in podcast.history.all() if h.end_date]
-                        )
-                        # Convert queryset to list if needed to ensure proper evaluation
-                        if hasattr(history, "__iter__") and not isinstance(
-                            history, (list, tuple)
-                        ):
-                            history = list(history)
-                        all_history.extend(history)
+                        all_history.extend(history_by_podcast_id.get(podcast.id, []))
 
                     # Sort by end_date descending (most recent first) for display
                     all_history.sort(
