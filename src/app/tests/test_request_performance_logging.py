@@ -2,6 +2,7 @@
 
 import re
 import time
+from unittest import mock
 
 from django.contrib.auth.models import AnonymousUser
 from django.http import HttpResponse
@@ -11,6 +12,7 @@ from django.test.utils import override_settings
 from app import request_timing
 from app.middleware import RequestPerformanceLoggingMiddleware
 from app.models import Item
+from app.providers import pocketcasts
 from users.models import User
 
 
@@ -152,6 +154,23 @@ class RequestTimingBreakdownTests(TestCase):
 
         anonymous_response, _line = self._run(lambda _request: HttpResponse("ok"))
         self.assertNotIn("Server-Timing", anonymous_response)
+
+    def test_providers_that_call_requests_directly_are_counted(self):
+        def slow_get(*_args, **_kwargs):
+            time.sleep(0.03)
+            response = mock.Mock()
+            response.json.return_value = {"results": []}
+            return response
+
+        def view(_request):
+            pocketcasts.search("news", 1)
+            return HttpResponse("ok")
+
+        with mock.patch("app.providers.pocketcasts.requests.get", slow_get):
+            _response, line = self._run(view)
+
+        self.assertEqual(self._field(line, "provider_calls"), 1)
+        self.assertGreaterEqual(self._field(line, "provider_ms"), 25)
 
     def test_recording_outside_a_request_does_nothing(self):
         @request_timing.timed_provider_call
