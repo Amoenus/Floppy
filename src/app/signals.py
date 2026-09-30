@@ -794,6 +794,11 @@ def refresh_discover_cache_on_item_person_credit_change(sender, instance, **kwar
     item = getattr(instance, "item", None)
     if item is None and getattr(instance, "item_id", None):
         item = Item.objects.filter(id=instance.item_id).only("id", "media_type").first()
+    invalidate_discover_for_credit_item(item)
+
+
+def invalidate_discover_for_credit_item(item):
+    """Refresh Discover for the users tracking a movie/TV item whose credits changed."""
     user_ids, media_type = _discover_user_ids_for_credit_item(item)
     if not media_type:
         return
