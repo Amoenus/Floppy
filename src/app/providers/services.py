@@ -85,10 +85,6 @@ def interactive_request_scope():
     finally:
         _interactive_request.reset(token)
 
-# MusicBrainz MBIDs are UUIDs (36 chars); shorter values are not valid
-# recording IDs and should be treated as not found.
-MUSICBRAINZ_MBID_MIN_LENGTH = 30
-
 # ISBN-10 and ISBN-13 identifier lengths (digits only, after cleaning).
 ISBN_10_LENGTH = 10
 ISBN_13_LENGTH = 13
@@ -1230,7 +1226,9 @@ def get_media_metadata(
         ),
     }
     if media_type == MediaTypes.MUSIC.value:
-        if not media_id or len(str(media_id)) < MUSICBRAINZ_MBID_MIN_LENGTH:
+        # A MusicBrainz MBID is a UUID. Anything else (a title slug, say) can
+        # only earn a 400 from the API, so treat it as not found without asking.
+        if not media_id or not _UUID_RE.match(str(media_id)):
             raise_not_found_error(source, media_id, "music recording")
         return _ensure_title_fields(metadata_retrievers[media_type]())
 

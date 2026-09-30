@@ -853,6 +853,19 @@ class ServicesTests(TestCase):
         self.assertEqual(context.exception.status_code, 404)
 
     @patch("app.providers.services.musicbrainz.recording")
+    def test_get_media_metadata_music_title_slug_is_not_requested(self, mock_recording):
+        """A long title-like id passed the old length check and earned a 400."""
+        with self.assertRaises(services.ProviderAPIError) as context:
+            services.get_media_metadata(
+                MediaTypes.MUSIC.value,
+                "the-lord-of-the-rings-the-fellowship-of-the-ring",
+                Sources.MUSICBRAINZ.value,
+            )
+
+        self.assertEqual(context.exception.status_code, 404)
+        mock_recording.assert_not_called()
+
+    @patch("app.providers.services.musicbrainz.recording")
     def test_get_media_metadata_music_provider_not_found_is_propagated(
         self,
         mock_recording,
