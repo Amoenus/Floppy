@@ -2007,3 +2007,27 @@ class DetailScoreChipsTemplateTests(TestCase):
     def test_numeric_score_count_still_renders(self):
         html = self._render(42)
         self.assertIn("42", html)
+
+
+class EntrySourceLabelTests(TestCase):
+    """Test the entry_source_label display filter (issue #1258)."""
+
+    def test_built_in_lowercase_sources_are_capitalized(self):
+        self.assertEqual(app_tags.entry_source_label("plex"), "Plex")
+        self.assertEqual(app_tags.entry_source_label("jellyfin"), "Jellyfin")
+
+    def test_special_casing_and_underscores(self):
+        self.assertEqual(app_tags.entry_source_label("lastfm"), "Last.fm")
+        self.assertEqual(app_tags.entry_source_label("imdb"), "IMDb")
+        self.assertEqual(
+            app_tags.entry_source_label("jellyfin_playback_reporting"),
+            "Jellyfin playback reporting",
+        )
+
+    def test_user_typed_text_is_kept_as_typed(self):
+        self.assertEqual(app_tags.entry_source_label("Theatre"), "Theatre")
+        self.assertEqual(app_tags.entry_source_label("my BluRay"), "my BluRay")
+
+    def test_empty_values(self):
+        self.assertEqual(app_tags.entry_source_label(""), "")
+        self.assertEqual(app_tags.entry_source_label(None), "")

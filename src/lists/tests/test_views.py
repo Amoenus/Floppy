@@ -1013,6 +1013,45 @@ class ListDetailViewTests(TestCase):
 
     @patch("app.providers.services.get_media_metadata")
     @patch.object(CustomList, "_get_tmdb_backdrop", return_value=None)
+    def test_public_list_table_hides_owner_entry_source(
+        self,
+        _mock_backdrop,
+        mock_get_media_metadata,
+    ):
+        """Anonymous and signed-in visitors never see the owner's entry source (issue #1258)."""
+        mock_get_media_metadata.return_value = {
+            "max_progress": 1,
+            "related": {"seasons": []},
+            "title": "Test Movie",
+        }
+        Movie.objects.create(
+            item=self.movie_item,
+            status=Status.COMPLETED.value,
+            user=self.user,
+            entry_source="plex",
+        )
+        url = reverse("list_detail", args=[self.custom_list.id]) + "?layout=table"
+
+        # The owner sees the source.
+        response = self.client.get(url)
+        self.assertContains(response, ">Plex</div>")
+
+        self.custom_list.visibility = "public"
+        self.custom_list.save(update_fields=["visibility"])
+        viewer = get_user_model().objects.create_user(
+            username="source-viewer",
+            password="12345",
+        )
+        for logged_in_viewer in (None, viewer):
+            self.client.logout()
+            if logged_in_viewer:
+                self.client.force_login(logged_in_viewer)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, ">Plex</div>")
+
+    @patch("app.providers.services.get_media_metadata")
+    @patch.object(CustomList, "_get_tmdb_backdrop", return_value=None)
     def test_public_smart_list_table_hides_and_shows_owner_notes(
         self,
         _mock_backdrop,
@@ -1568,6 +1607,7 @@ class ListDetailViewTests(TestCase):
                 "date_added",
                 "start_date",
                 "end_date",
+                "entry_source",
                 "notes",
                 "synopsis",
             ],
@@ -1819,6 +1859,7 @@ class ListDetailViewTests(TestCase):
                     "date_added",
                     "start_date",
                     "end_date",
+                    "entry_source",
                     "notes",
                     "synopsis",
                 ],
