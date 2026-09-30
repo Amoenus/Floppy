@@ -2361,12 +2361,25 @@ def _reset_history_import_status(user, source):
     """
     from integrations.models import LastFMHistoryImportStatus
 
+    if source not in {"lastfm", "koito"}:
+        return
+
+    # A queued continuation chunk belongs to a run that is still RUNNING; close
+    # it so Recent Import Runs does not keep a stale entry.
+    ImportRun.objects.filter(
+        user=user,
+        source=source,
+        status=ImportRun.Status.RUNNING,
+    ).update(
+        status=ImportRun.Status.CANCELLED,
+        cancel_requested=True,
+        finished_at=timezone.now(),
+    )
+
     if source == "lastfm":
         account = getattr(user, "lastfm_account", None)
-    elif source == "koito":
-        account = getattr(user, "koito_account", None)
     else:
-        return
+        account = getattr(user, "koito_account", None)
     if account is None or not account.history_import_is_active:
         return
 
@@ -2387,10 +2400,13 @@ def _reset_history_import_status(user, source):
 def cancel_pending_import(request, task_id):
     """Cancel an import that is queued but has not started running.
 
-    Nothing is executing yet, so the revoke does not terminate anything and no
-    partial import state can be left behind. A worker that restarts forgets the
-    revoke, so the row is also marked REVOKED for ``import_media`` to check.
+    The row is claimed as REVOKED first, so a worker that starts afterwards
+    sees it and stops (``FloppyTask.__call__``). A worker that started between
+    the page load and the claim already reported STARTED, and is terminated
+    like a running import.
     """
+    from celery.result import AsyncResult
+
     from config.celery import app as celery_app
 
     pending = next(
@@ -2401,7 +2417,11 @@ def cancel_pending_import(request, task_id):
         ),
         None,
     )
-    if pending is None:
+    claimed = pending is not None and TaskResult.objects.filter(
+        task_id=task_id,
+        status=states.PENDING,
+    ).update(status=states.REVOKED, date_done=timezone.now())
+    if not claimed:
         messages.error(
             request,
             "This import is no longer queued. A running import can be cancelled "
@@ -2409,11 +2429,18 @@ def cancel_pending_import(request, task_id):
         )
         return redirect("import_data")
 
-    celery_app.control.revoke(task_id)
-    TaskResult.objects.filter(task_id=task_id, status=states.PENDING).update(
-        status=states.REVOKED,
-        date_done=timezone.now(),
-    )
+    already_started = AsyncResult(task_id).status == states.STARTED
+    celery_app.control.revoke(task_id, terminate=already_started)
+    if already_started:
+        ImportRun.objects.filter(
+            user=request.user,
+            task_id=task_id,
+            status=ImportRun.Status.RUNNING,
+        ).update(
+            status=ImportRun.Status.CANCELLED,
+            cancel_requested=True,
+            finished_at=timezone.now(),
+        )
     _reset_history_import_status(request.user, pending["source"])
     messages.success(request, "Import cancelled.")
     return redirect("import_data")

@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 
+from celery import Task
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
 from django.core.cache import cache
@@ -7,6 +8,8 @@ from django.test import TestCase
 from django.urls import reverse
 from django_celery_results.models import TaskResult
 
+import integrations.tasks
+from config.celery import FloppyTask, app
 from integrations import koito_sync
 from integrations.models import (
     ImportRun,
@@ -14,7 +17,6 @@ from integrations.models import (
     LastFMAccount,
     LastFMHistoryImportStatus,
 )
-from integrations.tasks._media_imports import import_media
 
 
 @patch("users.models.AsyncResult")
@@ -61,7 +63,7 @@ class CancelPendingImportTests(TestCase):
         response = self._post("queued-1")
 
         self.assertRedirects(response, reverse("import_data"))
-        mock_revoke.assert_called_once_with("queued-1")
+        mock_revoke.assert_called_once_with("queued-1", terminate=False)
         row.refresh_from_db()
         self.assertEqual(row.status, "REVOKED")
         self.assertIsNotNone(row.date_done)
@@ -97,6 +99,28 @@ class CancelPendingImportTests(TestCase):
         messages = list(get_messages(response.wsgi_request))
         self.assertIn("no longer queued", str(messages[0]))
 
+    @patch("celery.result.AsyncResult")
+    @patch("config.celery.app.control.revoke")
+    def test_cancel_terminates_task_that_started_during_the_click(
+        self, mock_revoke, mock_backend, mock_async_result
+    ):
+        """A worker that started after the page loaded is stopped like a running import."""
+        self._backend_status(mock_async_result)
+        mock_backend.return_value = MagicMock(status="STARTED")
+        self._queue(self.user)
+        run = ImportRun.objects.create(
+            user=self.user,
+            source="trakt",
+            status=ImportRun.Status.RUNNING,
+            task_id="queued-1",
+        )
+
+        self._post("queued-1")
+
+        mock_revoke.assert_called_once_with("queued-1", terminate=True)
+        run.refresh_from_db()
+        self.assertEqual(run.status, ImportRun.Status.CANCELLED)
+
     @patch("config.celery.app.control.revoke")
     def test_cancel_resets_queued_lastfm_history_status(
         self, mock_revoke, mock_async_result
@@ -108,10 +132,20 @@ class CancelPendingImportTests(TestCase):
             lastfm_username="listener",
             history_import_status=LastFMHistoryImportStatus.QUEUED,
         )
+        run = ImportRun.objects.create(
+            user=self.user,
+            source="lastfm",
+            status=ImportRun.Status.RUNNING,
+            task_id="earlier-chunk",
+        )
         self._queue(self.user, name="Import from Last.fm History")
 
         self._post("queued-1")
 
+        run.refresh_from_db()
+        self.assertEqual(run.status, ImportRun.Status.CANCELLED)
+        self.assertTrue(run.cancel_requested)
+        self.assertIsNotNone(run.finished_at)
         account.refresh_from_db()
         self.assertEqual(account.history_import_status, LastFMHistoryImportStatus.FAILED)
         self.assertTrue(account.history_import_can_start)
@@ -161,41 +195,48 @@ class CancelPendingImportTests(TestCase):
         self.assertNotContains(response, reverse("cancel_pending_import", args=["done-1"]))
 
 
-class ImportMediaRevokedGuardTests(TestCase):
-    """import_media must not run a task the user cancelled while it was queued."""
+class FloppyTaskCancelGuardTests(TestCase):
+    """A task cancelled while queued must not run, whichever importer it is."""
 
     def setUp(self):
-        """Create a user with a cancelled queued import."""
+        """Create a user and make sure the app has loaded its task modules."""
+        app.loader.import_default_modules()
         self.user = get_user_model().objects.create_user(
             username="guarduser",
             password="testpass123",
         )
 
-    def _run(self, status):
+    def _apply(self, task_name, status):
         TaskResult.objects.create(
             task_id="guard-1",
-            task_name="Import from Trakt",
+            task_name=task_name,
             task_kwargs=f'{{"user_id": {self.user.id}}}',
             status=status,
         )
-        importer = MagicMock(return_value=({}, []))
-        importer.__module__ = "integrations.imports.trakt"
-        with patch("integrations.tasks._media_imports.current_task") as task:
-            task.request.id = "guard-1"
-            result = import_media(importer, None, self.user.id, "new")
-        return importer, result
+        with patch.object(Task, "__call__", return_value="ran") as run:
+            return run, app.tasks[task_name].apply(task_id="guard-1")
 
-    def test_revoked_task_does_not_run(self):
-        """A REVOKED row short-circuits before any ImportRun or importer call."""
-        importer, result = self._run("REVOKED")
+    def test_revoked_task_is_ignored_for_every_kind_of_import(self):
+        """The task body never runs and its row stays REVOKED, not SUCCESS."""
+        for name in (
+            "Import from Trakt",
+            "Import from Last.fm History",
+            "Import from Koito History",
+            "Sync Plex Watchlist",
+        ):
+            with self.subTest(task=name):
+                TaskResult.objects.all().delete()
+                self.assertIsInstance(app.tasks[name], FloppyTask)
 
-        importer.assert_not_called()
-        self.assertFalse(ImportRun.objects.exists())
-        self.assertIn("cancelled", result)
+                run, result = self._apply(name, "REVOKED")
+
+                run.assert_not_called()
+                self.assertEqual(result.state, "IGNORED")
+                self.assertEqual(TaskResult.objects.get().status, "REVOKED")
 
     def test_pending_task_still_runs(self):
         """An ordinary queued task is unaffected by the guard."""
-        importer, _ = self._run("PENDING")
+        run, result = self._apply("Import from Trakt", "PENDING")
 
-        importer.assert_called_once()
-        self.assertTrue(ImportRun.objects.exists())
+        run.assert_called_once()
+        self.assertEqual(result.state, "SUCCESS")
