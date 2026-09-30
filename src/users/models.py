@@ -1875,6 +1875,15 @@ class User(AbstractUser):
 
         return None
 
+    def task_result_filter(self):
+        """Match TaskResult rows whose kwargs carry this user's id."""
+        return (
+            Q(task_kwargs__contains=f"'user_id': {self.id},")
+            | Q(task_kwargs__contains=f"'user_id': {self.id}" + "}")
+            | Q(task_kwargs__contains=f'"user_id": {self.id},')
+            | Q(task_kwargs__contains=f'"user_id": {self.id}' + "}")
+        )
+
     def get_import_tasks(self):
         """Return import tasks history and schedules for the user."""
         result_task_names = {
@@ -1966,12 +1975,7 @@ class User(AbstractUser):
         }
         schedule_import_task_names = list(schedule_task_to_source)
 
-        task_result_filters = (
-            Q(task_kwargs__contains=f"'user_id': {self.id},")
-            | Q(task_kwargs__contains=f"'user_id': {self.id}" + "}")
-            | Q(task_kwargs__contains=f'"user_id": {self.id},')
-            | Q(task_kwargs__contains=f'"user_id": {self.id}' + "}")
-        )
+        task_result_filters = self.task_result_filter()
 
         # Get all task results for this user (last 7 days only).
         # Exclude stale PENDING records (created >30 min ago and never updated)
@@ -2020,6 +2024,7 @@ class User(AbstractUser):
             results.append(
                 {
                     "task": processed_task,
+                    "task_id": task.task_id,
                     "source": source,
                     "date": task.date_done,
                     "status": task.status,
