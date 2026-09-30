@@ -821,6 +821,21 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "My private note")
 
+    def test_table_layout_shows_capitalized_entry_source(self):
+        """The Source column shows each entry's source with display casing (issue #1258)."""
+        movie = Movie.objects.get(item__title="Test Movie 1", user=self.user)
+        movie.entry_source = "plex"
+        movie.save(update_fields=["entry_source"])
+
+        response = self.client.get(
+            reverse("medialist", args=[MediaTypes.MOVIE.value]) + "?layout=table",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("entry_source", [c.key for c in response.context["resolved_columns"]])
+        self.assertContains(response, ">Plex</div>")
+        self.assertNotContains(response, ">plex</div>")
+
     def test_movie_grid_counts_completed_plays_when_progress_is_zero(self):
         """Completed movie duplicates should count as plays even when progress is zero."""
         item = Item.objects.get(
@@ -3257,6 +3272,7 @@ class MediaListViewTests(TestCase):
                     "date_added",
                     "start_date",
                     "end_date",
+                    "entry_source",
                     "notes",
                     "synopsis",
                 ],
@@ -3327,6 +3343,7 @@ class MediaListViewTests(TestCase):
                 "release_date",
                 "date_added",
                 "end_date",
+                "entry_source",
                 "notes",
                 "synopsis",
             ],
@@ -3353,6 +3370,7 @@ class MediaListViewTests(TestCase):
                 "release_date",
                 "date_added",
                 "end_date",
+                "entry_source",
                 "notes",
                 "synopsis",
             ],
@@ -3419,6 +3437,7 @@ class MediaListViewTests(TestCase):
                 "Tags",
                 "Release Date",
                 "Date Added",
+                "Source",
                 "Notes",
                 "Description",
             ],
@@ -3461,6 +3480,7 @@ class MediaListViewTests(TestCase):
                 "Tags",
                 "Release Date",
                 "Date Added",
+                "Source",
                 "Notes",
                 "Description",
             ],
@@ -3496,6 +3516,7 @@ class MediaListViewTests(TestCase):
                     "tags",
                     "release_date",
                     "date_added",
+                    "entry_source",
                     "notes",
                     "synopsis",
                 ],
@@ -3519,6 +3540,7 @@ class MediaListViewTests(TestCase):
                 "tags",
                 "release_date",
                 "date_added",
+                "entry_source",
                 "notes",
                 "synopsis",
             ],

@@ -55,6 +55,28 @@ def translate_detail_value(value):
     return _(text)
 
 
+# Built-in source labels are stored lowercase ("plex"); these need casing that
+# a plain capitalize would get wrong. Anything else with no capitals is
+# capitalized, and text a user typed ("Theatre") is shown as typed.
+ENTRY_SOURCE_LABELS = {
+    "anilist": "AniList",
+    "imdb": "IMDb",
+    "lastfm": "Last.fm",
+    "listenbrainz": "ListenBrainz",
+    "myanimelist": "MyAnimeList",
+    "simkl": "SIMKL",
+}
+
+
+@register.filter
+def entry_source_label(value):
+    """Return a display label for a media entry's source."""
+    text = str(value or "").strip()
+    if text != text.lower():
+        return text
+    return ENTRY_SOURCE_LABELS.get(text) or text.replace("_", " ").capitalize()
+
+
 @register.filter
 def translate_language_code(value):
     """Return the localized language name for an ISO language code."""
