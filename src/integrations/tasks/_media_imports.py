@@ -101,8 +101,13 @@ def import_media(
                     username=oauth_username,
                     **extra_kwargs,
                 )
-    except Exception:
-        ImportRun.objects.filter(id=import_run.id).update(
+    except BaseException:
+        # BaseException so a soft time limit or worker shutdown still leaves a
+        # record. RUNNING only: a cancel has already marked the row CANCELLED.
+        ImportRun.objects.filter(
+            id=import_run.id,
+            status=ImportRun.Status.RUNNING,
+        ).update(
             status=ImportRun.Status.FAILED,
             finished_at=timezone.now(),
         )
