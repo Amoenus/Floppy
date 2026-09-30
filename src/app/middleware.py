@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 from http import HTTPStatus
 from urllib.parse import urlparse
@@ -13,6 +14,7 @@ from django.shortcuts import redirect, resolve_url
 from django.urls import reverse
 from django.utils import translation
 
+from app import request_timing
 from app.db_retry import is_contention_error, is_lock_error, is_retryable_error
 from app.discover import tab_cache as discover_tab_cache
 from app.error_views import format_exception_traceback, render_error_page
@@ -146,7 +148,17 @@ class RequestPerformanceLoggingMiddleware:
     """Log slow or query-heavy requests so regressions are visible in production.
 
     Query counting uses connection.execute_wrapper so it works without DEBUG.
+    Beyond wall time it records where the time went, so a slow request can be
+    told apart as computing (cpu_ms close to duration_ms), waiting on the
+    database (db_ms) or waiting on a provider (provider_ms). inflight is how
+    many requests this process was serving when the request finished, which
+    shows a worker running out of threads. The same figures go to signed-in
+    users in a Server-Timing header, readable in the browser as
+    performance.getEntriesByType("navigation")[0].serverTiming.
     """
+
+    _inflight = 0
+    _inflight_lock = threading.Lock()
 
     def __init__(self, get_response):
         """Initialize the middleware with the get_response callable."""
@@ -157,28 +169,57 @@ class RequestPerformanceLoggingMiddleware:
         if not settings.PERF_LOG_ENABLED:
             return self.get_response(request)
 
-        query_count = {"total": 0}
+        query_count = {"total": 0, "seconds": 0.0}
 
         def count_query(execute, sql, params, many, context):
             query_count["total"] += 1
-            return execute(sql, params, many, context)
+            query_started = time.perf_counter()
+            try:
+                return execute(sql, params, many, context)
+            finally:
+                query_count["seconds"] += time.perf_counter() - query_started
 
+        provider_tally, tally_token = request_timing.begin()
+        with self._inflight_lock:
+            type(self)._inflight += 1
         start = time.perf_counter()
-        with connection.execute_wrapper(count_query):
-            response = self.get_response(request)
+        cpu_start = time.thread_time()
+        try:
+            with connection.execute_wrapper(count_query):
+                response = self.get_response(request)
+        finally:
+            request_timing.end(tally_token)
+            with self._inflight_lock:
+                inflight = type(self)._inflight
+                type(self)._inflight -= 1
         duration_ms = (time.perf_counter() - start) * 1000
+        cpu_ms = (time.thread_time() - cpu_start) * 1000
+        db_ms = query_count["seconds"] * 1000
+        provider_ms = provider_tally["seconds"] * 1000
+
+        if getattr(getattr(request, "user", None), "is_authenticated", False):
+            response["Server-Timing"] = (
+                f"total;dur={duration_ms:.0f}, cpu;dur={cpu_ms:.1f}, "
+                f"db;dur={db_ms:.1f}, provider;dur={provider_ms:.1f}"
+            )
 
         if (
             duration_ms >= settings.PERF_LOG_SLOW_REQUEST_MS
             or query_count["total"] >= settings.PERF_LOG_QUERY_COUNT_THRESHOLD
         ):
             logger.info(
-                "slow_request method=%s path=%s status=%s duration_ms=%.0f queries=%s",
+                "slow_request method=%s path=%s status=%s duration_ms=%.0f queries=%s "
+                "cpu_ms=%.1f db_ms=%.1f provider_ms=%.1f provider_calls=%s inflight=%s",
                 request.method,
                 request.path,
                 response.status_code,
                 duration_ms,
                 query_count["total"],
+                cpu_ms,
+                db_ms,
+                provider_ms,
+                provider_tally["calls"],
+                inflight,
             )
         return response
 

@@ -21,7 +21,7 @@ from redis.exceptions import RedisError
 from requests.adapters import HTTPAdapter
 from requests_ratelimiter import LimiterAdapter, LimiterSession
 
-from app import config, helpers
+from app import config, helpers, request_timing
 from app.log_safety import exception_summary, mapping_keys
 from app.models import Item, MediaTypes, Sources
 from app.providers import (
@@ -448,6 +448,7 @@ session.mount(
 )
 
 
+@request_timing.timed_provider_call
 def resilient_request(method, url, **kwargs):
     """GET/POST through the shared rate-limited session.
 
@@ -702,6 +703,7 @@ def _raise_rate_limited(provider, error, retry_after, headers=None):
     )
 
 
+@request_timing.timed_provider_call
 def api_request(
     provider,
     method,
