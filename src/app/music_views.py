@@ -443,7 +443,7 @@ def _render_music_artist_details(request, artist):
     from app.providers import musicbrainz
     from app.services.music import (
         build_discography_groups,
-        canonicalize_album,
+        canonicalize_albums,
         needs_discography_sync,
         sync_artist_discography,
         sync_artist_members,
@@ -547,12 +547,12 @@ def _render_music_artist_details(request, artist):
         Album.objects.filter(
             models.Q(artist=artist) | models.Q(artist_credits__artist=artist),
         )
+        .select_related("artist")
         .distinct()
         .order_by("-release_date", "title"),
     )
     all_albums_by_id = {}
-    for album in raw_albums:
-        canonical_album = canonicalize_album(album, user=request.user)
+    for canonical_album in canonicalize_albums(raw_albums, user=request.user):
         all_albums_by_id[canonical_album.id] = canonical_album
     all_albums = list(all_albums_by_id.values())
 

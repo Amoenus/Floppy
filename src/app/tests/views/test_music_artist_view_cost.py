@@ -10,7 +10,16 @@ from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
-from app.models import Album, Artist, Item, MediaTypes, Music, Sources, Status
+from app.models import (
+    Album,
+    AlbumArtist,
+    Artist,
+    Item,
+    MediaTypes,
+    Music,
+    Sources,
+    Status,
+)
 
 
 class ArtistViewProviderCostTests(TestCase):
@@ -127,3 +136,58 @@ class ArtistCoverPollerCostTests(TestCase):
             if "historicalmusic" in query["sql"].lower()
         ]
         self.assertEqual(len(history_reads), 1)
+
+
+class ArtistViewAlbumScalingTests(TestCase):
+    """The artist page checks albums for duplicates in one query, not one per album."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(username="albumscale")
+        self.user.music_enabled = True
+        self.user.save()
+        self.client.force_login(self.user)
+
+    def _artist_with_albums(self, name, count):
+        artist = Artist.objects.create(name=name)
+        for index in range(count):
+            Album.objects.create(
+                title=f"{name} Album {index}",
+                artist=artist,
+                musicbrainz_release_group_id=f"00000000-0000-0000-0000-{artist.id:06d}{index:06d}",
+            )
+        return artist
+
+    def _query_count(self, artist):
+        url = reverse("music_artist_details", args=[artist.id, "artist"])
+        self.client.get(url)
+        with CaptureQueriesContext(connection) as captured:
+            self.assertEqual(self.client.get(url).status_code, 200)
+        return len(captured)
+
+    @patch("app.services.music.resolve_artist_mbid", return_value=(None, 0, ""))
+    def test_query_count_does_not_grow_with_discography_size(self, _mock_resolve):
+        small = self._query_count(self._artist_with_albums("Small", 3))
+        large = self._query_count(self._artist_with_albums("Large", 30))
+
+        self.assertLessEqual(large, small + 2)
+
+    @patch("app.services.music.resolve_artist_mbid", return_value=(None, 0, ""))
+    def test_duplicate_album_rows_are_still_merged(self, _mock_resolve):
+        artist = self._artist_with_albums("Dupes", 2)
+        original = Album.objects.filter(artist=artist).first()
+        other = Artist.objects.create(name="Other Credit")
+        copy = Album.objects.create(
+            title="Duplicate copy",
+            artist=other,
+            musicbrainz_release_group_id=original.musicbrainz_release_group_id,
+        )
+        AlbumArtist.objects.create(album=copy, artist=artist, position=0)
+
+        url = reverse("music_artist_details", args=[artist.id, "dupes"])
+        self.assertEqual(self.client.get(url).status_code, 200)
+
+        remaining = Album.objects.filter(
+            musicbrainz_release_group_id=original.musicbrainz_release_group_id,
+        ).count()
+        self.assertEqual(remaining, 1)
