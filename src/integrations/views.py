@@ -2346,7 +2346,7 @@ def _ensure_recurring_import_schedule(user, label, poll_interval_minutes):
     task = f"Import from {label} (Recurring)"
     existing_task = PeriodicTask.objects.filter(
         task=task,
-        kwargs__contains=f'"user_id": {user.id}',
+        **helpers.periodic_task_user_kwargs(user.id),
     ).first()
 
     if existing_task:
@@ -2434,7 +2434,7 @@ def audiobookshelf_disconnect(request):
     def _disconnect():
         PeriodicTask.objects.filter(
             task="Import from Audiobookshelf (Recurring)",
-            kwargs__contains=f'"user_id": {request.user.id}',
+            **helpers.periodic_task_user_kwargs(request.user.id),
         ).delete()
         AudiobookshelfAccount.objects.filter(user=request.user).delete()
 
@@ -2517,7 +2517,7 @@ def komga_disconnect(request):
     def _disconnect():
         PeriodicTask.objects.filter(
             task="Import from Komga (Recurring)",
-            kwargs__contains=f'"user_id": {request.user.id}',
+            **helpers.periodic_task_user_kwargs(request.user.id),
         ).delete()
         KomgaAccount.objects.filter(user=request.user).delete()
 
@@ -2965,7 +2965,7 @@ def _ensure_storyteller_schedule(user):
 
     existing_task = PeriodicTask.objects.filter(
         task=STORYTELLER_RECURRING_TASK_NAME,
-        kwargs__contains=f'"user_id": {user.id}',
+        **helpers.periodic_task_user_kwargs(user.id),
         enabled=True,
     ).first()
     if existing_task:
@@ -3101,7 +3101,7 @@ def storyteller_disconnect(request):
     def _disconnect():
         PeriodicTask.objects.filter(
             task=STORYTELLER_RECURRING_TASK_NAME,
-            kwargs__contains=f'"user_id": {request.user.id}',
+            **helpers.periodic_task_user_kwargs(request.user.id),
         ).delete()
         StorytellerAccount.objects.filter(user=request.user).delete()
 
@@ -3317,7 +3317,7 @@ def koreader_disconnect(request):
     def _disconnect():
         PeriodicTask.objects.filter(
             task=KOREADER_IMPORT_TASK_NAME,
-            kwargs__contains=f'"user_id": {request.user.id}',
+            **helpers.periodic_task_user_kwargs(request.user.id),
         ).delete()
         KoreaderDocumentLink.objects.filter(user=request.user).delete()
         KoreaderAccount.objects.filter(user=request.user).delete()
@@ -3366,7 +3366,7 @@ def _ensure_stremio_schedule(user):
 
     existing_task = PeriodicTask.objects.filter(
         task=STREMIO_RECURRING_TASK_NAME,
-        kwargs__contains=f'"user_id": {user.id}',
+        **helpers.periodic_task_user_kwargs(user.id),
         enabled=True,
     ).first()
     if existing_task:
@@ -3454,7 +3454,7 @@ def stremio_disconnect(request):
     def _disconnect():
         PeriodicTask.objects.filter(
             task=STREMIO_RECURRING_TASK_NAME,
-            kwargs__contains=f'"user_id": {request.user.id}',
+            **helpers.periodic_task_user_kwargs(request.user.id),
         ).delete()
         StremioAccount.objects.filter(user=request.user).delete()
 
@@ -3867,7 +3867,7 @@ def pocketcasts_connect(request):
             # Set up 2-hour recurring import if it doesn't exist
             existing_task = PeriodicTask.objects.filter(
                 task="Import from Pocket Casts (Recurring)",
-                kwargs__contains=f'"user_id": {request.user.id}',
+                **helpers.periodic_task_user_kwargs(request.user.id),
                 enabled=True,
             ).first()
 
@@ -3933,7 +3933,7 @@ def pocketcasts_disconnect(request):
         # Delete periodic import task if it exists
         PeriodicTask.objects.filter(
             task="Import from Pocket Casts (Recurring)",
-            kwargs__contains=f'"user_id": {request.user.id}',
+            **helpers.periodic_task_user_kwargs(request.user.id),
         ).delete()
 
         # Clear all credentials (full disconnect)
@@ -3997,7 +3997,7 @@ def gpodder_connect(request):
 
             existing_task = PeriodicTask.objects.filter(
                 task=GPODDER_RECURRING_TASK_NAME,
-                kwargs__contains=f'"user_id": {request.user.id}',
+                **helpers.periodic_task_user_kwargs(request.user.id),
                 enabled=True,
             ).first()
             if existing_task:
@@ -4049,7 +4049,7 @@ def gpodder_disconnect(request):
     def _disconnect():
         PeriodicTask.objects.filter(
             task=GPODDER_RECURRING_TASK_NAME,
-            kwargs__contains=f'"user_id": {request.user.id}',
+            **helpers.periodic_task_user_kwargs(request.user.id),
         ).delete()
         GPodderAccount.objects.filter(user=request.user).delete()
 
@@ -4215,7 +4215,7 @@ def _ensure_koito_poll_schedule(user):
 
     existing_task = PeriodicTask.objects.filter(
         task=tasks.KOITO_POLL_TASK_NAME,
-        kwargs__contains=f'"user_id": {user.id}',
+        **helpers.periodic_task_user_kwargs(user.id),
         enabled=True,
     ).first()
     if existing_task:
@@ -4291,7 +4291,7 @@ def koito_disconnect(request):
     def _disconnect():
         PeriodicTask.objects.filter(
             task=tasks.KOITO_POLL_TASK_NAME,
-            kwargs__contains=f'"user_id": {request.user.id}',
+            **helpers.periodic_task_user_kwargs(request.user.id),
         ).delete()
         KoitoAccount.objects.filter(user=request.user).delete()
 
@@ -4364,7 +4364,7 @@ def import_pocketcasts(request):
 
     existing_task = PeriodicTask.objects.filter(
         task="Import from Pocket Casts (Recurring)",
-        kwargs__contains=f'"user_id": {request.user.id}',
+        **helpers.periodic_task_user_kwargs(request.user.id),
         enabled=True,
     ).first()
 
@@ -4440,7 +4440,7 @@ def import_gpodder(request):
 
     existing_task = PeriodicTask.objects.filter(
         task=GPODDER_RECURRING_TASK_NAME,
-        kwargs__contains=f'"user_id": {request.user.id}',
+        **helpers.periodic_task_user_kwargs(request.user.id),
         enabled=True,
     ).first()
 

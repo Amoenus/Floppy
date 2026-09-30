@@ -67,6 +67,15 @@ def mal_id_from_kitsu_mappings(mappings, media_type):
     return mappings.get(f"myanimelist/{media_type}")
 
 
+def periodic_task_user_kwargs(user_id):
+    """Return ``filter`` kwargs matching one user's periodic task by exact id.
+
+    A bare ``kwargs__contains='"user_id": 1'`` also matches user 10's task, so
+    the match must end at the closing brace or the next key.
+    """
+    return {"kwargs__regex": rf"[\"']user_id[\"']: {int(user_id)}[,}}]"}
+
+
 def find_item_across_buckets(preferred_bucket=None, **identity):
     """Return an existing Item for an identity, preferring one library bucket.
 
