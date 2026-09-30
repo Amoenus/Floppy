@@ -8,7 +8,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
-from django_celery_beat.models import PeriodicTask
+from django_celery_beat.models import IntervalSchedule, PeriodicTask
 
 from app.models import Book, ComicIssue, Item, MediaTypes, Sources, Status
 from integrations.imports import helpers, komga
@@ -342,3 +342,32 @@ class KomgaViewTests(TestCase):
 
         self.assertContains(response, "Sync book and comic reading progress from Komga.")
         self.assertContains(response, reverse("komga_connect"))
+
+
+class PeriodicTaskUserMatchTests(TestCase):
+    """A user's schedule must never be matched by another user's id prefix."""
+
+    def test_connect_and_disconnect_leave_users_sharing_an_id_prefix_alone(self):
+        users = [
+            get_user_model().objects.create_user(username=f"prefix-{n}", id=n)
+            for n in (1, 10)
+        ]
+        for user in users:
+            komga_task = "Import from Komga (Recurring)"
+            PeriodicTask.objects.create(
+                name=f"komga {user.id}",
+                task=komga_task,
+                interval=IntervalSchedule.objects.get_or_create(
+                    every=15,
+                    period=IntervalSchedule.MINUTES,
+                )[0],
+                kwargs=f'{{"user_id": {user.id}}}',
+            )
+
+        # User 10 connecting must not repurpose user 1's schedule, and user 1
+        # disconnecting must not delete user 10's.
+        self.client.force_login(users[0])
+        self.client.post(reverse("komga_disconnect"))
+
+        remaining = PeriodicTask.objects.filter(task="Import from Komga (Recurring)")
+        self.assertEqual([task.kwargs for task in remaining], ['{"user_id": 10}'])

@@ -54,6 +54,7 @@ from app.templatetags import app_tags
 from integrations import exports, plex, stremio_catalog, tasks
 from integrations.imports import plex as plex_import
 from integrations.imports import trakt as trakt_imports
+from integrations.imports.helpers import periodic_task_user_kwargs
 from integrations.models import (
     DEFAULT_INTEGRATION_SCOPES,
     CatalogGrant,
@@ -1616,7 +1617,7 @@ def import_data(request):
 
         audiobookshelf_periodic_task = PeriodicTask.objects.filter(
             task="Import from Audiobookshelf (Recurring)",
-            kwargs__contains=f'"user_id": {user.id}',
+            **periodic_task_user_kwargs(user.id),
             enabled=True,
         ).first()
         if audiobookshelf_periodic_task and audiobookshelf_periodic_task.interval:
@@ -2657,7 +2658,7 @@ def create_export_schedule(request):
     # same content and same cadence - rather than any second schedule.
     existing_schedules = PeriodicTask.objects.filter(
         task="Scheduled backup export",
-        kwargs__contains=f'"user_id": {request.user.id}',
+        **periodic_task_user_kwargs(request.user.id),
         enabled=True,
         crontab=crontab,
     )
@@ -2702,7 +2703,7 @@ def delete_export_schedule(request):
     try:
         task = PeriodicTask.objects.get(
             name=task_name,
-            kwargs__contains=f'"user_id": {request.user.id}',
+            **periodic_task_user_kwargs(request.user.id),
         )
         task.delete()
         messages.success(request, "Backup schedule deleted.")
