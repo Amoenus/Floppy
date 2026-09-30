@@ -94,6 +94,11 @@ urlpatterns = [
         name="convert_anime_library",
     ),
     path("settings/integrations", views.integrations, name="integrations"),
+    path(
+        "settings/integrations/stremio-catalog-status",
+        views.stremio_catalog_status,
+        name="stremio_catalog_status",
+    ),
     path("settings/rss", views.rss_settings, name="rss_settings"),
     path(
         "settings/metadata",

@@ -1481,20 +1481,45 @@ def integrations(request):
             "jellyfin_playback_reporting_import": jellyfin_playback_reporting_import,
             "jellyfin_pull_interval_minutes": tasks.JELLYFIN_PULL_INTERVAL_MINUTES,
             "seerr_global_webhook_enabled": bool(settings.SEERR_GLOBAL_WEBHOOK_SECRET),
-            "stremio_catalog_readiness": [
-                {
-                    **catalog,
-                    "noun": gettext(catalog["noun"]),
-                    "list_name": gettext(catalog["list_name"]),
-                }
-                for catalog in stremio_catalog.catalog_readiness(user)
-            ],
             # Popped, not read: the secret is shown once and never again.
             "new_integration_token": request.session.pop(
                 NEW_TOKEN_SESSION_KEY,
                 None,
             ),
             **integration_token_context(user),
+        },
+    )
+
+
+STREMIO_CATALOG_STATUS_CACHE_SECONDS = 120
+
+
+@require_GET
+def stremio_catalog_status(request):
+    """Render the Stremio "Catalog Status" block for the integrations page.
+
+    Counting publishable titles reads every entry the catalogs cover, which
+    dominated the page's load time (about 5 s on a large library). The page
+    loads this block after first paint, and a short cache keeps a settings
+    visit from repeating the scan.
+    """
+    cache_key = f"stremio_catalog_status_{request.user.id}"
+    readiness = cache.get(cache_key)
+    if readiness is None:
+        readiness = stremio_catalog.catalog_readiness(request.user)
+        cache.set(cache_key, readiness, STREMIO_CATALOG_STATUS_CACHE_SECONDS)
+    return render(
+        request,
+        "users/components/stremio_catalog_status.html",
+        {
+            "stremio_catalog_readiness": [
+                {
+                    **catalog,
+                    "noun": gettext(catalog["noun"]),
+                    "list_name": gettext(catalog["list_name"]),
+                }
+                for catalog in readiness
+            ],
         },
     )
 
