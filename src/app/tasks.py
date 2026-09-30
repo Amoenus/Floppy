@@ -29,7 +29,15 @@ logger = logging.getLogger(__name__)
 
 @shared_task(name="Cleanup task results", ignore_result=True)
 def cleanup_task_results(batch_size=5000):
-    """Remove expired and abandoned durable task-status rows in small batches."""
+    """Remove expired and abandoned durable task-status rows in small batches.
+
+    Also closes import runs whose task was killed before it could say so.
+    """
+    from integrations.tasks._import_helpers import close_abandoned_import_runs
+
+    # Same housekeeping cadence: a killed import leaves no other record.
+    close_abandoned_import_runs()
+
     batch_size = max(int(batch_size), 0)
     if not batch_size:
         return 0
