@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from django.apps import apps as django_apps
 from django.conf import settings
 from django.core.cache import cache
+from django.core.exceptions import FieldError
 from django.core.paginator import Paginator
 from django.db.models import Count, F, Min
 from django.http import HttpResponse, HttpResponseBadRequest
@@ -665,6 +666,64 @@ def build_filter_data_from_item_values(
         region=region,
         pinned_providers=pinned_providers,
         include_providers=include_providers,
+    )
+
+
+def _log_tag_filter_result(
+    request,
+    media_type,
+    tag_values,
+    tag_mode,
+    status_filter,
+    shown,
+):
+    """Log what a tag-filtered list returned so an empty one can be explained."""
+    status_source = "url" if "status" in request.GET else "saved"
+    args = (
+        request.user.id,
+        media_type,
+        list(tag_values),
+        tag_mode,
+        list(status_filter) or ["all"],
+        status_source,
+        shown,
+    )
+    if shown:
+        logger.info(
+            "Media list tag filter: user=%s type=%s tags=%s mode=%s "
+            "status=%s (from %s) shown=%s",
+            *args,
+        )
+        return
+
+    # Empty result: compare against what the tag actually points at.
+    tagged_item_ids = set(
+        ItemTag.objects.filter(
+            tag__user=request.user,
+            tag__name__in=list(tag_values),
+            item__media_type=media_type,
+        ).values_list("item_id", flat=True),
+    )
+    tracked_statuses = {}
+    try:
+        model = django_apps.get_model(app_label="app", model_name=media_type)
+        tracked_statuses = dict(
+            model.objects.filter(user=request.user, item_id__in=tagged_item_ids)
+            .order_by()
+            .values("status")
+            .annotate(count=Count("id"))
+            .values_list("status", "count"),
+        )
+    except (LookupError, AttributeError, FieldError):
+        pass
+    logger.warning(
+        "Media list tag filter: user=%s type=%s tags=%s mode=%s "
+        "status=%s (from %s) shown=%s | "
+        "tagged_items=%s tracked_by_status=%s untracked=%s",
+        *args,
+        len(tagged_item_ids),
+        tracked_statuses,
+        len(tagged_item_ids) - sum(tracked_statuses.values()),
     )
 
 
@@ -2457,6 +2516,16 @@ def media_list(request, media_type):
 
     if filter_data is not None:
         filter_data.setdefault("departments", [])
+
+    if tag_values:
+        _log_tag_filter_result(
+            request,
+            media_type,
+            tag_values,
+            tag_mode,
+            status_filter,
+            media_page.paginator.count,
+        )
 
     _layout_class = ".media-grid" if layout == "grid" else ".media-table"
     context = {
