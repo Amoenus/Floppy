@@ -69,6 +69,7 @@ from integrations.imports.audiobookshelf import (
     AudiobookshelfClient,
 )
 from integrations.imports.kapowarr import KapowarrClient
+from integrations.imports.komga import KomgaClient
 from integrations.imports.koreader import (
     KoreaderAuthError,
     KoreaderClient,
@@ -111,6 +112,7 @@ from integrations.models import (
     JellyfinAccount,
     KapowarrInstance,
     KoitoAccount,
+    KomgaAccount,
     KoreaderAccount,
     KoreaderDocumentLink,
     LastFMAccount,
@@ -2329,23 +2331,21 @@ def jellyfin_playback_reporting_import(request):
     return redirect("integrations")
 
 
-def _ensure_audiobookshelf_schedule(user):
-    """Create or update the recurring Audiobookshelf import schedule for a user."""
+def _ensure_recurring_import_schedule(user, label, poll_interval_minutes):
+    """Create or update a user's recurring "Import from <label>" schedule."""
     from django_celery_beat.models import IntervalSchedule, PeriodicTask
 
-    poll_interval_minutes = getattr(
-        settings, "AUDIOBOOKSHELF_POLL_INTERVAL_MINUTES", 15
-    )
     interval, _ = IntervalSchedule.objects.get_or_create(
         every=poll_interval_minutes,
         period=IntervalSchedule.MINUTES,
     )
     task_name = (
-        f"Import from Audiobookshelf for {user.username} "
+        f"Import from {label} for {user.username} "
         f"(every {poll_interval_minutes} minutes)"
     )
+    task = f"Import from {label} (Recurring)"
     existing_task = PeriodicTask.objects.filter(
-        task="Import from Audiobookshelf (Recurring)",
+        task=task,
         kwargs__contains=f'"user_id": {user.id}',
     ).first()
 
@@ -2369,11 +2369,20 @@ def _ensure_audiobookshelf_schedule(user):
 
     return PeriodicTask.objects.create(
         name=task_name,
-        task="Import from Audiobookshelf (Recurring)",
+        task=task,
         interval=interval,
         kwargs=json.dumps({"user_id": user.id}),
         start_time=timezone.now(),
         enabled=True,
+    )
+
+
+def _ensure_audiobookshelf_schedule(user):
+    """Create or update the recurring Audiobookshelf import schedule for a user."""
+    return _ensure_recurring_import_schedule(
+        user,
+        "Audiobookshelf",
+        getattr(settings, "AUDIOBOOKSHELF_POLL_INTERVAL_MINUTES", 15),
     )
 
 
@@ -2449,6 +2458,91 @@ def import_audiobookshelf(request):
 
     if queued is not False:
         messages.info(request, "Audiobookshelf import queued.")
+    return redirect("import_data")
+
+
+def _komga_interval(request, default=15):
+    """Return the sync interval chosen in the Komga form, or ``default``."""
+    try:
+        minutes = int(request.POST.get("sync_interval_minutes", default))
+    except ValueError:
+        return default
+    return minutes if minutes in KomgaAccount.SYNC_INTERVAL_CHOICES else default
+
+
+@require_POST
+def komga_connect(request):
+    """Connect Komga using its server URL and an API key."""
+    base_url = request.POST.get("base_url", "").strip()
+    api_key = request.POST.get("api_key", "").strip()
+
+    if not base_url or not api_key:
+        messages.error(request, "Komga server URL and API key are required.")
+        return _integration_redirect(request)
+
+    try:
+        KomgaClient(base_url, api_key).healthcheck()
+    except Exception as exc:
+        messages.error(request, f"Failed to connect to Komga: {exc}")
+        return _integration_redirect(request)
+
+    interval = _komga_interval(request)
+
+    def _connect():
+        KomgaAccount.objects.update_or_create(
+            user=request.user,
+            defaults={
+                "base_url": base_url,
+                "api_key": helpers.encrypt(api_key),
+                "sync_interval_minutes": interval,
+                "connection_broken": False,
+                "last_error_message": "",
+            },
+        )
+        _ensure_recurring_import_schedule(request.user, "Komga", interval)
+
+    _run_with_lock_retry("connect Komga", _connect)
+    if _queue_task_or_message(
+        request, tasks.import_komga, user_id=request.user.id, mode="new"
+    ) is not False:
+        messages.success(request, "Connected Komga. Initial import queued.")
+    return _integration_redirect(request, connected_slug="komga")
+
+
+@require_POST
+def komga_disconnect(request):
+    """Disconnect Komga."""
+    from django_celery_beat.models import PeriodicTask
+
+    def _disconnect():
+        PeriodicTask.objects.filter(
+            task="Import from Komga (Recurring)",
+            kwargs__contains=f'"user_id": {request.user.id}',
+        ).delete()
+        KomgaAccount.objects.filter(user=request.user).delete()
+
+    _run_with_lock_retry("disconnect Komga", _disconnect)
+    messages.info(request, "Disconnected Komga.")
+    return redirect("import_data")
+
+
+@require_POST
+def import_komga(request):
+    """Queue a Komga sync now and keep the recurring schedule in place."""
+    account = getattr(request.user, "komga_account", None)
+    if not account:
+        messages.error(request, "Connect Komga before importing.")
+        return redirect("import_data")
+
+    queued = _queue_task_or_message(
+        request, tasks.import_komga, user_id=request.user.id, mode="new"
+    )
+    _ensure_recurring_import_schedule(
+        request.user, "Komga", account.sync_interval_minutes
+    )
+
+    if queued is not False:
+        messages.info(request, "Komga sync queued.")
     return redirect("import_data")
 
 

@@ -163,6 +163,15 @@ ONBOARDING_SOURCES: tuple[OnboardingSource, ...] = (
         connect_fields=(("base_url", "Server URL", "url"), ("api_token", "API Token", "password")),
     ),
     OnboardingSource(
+        "komga",
+        (BOOK, COMIC),
+        "host_url",
+        "komga_account",
+        tags=("reading",),
+        connect_url_name="komga_connect",
+        connect_fields=(("base_url", "Server URL", "url"), ("api_key", "API Key", "password")),
+    ),
+    OnboardingSource(
         "storyteller",
         (BOOK,),
         "host_url",

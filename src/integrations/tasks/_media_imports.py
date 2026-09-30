@@ -22,6 +22,7 @@ from integrations.imports import (
     jellyfin_playback_reporting,
     kapowarr,
     kitsu,
+    komga,
     mal,
     mdblist,
     mylar,
@@ -606,6 +607,18 @@ def import_audiobookshelf(user_id, mode="new"):
 def import_audiobookshelf_recurring(user_id):
     """Recurring import task for Audiobookshelf."""
     return import_media(audiobookshelf.importer, None, user_id, "new")
+
+
+@shared_task(name="Import from Komga")
+def import_komga(user_id, mode="new"):
+    """Celery task for importing book and comic reading progress from Komga."""
+    return import_media(komga.importer, None, user_id, mode)
+
+
+@shared_task(name="Import from Komga (Recurring)")
+def import_komga_recurring(user_id):
+    """Recurring import task for Komga."""
+    return import_media(komga.importer, None, user_id, "new")
 
 
 @shared_task(name="Import from Storyteller")

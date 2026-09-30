@@ -139,6 +139,21 @@ urlpatterns = [
         name="import_audiobookshelf",
     ),
     path(
+        "import/komga/connect",
+        views.komga_connect,
+        name="komga_connect",
+    ),
+    path(
+        "import/komga/disconnect",
+        views.komga_disconnect,
+        name="komga_disconnect",
+    ),
+    path(
+        "import/komga",
+        views.import_komga,
+        name="import_komga",
+    ),
+    path(
         "import/audiobookshelf/cover/<str:token>",
         views.audiobookshelf_cover,
         name="audiobookshelf_cover",

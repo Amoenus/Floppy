@@ -93,6 +93,8 @@ TRACKED_TASK_NAMES = frozenset(
         "Import from Kapowarr (Recurring)",
         "Import from Audiobookshelf",
         "Import from Audiobookshelf (Recurring)",
+        "Import from Komga",
+        "Import from Komga (Recurring)",
         "Import from Storyteller",
         "Import from Storyteller (Recurring)",
         "Import from Pocket Casts",
