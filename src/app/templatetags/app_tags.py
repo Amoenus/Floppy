@@ -474,6 +474,17 @@ def source_readable(source):
 
 
 @register.filter
+def detail_link_url(sections, brand):
+    """Return the Links-dropdown URL for a provider, so rating chips can reuse it."""
+    brand = str(brand or "").lower()
+    for section in sections or ():
+        for entry in section["entries"]:
+            if entry.get("brand") == brand:
+                return entry["url"]
+    return ""
+
+
+@register.filter
 def media_type_readable(media_type):
     """Return the readable media type."""
     return _(MediaTypes(media_type).label)
