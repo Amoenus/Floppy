@@ -16,6 +16,7 @@ import time
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required, login_required
+from django.core.cache import cache
 from django.db import OperationalError, transaction
 from django.db.models import Q
 from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
@@ -681,6 +682,13 @@ def bulk_list_add(request):
     )
 
 
+# An item the provider has no release date for is asked about on every page
+# that shows it, one provider call each. Remember the miss for a day; a
+# provider error is remembered briefly so an outage is not retried per view.
+RELEASE_YEAR_MISS_SECONDS = 60 * 60 * 24
+RELEASE_YEAR_ERROR_SECONDS = 60 * 10
+
+
 @require_GET
 @login_not_required
 def fetch_release_year(request):
@@ -715,6 +723,10 @@ def fetch_release_year(request):
             item.save(update_fields=["release_datetime"])
             return JsonResponse({"year": episode_release.year})
 
+    miss_key = f"release_year_miss_{item.id}"
+    if cache.get(miss_key):
+        return JsonResponse({"year": None})
+
     try:
         season_numbers = None
         episode_number = None
@@ -728,13 +740,14 @@ def fetch_release_year(request):
             season_numbers = [item.season_number]
             episode_number = item.episode_number
 
-        metadata = services.get_media_metadata(
-            item.media_type,
-            item.media_id,
-            item.source,
-            season_numbers=season_numbers,
-            episode_number=episode_number,
-        )
+        with services.interactive_request_scope():
+            metadata = services.get_media_metadata(
+                item.media_type,
+                item.media_id,
+                item.source,
+                season_numbers=season_numbers,
+                episode_number=episode_number,
+            )
         if metadata:
             release_datetime = helpers.extract_release_datetime(metadata)
             if release_datetime:
@@ -747,5 +760,8 @@ def fetch_release_year(request):
             item_id,
             exc,
         )
+        cache.set(miss_key, True, RELEASE_YEAR_ERROR_SECONDS)
+        return JsonResponse({"year": None})
 
+    cache.set(miss_key, True, RELEASE_YEAR_MISS_SECONDS)
     return JsonResponse({"year": None})
