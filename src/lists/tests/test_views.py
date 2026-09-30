@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db import OperationalError
 from django.test import Client, RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -3776,6 +3777,66 @@ class ListItemToggleTests(TestCase):
 
         # Nothing committed: the item was never added.
         self.assertNotIn(self.item, self.list.items.all())
+
+    def _toggle_post(self):
+        return self.client.post(
+            reverse("list_item_toggle"),
+            {"item_id": self.item.id, "custom_list_id": self.list.id},
+        )
+
+    @patch("lists.views_list_actions.time.sleep")
+    @patch("lists.views_list_actions._toggle_list_membership")
+    def test_list_item_toggle_retries_an_immediate_lock_error(self, mock_toggle, _sleep):
+        """A stale-snapshot lock error is instant, so a quick retry succeeds."""
+        self.client.login(**self.credentials)
+        mock_toggle.side_effect = [OperationalError("database is locked"), True]
+
+        response = self._toggle_post()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mock_toggle.call_count, 2)
+
+    @patch("lists.views_list_actions.time.sleep")
+    @patch(
+        "lists.views_list_actions._toggle_list_membership",
+        side_effect=OperationalError("database is locked"),
+    )
+    def test_list_item_toggle_lock_failure_is_a_busy_toast_with_diagnostics(
+        self,
+        mock_toggle,
+        _sleep,
+    ):
+        self.client.login(**self.credentials)
+
+        with self.assertLogs("lists.views_list_actions", level="ERROR") as logs:
+            response = self._toggle_post()
+
+        self.assertEqual(response.status_code, 503)
+        trigger = json.loads(response.headers["HX-Trigger"])
+        self.assertEqual(trigger["showToast"]["type"], "error")
+        self.assertIn("busy", trigger["showToast"]["message"])
+        self.assertEqual(mock_toggle.call_count, 3)
+        output = "".join(logs.output)
+        self.assertIn("contention=True", output)
+        self.assertIn("attempts=3", output)
+        self.assertIn("elapsed_ms=", output)
+
+    @patch("lists.views_list_actions.LIST_TOGGLE_QUICK_FAILURE_SECONDS", -1)
+    @patch(
+        "lists.views_list_actions._toggle_list_membership",
+        side_effect=OperationalError("database is locked"),
+    )
+    def test_list_item_toggle_does_not_retry_a_lock_that_waited_out_the_timeout(
+        self,
+        mock_toggle,
+    ):
+        self.client.login(**self.credentials)
+
+        with self.assertLogs("lists.views_list_actions", level="ERROR"):
+            response = self._toggle_post()
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(mock_toggle.call_count, 1)
 
     def test_list_item_toggle_rolls_back_membership_when_activity_fails(self):
         """Membership and its activity record must commit or roll back together."""

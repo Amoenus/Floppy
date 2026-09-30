@@ -10,11 +10,13 @@ views_smart_list.py; the browse views live in views_list_browse.py.
 import contextlib
 import json
 import logging
+import os
+import time
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required, login_required
-from django.db import transaction
+from django.db import OperationalError, transaction
 from django.db.models import Q
 from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -24,6 +26,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from app import helpers
 from app.columns import sanitize_column_prefs
+from app.db_retry import is_contention_error, is_lock_error
 from app.discover import tab_cache as discover_tab_cache
 from app.library_query.adapters import (
     SMART_RULES_CURRENT_SEMANTICS,
@@ -463,7 +466,7 @@ def lists_modal(
     )
 
 
-def _list_item_toggle_error_response():
+def _list_item_toggle_error_response(*, busy=False):
     """Return an empty HTMX response that only triggers an error toast.
 
     htmx doesn't swap the response body for 4xx/5xx status codes by
@@ -471,20 +474,60 @@ def _list_item_toggle_error_response():
     nothing committed — while HX-Trigger still fires the toast regardless
     of swap/status.
     """
-    response = HttpResponse(status=500)
+    if busy:
+        status = 503
+        message = "The database is busy right now, so nothing changed. Please try again."
+    else:
+        status = 500
+        message = (
+            "Couldn't update this list — please try again. If it "
+            "keeps happening, file a bug report from "
+            "Settings > Advanced."
+        )
+    response = HttpResponse(status=status)
     response["HX-Trigger"] = json.dumps(
-        {
-            "showToast": {
-                "message": (
-                    "Couldn't update this list — please try again. If it "
-                    "keeps happening, file a bug report from "
-                    "Settings > Advanced."
-                ),
-                "type": "error",
-            },
-        },
+        {"showToast": {"message": message, "type": "error"}},
     )
     return response
+
+
+# SQLite reports a stale read snapshot as "database is locked" at once, without
+# waiting out busy_timeout, so a couple of quick retries clear it. A lock that
+# already waited the full timeout is a long writer, and retrying only doubles
+# the wait.
+LIST_TOGGLE_ATTEMPTS = 3
+LIST_TOGGLE_QUICK_FAILURE_SECONDS = 1.0
+
+
+def _toggle_list_membership(custom_list, item, user):
+    """Add or remove ``item`` and record the activity in one transaction."""
+    with transaction.atomic():
+        CustomListItem.objects.lock_custom_lists([custom_list.id])
+        custom_list_item = CustomListItem.objects.filter(
+            custom_list=custom_list,
+            item=item,
+        ).first()
+        if custom_list_item is not None:
+            # Instance-level delete renumbers the per-list sequence.
+            custom_list_item.delete()
+            has_item = False
+            activity_type = ListActivityType.ITEM_REMOVED
+        else:
+            CustomListItem.objects.create(
+                custom_list=custom_list,
+                item=item,
+                added_by=user,
+            )
+            has_item = True
+            activity_type = ListActivityType.ITEM_ADDED
+
+        ListActivity.objects.create(
+            custom_list=custom_list,
+            user=user,
+            activity_type=activity_type,
+            item=item,
+        )
+    return has_item
 
 
 @require_POST
@@ -508,47 +551,49 @@ def list_item_toggle(request):
     if custom_list.is_smart:
         return HttpResponse(status=403)
 
+    started = time.monotonic()
+    attempt = 0
     try:
-        with transaction.atomic():
-            CustomListItem.objects.lock_custom_lists([custom_list.id])
-            custom_list_item = CustomListItem.objects.filter(
-                custom_list=custom_list,
-                item=item,
-            ).first()
-            if custom_list_item is not None:
-                # Instance-level delete renumbers the per-list sequence.
-                custom_list_item.delete()
-                has_item = False
-                activity_type = ListActivityType.ITEM_REMOVED
-                log_action = "removed from"
-            else:
-                CustomListItem.objects.create(
-                    custom_list=custom_list,
-                    item=item,
-                    added_by=request.user,
+        while True:
+            attempt += 1
+            attempt_started = time.monotonic()
+            try:
+                has_item = _toggle_list_membership(custom_list, item, request.user)
+                break
+            except OperationalError as error:
+                quick = (
+                    time.monotonic() - attempt_started
+                    < LIST_TOGGLE_QUICK_FAILURE_SECONDS
                 )
-                has_item = True
-                activity_type = ListActivityType.ITEM_ADDED
-                log_action = "added to"
-
-            ListActivity.objects.create(
-                custom_list=custom_list,
-                user=request.user,
-                activity_type=activity_type,
-                item=item,
-            )
-        logger.info("%s %s %s.", item, log_action, custom_list)
-    except Exception:
+                if not (is_lock_error(error) and quick) or (
+                    attempt >= LIST_TOGGLE_ATTEMPTS
+                ):
+                    raise
+                time.sleep(0.1 * attempt)
+        logger.info(
+            "%s %s %s.",
+            item,
+            "added to" if has_item else "removed from",
+            custom_list,
+        )
+    except Exception as error:
         # Keep the last committed button state and surface every failed toggle.
-        # The structured context contains database IDs only.
+        # The structured context contains database IDs only. SQLite cannot say
+        # which connection held a lock, so a contention failure records how long
+        # this request waited and how many attempts it made instead.
+        contention = is_contention_error(error)
         logger.exception(
             "Failed to toggle list membership (item_id=%s, custom_list_id=%s, "
-            "user_id=%s)",
+            "user_id=%s, contention=%s, attempts=%s, elapsed_ms=%s, pid=%s)",
             item.id,
             custom_list.id,
             request.user.id,
+            contention,
+            attempt,
+            int((time.monotonic() - started) * 1000),
+            os.getpid(),
         )
-        return _list_item_toggle_error_response()
+        return _list_item_toggle_error_response(busy=contention)
 
     return render(
         request,
