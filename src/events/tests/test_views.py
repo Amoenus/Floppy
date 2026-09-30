@@ -2,6 +2,7 @@ import calendar
 from datetime import UTC, date, timedelta
 from unittest.mock import patch
 
+import icalendar
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
 from django.core.cache import cache
@@ -766,6 +767,49 @@ class DownloadCalendarViewTests(TestCase):
         expected = known_dt.strftime("%Y%m%dT%H%M%SZ")
         self.assertIn(f"DTSTART:{expected}", body)
         self.assertIn(f"DTEND:{expected}", body)
+
+    def test_download_calendar_feed_parses_with_escaped_and_folded_summaries(self):
+        """The hand-written feed round-trips through a real iCalendar parser.
+
+        Summaries with characters that need escaping, non-ASCII text and a
+        title long enough to fold must come back exactly as stored, and no
+        physical line may exceed 75 octets.
+        """
+        titles = [
+            "Comma, Semicolon; Backslash \\ and\nNewline",
+            "Ünïcödé 映画 " * 8,
+            "A very long title " * 12,
+        ]
+        Event.objects.filter(pk=self.season_event.pk).delete()
+        for index, title in enumerate(titles):
+            item = Item.objects.create(
+                media_id=f"escape-{index}",
+                source=Sources.MANUAL.value,
+                media_type=MediaTypes.MOVIE.value,
+                title=title,
+                image="https://example.com/movie.jpg",
+            )
+            Movie.objects.create(item=item, user=self.user, status=Status.PLANNING.value)
+            Event.objects.create(item=item, datetime=timezone.now())
+
+        response = self.client.get(
+            reverse("download_calendar", kwargs={"token": self.user.token}),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        for physical_line in response.content.decode().split("\r\n"):
+            self.assertLessEqual(len(physical_line.encode()), 75)
+        calendar_file = icalendar.Calendar.from_ical(response.content)
+        summaries = {
+            str(component["SUMMARY"])
+            for component in calendar_file.walk("VEVENT")
+        }
+        self.assertLessEqual(set(titles), summaries)
+        self.assertEqual(str(calendar_file["VERSION"]), "2.0")
+        self.assertEqual(str(calendar_file["PRODID"]), "-//Floppy//EN")
+        for component in calendar_file.walk("VEVENT"):
+            self.assertTrue(component["UID"])
+            self.assertTrue(component["DTSTAMP"].dt)
 
     def test_download_calendar_allows_head_requests(self):
         """HEAD requests should be accepted for calendar clients."""
