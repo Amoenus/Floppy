@@ -362,6 +362,28 @@ class TagFilterViewTest(TestCase):
         self.assertIn("tagged_items=1", output)
         self.assertIn("untracked=1", output)
 
+    def test_empty_tag_filter_log_matches_tag_case_insensitively(self):
+        self.user.update_preference("movie_status", Status.PLANNING.value)
+
+        with self.assertLogs("app.media_list_views", level="WARNING") as logs:
+            self.client.get(reverse("medialist", args=["movie"]), {"tag": "favorite"})
+
+        self.assertIn("tagged_items=1", "\n".join(logs.output))
+
+    def test_empty_tag_filter_log_counts_items_not_tracker_rows(self):
+        """Several tracker rows on one item must not make untracked negative."""
+        Movie.objects.create(
+            item=self.item1,
+            user=self.user,
+            status=Status.DROPPED,
+        )
+        self.user.update_preference("movie_status", Status.PLANNING.value)
+
+        with self.assertLogs("app.media_list_views", level="WARNING") as logs:
+            self.client.get(reverse("medialist", args=["movie"]), {"tag": "Favorite"})
+
+        self.assertIn("untracked=0", "\n".join(logs.output))
+
     def test_exclude_tag_filter(self):
         """Tag exclude filter hides items with the tag."""
         url = reverse("medialist", args=["movie"])

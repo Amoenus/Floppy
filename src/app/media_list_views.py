@@ -2,7 +2,7 @@ import json
 import logging
 import math
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -13,7 +13,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.core.exceptions import FieldError
 from django.core.paginator import Paginator
-from django.db.models import Count, F, Min
+from django.db.models import Count, F, Min, Q
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import render
 from django.urls import reverse
@@ -697,25 +697,29 @@ def _log_tag_filter_result(
         return
 
     # Empty result: compare against what the tag actually points at.
+    # Same case-insensitive tag match as the filter itself.
+    tag_match = Q()
+    for value in tag_values:
+        tag_match |= Q(tag__name__iexact=value)
     tagged_item_ids = set(
         ItemTag.objects.filter(
+            tag_match,
             tag__user=request.user,
-            tag__name__in=list(tag_values),
             item__media_type=media_type,
         ).values_list("item_id", flat=True),
     )
-    tracked_statuses = {}
+    # One status per item: separate-entry mode can give an item several rows.
+    status_by_item = {}
     try:
         model = django_apps.get_model(app_label="app", model_name=media_type)
-        tracked_statuses = dict(
+        status_by_item = dict(
             model.objects.filter(user=request.user, item_id__in=tagged_item_ids)
-            .order_by()
-            .values("status")
-            .annotate(count=Count("id"))
-            .values_list("status", "count"),
+            .order_by("id")
+            .values_list("item_id", "status"),
         )
     except (LookupError, AttributeError, FieldError):
         pass
+    tracked_statuses = dict(Counter(status_by_item.values()))
     logger.warning(
         "Media list tag filter: user=%s type=%s tags=%s mode=%s "
         "status=%s (from %s) shown=%s | "
@@ -723,7 +727,7 @@ def _log_tag_filter_result(
         *args,
         len(tagged_item_ids),
         tracked_statuses,
-        len(tagged_item_ids) - sum(tracked_statuses.values()),
+        len(tagged_item_ids) - len(status_by_item),
     )
 
 
@@ -2517,7 +2521,7 @@ def media_list(request, media_type):
     if filter_data is not None:
         filter_data.setdefault("departments", [])
 
-    if tag_values:
+    if tag_values and not _skip_generic_media_list:
         _log_tag_filter_result(
             request,
             media_type,
