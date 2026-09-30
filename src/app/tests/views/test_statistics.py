@@ -3005,6 +3005,40 @@ class StatisticsViewTests(TestCase):
         self.assertEqual(day_stats["backfill"]["missing_credits"], 1)
         self.assertEqual(day_stats["backfill"]["scheduled_credits"], 0)
 
+    def test_day_summary_is_info_for_one_day_but_debug_during_a_sweep(self):
+        watched_at = timezone.now()
+        item = Item.objects.create(
+            media_id="9044",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Day Summary Movie",
+            image="http://example.com/summary.jpg",
+            runtime_minutes=100,
+            genres=["Drama"],
+        )
+        Movie.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=1,
+            start_date=watched_at,
+            end_date=watched_at,
+        )
+
+        with self.assertLogs("app.statistics_day_builder", level="INFO") as single:
+            statistics_cache.build_stats_for_day(self.user.id, watched_at.date())
+        self.assertTrue(any("stats_day_summary" in line for line in single.output))
+
+        with self.assertLogs("app.statistics_day_builder", level="DEBUG") as sweep:
+            statistics_cache.build_stats_for_day(
+                self.user.id,
+                watched_at.date(),
+                defer_cache_write=True,
+            )
+        summaries = [line for line in sweep.output if "stats_day_summary" in line]
+        self.assertTrue(summaries)
+        self.assertTrue(all(line.startswith("DEBUG:") for line in summaries))
+
     @patch("app.statistics_cache.invalidate_all_statistics_days")
     def test_update_statistics_preferences_saves_tv_anime_split_and_invalidates_cache(
         self,
